@@ -1,0 +1,21 @@
+markowitz:  
+  output_datetimes: ['2022-11-28/21-34-54', '2022-11-28/21-33-36', '2022-11-28/19-58-28']
+  naive_ws_datetime: '2022-11-30/14-56-17'
+  pretrain_datetime: ''
+  no_learning_datetime: '2022-11-28/21-33-36'
+  eval_iters: 500
+  accuracies: [1e-2, 1e-3, 1e-4]
+vehicle:
+  output_datetimes: ['2022-11-27/10-06-50', '2022-11-27/12-09-16', '2022-11-26/18-21-01']
+  pretrain_datetime: ''
+  naive_ws_datetime: '2022-11-30/15-06-40'
+  no_learning_datetime: '2022-11-26/20-27-13'
+  eval_iters: 500
+  accuracies: [1e-2, 1e-3, 1e-4]
+mpc:
+  output_datetimes: ['2022-11-30/19-39-39', '2022-11-30/19-40-09', '2022-11-30/16-03-42']
+  naive_ws_datetime: '2022-11-30/19-40-09'
+  pretrain_datetime: ''
+  no_learning_datetime: '2022-11-30/19-40-09'
+  eval_iters: 500
+  accuracies: [1e-2, 1e-3, 1e-4]

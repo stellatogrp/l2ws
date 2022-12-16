@@ -1,0 +1,10 @@
+output_datetimes: []
+pretrain_datetime: ''
+naive_ws_datetime: ''
+no_learning_datetime: ''
+eval_iters: 2500
+accuracies: [1e-2, 1e-3, 1e-4]
+# output_datetimes: ['2022-11-28/21-34-54', '2022-11-28/21-33-36', '2022-11-28/19-58-28']
+# naive_ws_datetime: '2022-11-30/14-56-17'
+# pretrain_datetime: ''
+# no_learning_datetime: '2022-11-28/21-33-36'

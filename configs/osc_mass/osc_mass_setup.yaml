@@ -1,0 +1,12 @@
+T: 50
+nx: 36 # fixed
+nu: 9 # fixed
+state_box: 4
+control_box: .5
+x_init_box: 2
+N_train: 100
+N_test: 20
+Q_val: 1
+QT_val: 1
+R_val: 1
+solve_acc: 1e-4

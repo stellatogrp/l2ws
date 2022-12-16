@@ -1,0 +1,14 @@
+a: 3000 # 3000 for nasdaq, 2342 for yahoo
+N_train: 1000
+N_test: 200
+# mult_factor: 1000
+# std_mult: 1e-3 #.3
+pen_rets_min: -1.5 #-1.5
+pen_rets_max: -1.5 #-1.5
+# max_clip: 3e-3 #1
+# min_clip: -3e-3 #-1
+solve_acc: 1e-3
+data: 'eod' #'yahoo' #'nasdaq'
+alpha: .024
+scale_factor: 1e2
+idio_risk: 1e-3

@@ -1,0 +1,8 @@
+T: 10
+mu: 2
+rho: 2
+gamma: .05
+solve_acc: 1e-4
+dt: .05
+N_train: 100
+N_test: 20

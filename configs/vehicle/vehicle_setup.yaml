@@ -1,0 +1,31 @@
+T: 30
+dt: .01
+slip_box_deg: 25
+yaw_box_deg: 40
+roll_box_deg: 15
+roll_rate_box_deg: 30
+delta0_box_deg: 45
+delta_rate_box_deg: 30
+Fy_box: 1000
+Mx_box: 20000
+Mz_box: 30000
+v_min: 2
+v_max: 35
+slip_penalty: 30 #100
+yaw_penalty: 200 #20000
+roll_penalty: 0
+roll_rate_penalty: 50 #500
+Fy_penalty: 1e-5 #1e-6 #1
+Mx_penalty: 1e-6 #1e-6
+Mz_penalty: 6e-6 #6e-6
+control_rate_lim: 35000
+# states: 'with' #'with' or 'without'
+# steer_features: 'low' #'low' or 'high'
+# matrices_fixed: False
+linear_system_solve: 'inverse'
+Fy_factor: 1e-4
+Mx_factor: 1e-4
+Mz_factor: 1e-4
+N_train: 100
+N_test: 20
+solve_acc: 1e-6

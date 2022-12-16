@@ -1,0 +1,6 @@
+output_datetimes: []
+naive_ws_datetime: ''
+pretrain_datetime: ''
+no_learning_datetime: ''
+eval_iters: 1500
+accuracies: [1e-2, 1e-3, 1e-4]

@@ -127,3 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# added
+.DS_Store
+.vscode/
+l2ws_env
+outputs/
