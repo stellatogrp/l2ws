@@ -133,3 +133,4 @@ dmypy.json
 .vscode/
 l2ws_env
 outputs/
+data/

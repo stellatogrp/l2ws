@@ -41,7 +41,7 @@ def simulate(T, gamma, dt, sigma, p):
     v = np.random.randn(2, T)
 
     x = np.zeros((4, T + 1))
-    x[:, 0] = [0, 0, 0, 0]
+    # x[:, 0] = [0, 0, 0, 0]
     y = np.zeros((2, T))
 
     # add outliers to v
@@ -72,9 +72,18 @@ def test_kalman():
     # with huber
     x1, w1 = cvxpy_huber(T, y, gamma, dt, mu, rho)
 
-    # with our canon, but cvxpy
+    # replace huber with socp, but cvxpy
     x2, w2 = cvxpy_manual(T, y, gamma, dt, mu, rho)
-    pdb.set_trace()
+    
+    '''
+    scs with our canon
+    '''
+    # canon
+    out = static_canon(T, gamma, dt, mu, rho)
+
+    # update to input y
+
+
 
 
 def cvxpy_huber(T, y, gamma, dt, mu, rho):
@@ -131,23 +140,50 @@ def cvxpy_manual(T, y, gamma, dt, mu, rho):
     w = np.array(w.value)
     return x, w
 
+def simulate_fwd(w, v):
+    return y
+
 
 
 # @functools.partial(jit, static_argnums=(1, 2, 3, 4, 5, 6, 7, 8,))
-def single_q(theta, m, n, T, nx, nu, state_box, control_box, A_dynamics):
+# def single_q(theta, m, n, T, nx, nu, state_box, control_box, A_dynamics):
+def single_q(theta, m, n, T):
     """
     the observations, y_0,...,y_{T-1} are the parameters that change
-    there are 3 blocks of constraints
+    there are 6 blocks of constraints and the second one changes
     1. x_{t+1}=Ax_t+Bw_t
     2. y_t=Cx_t+v_t
-    3.
+    3. ...
     """
+    nx, nu, no = 4, 2, 2
+
+    # get A
+
+    # extract (w, v)
+
+    # theta = (w_0,...,w_{T-1},v_0,...,v_{T-1})
+
+    # get y
+    w = theta[:T*nu]
+    v = theta[T*nu:]
+    y = simulate_fwd(w, v)
+
+    # c
+    # c =
+
+    # b
+    # b = 
+
+
     q = jnp.zeros(n + m)
     beq = jnp.zeros(T * nx)
     beq = beq.at[:nx].set(A_dynamics @ theta)
     b_upper = jnp.hstack([state_box * jnp.ones(T * nx), control_box * jnp.ones(T * nu)])
     b_lower = jnp.hstack([state_box * jnp.ones(T * nx), control_box * jnp.ones(T * nu)])
     b = jnp.hstack([beq, b_upper, b_lower])
+
+    # q
+    q = q.at[:n].set(c)
     q = q.at[n:].set(b)
     return q
 
@@ -484,20 +520,23 @@ def our_scs():
     pdb.set_trace()
 
 
-def static_canon(T, mu, rho, dt):
+def static_canon(T, gamma, dt, mu, rho):
     """
     variables
     (x_t, w_t, s_t, v_t,  u_t, z_t) \in (nx + nu + no + 3)
     (nx,  nu,  1,   no,   no, 1, 1)
-    min \sum_{i=0}^{T-1} ||w_t||_2^2 + mu (u_t+z_t^2)^2
+    min \sum_{i=0}^{T-1} ||w_t||_2^2 + mu (u_t+rho*z_t^2)^2
         s.t. x_{t+1} = Ax_t + Bw_t  t=0,...,T-1 (dyn)
              y_t = Cx_t + v_t       t=0,...,T-1 (obs)
              u_t + z_t = s_t        t=0,...,T-1 (aux)
-             z_t <= 1               t=0,...,T-1 (z ineq)
+             z_t <= rho             t=0,...,T-1 (z ineq)
              u_t >= 0               t=0,...,T-1 (u ineq)
              ||v_t||_2 <= s_t       t=0,...,T-1 (socp)
     (x_0, ..., x_{T-1})
     """
+    # nx, nu, no don't change
+    nx, nu, no = 4, 2, 2
+
     # to make indexing easier
     single_len = nx + nu + no + 3
     nvars = single_len * T
@@ -505,7 +544,8 @@ def static_canon(T, mu, rho, dt):
     s_start = w_start + nu * T
     v_start = s_start + T
     u_start = v_start + no * T
-    z_start = u_start + nu * T
+    z_start = u_start + T
+
     assert z_start + T == single_len * T
 
     # get A, B, C
@@ -514,8 +554,8 @@ def static_canon(T, mu, rho, dt):
     # Quadratic objective
     P = np.zeros((single_len, single_len))
     P[nx : nx + nu, nx : nx + nu] = np.eye(nu)
-    P[-1, -1] = mu
-    P_sparse = sparse.kron(sparse.eye(T - 1), P)
+    P[-1, -1] = mu * rho
+    P_sparse = sparse.kron(sparse.eye(T), P)
 
     # Linear objective
     c = np.zeros(single_len * T)
@@ -527,16 +567,17 @@ def static_canon(T, mu, rho, dt):
     )
     Bw = sparse.kron(sparse.eye(T), Bd)
     A_dyn = np.zeros((T * nx, nvars))
-    A_dyn[:, :w_start] = Ax
-    A_dyn[:, w_start:s_start] = Bw
+    A_dyn[:, :w_start] = Ax.todense()
+    A_dyn[:, w_start:s_start] = Bw.todense()
     b_dyn = np.zeros(T * nx)
 
     # obs constraints
-    Cx = sparse.kron(sparse.eye(T), C)
+    Cx = np.kron(np.eye(T), C)
 
-    Iv = sparse.kron(sparse.eye(T), sparse.eye(T))
+    Iv = np.kron(np.eye(2), np.eye(T))
     A_obs = np.zeros((T * no, nvars))
     A_obs[:, :w_start] = Cx
+    # pdb.set_trace()
     A_obs[:, v_start:u_start] = Iv
     # b_obs will be updated by the parameter stack(y_1, ..., y_T)
     b_obs = np.zeros(T * no)
@@ -544,23 +585,43 @@ def static_canon(T, mu, rho, dt):
     # aux constraints
     n_aux = T
     A_aux = np.zeros((n_aux, nvars))
-    A_aux[:, s_start:v_start] = -I
-    A_aux[:, u_start:z_start] = I
-    A_aux[:, z_start:] = I
+    A_aux[:, s_start:v_start] = -np.eye(T)
+    A_aux[:, u_start:z_start] = np.eye(T)
+    A_aux[:, z_start:] = np.eye(T)
     b_aux = np.zeros(n_aux)
 
     # z_ineq constraints
+    n_z_ineq = T
+    A_z_ineq = np.zeros((n_z_ineq, nvars))
+    A_z_ineq[:, z_start:] = np.eye(n_z_ineq)
+    b_z_ineq = rho*np.ones(n_z_ineq)
 
     # u_ineq constraints
+    n_u_ineq = T
+    A_u_ineq = np.zeros((n_u_ineq, nvars))
+    A_u_ineq[:, u_start:z_start] = -np.eye(n_u_ineq)
+    b_u_ineq = np.zeros(n_u_ineq)
+
+    # socp constraints
+    n_socp = T*3
+    A_socp = np.zeros((n_socp, nvars))
+    for i in range(T):
+        A_socp[3*i, s_start+i] = -1
+        A_socp[3*i+1:3*i+3, v_start+2*i:v_start+2*(i+1)] = -np.eye(2)
+
+    b_socp = np.zeros(n_socp)
 
     # stack A
-    A_sparse = sparse.vstack([A_dyn, A_obs, A_aux])
+    A_sparse = sparse.vstack([A_dyn, A_obs, A_aux, A_z_ineq, A_u_ineq, A_socp])
 
     # get b
-    b = np.hstack([b_dyn, b_obs, b_aux])
+    b = np.hstack([b_dyn, b_obs, b_aux, b_z_ineq, b_u_ineq, b_socp])
 
-    cones = dict(z=T * (1 + nx + no), l=2 * (T * nx + T * nu))
-    cones_array = jnp.array([cones["z"], cones["l"], cones["s"]])
+    q_array = np.ones(T) * 3
+    # q_array_jax = jnp.array(q_array)
+    cones = dict(z=T * (1 + nx + no), l=2 * (T * nx + T * nu), q=q_array)
+    cones_array = jnp.array([cones["z"], cones["l"]])
+    cones_array = jnp.concatenate([cones_array, jnp.array(cones["q"])])
 
     # create the matrix M
     m, n = A_sparse.shape
