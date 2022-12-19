@@ -5,9 +5,11 @@ import cvxpy as cp
 from jax import linear_transpose
 import pandas as pd
 from pandas import read_csv
-# from l2ws.scs_problem import SCSinstance, scs_jax, ruiz_equilibrate
+
+from l2ws.scs_problem import SCSinstance, scs_jax, ruiz_equilibrate
 import numpy as np
 import pdb
+
 # from l2ws.launcher import Workspace
 from scipy import sparse
 import jax.numpy as jnp
@@ -22,6 +24,7 @@ from scipy import sparse
 import yaml
 from jax import jit, vmap
 import cvxpy as cp
+
 
 plt.rcParams.update(
     {
@@ -59,31 +62,102 @@ def simulate(T, gamma, dt, sigma, p):
     return y, x_true, w_true, v
 
 
+def sample_theta(T, gamma, dt, sigma, p):
+    A, B, C = robust_kalman_setup(gamma, dt)
+
+    # generate random input and noise vectors
+    w = np.random.randn(2, T)
+    v = np.random.randn(2, T)
+
+    x = np.zeros((4, T + 1))
+    # x[:, 0] = [0, 0, 0, 0]
+    y = np.zeros((2, T))
+
+    # add outliers to v
+    # np.random.seed(0)
+    inds = np.random.rand(T) <= p
+    v[:, inds] = sigma * np.random.randn(2, T)[:, inds]
+
+    w_flat = np.ravel(w)
+    v_flat = np.ravel(v)
+    theta = np.concatenate([w_flat, v_flat])
+    return theta
+
+
 def test_kalman():
+    nx, no, nu = 4, 2, 2
+    single_length = nx + no + nu + 3
+    
     T = 10
+    nvars = single_length * T
     gamma = 0.05
     dt = 0.05
     p = 20
     sigma = 20
     mu = 2
-    rho = 2
-    y, x_true, w_true, v = simulate(T, gamma, dt, sigma, p)
+    rho = 1
+    # y, x_true, w_true, v = simulate(T, gamma, dt, sigma, p)
 
-    # with huber
-    x1, w1 = cvxpy_huber(T, y, gamma, dt, mu, rho)
+    # sample to get (w, v) -- returns flat theta vector theta = (flat(w), flat(v))
+    theta_np = sample_theta(T, gamma, dt, sigma, p)
+    theta = jnp.array(theta_np)
 
-    # replace huber with socp, but cvxpy
-    x2, w2 = cvxpy_manual(T, y, gamma, dt, mu, rho)
-    
-    '''
-    scs with our canon
-    '''
-    # canon
-    out = static_canon(T, gamma, dt, mu, rho)
+    # get y
+    q = single_q(theta, mu, rho, T, gamma, dt)
 
     # update to input y
+    c_np, b_np = np.array(q[:nvars]), np.array(q[nvars:])
+    y = b_np[(T-1)*nx:T*(nx+no)-nx]
+    # yy= y.copy()
+    y_mat = np.reshape(y, (T, no))
+    y_mat = y_mat.T
 
+    # with huber
+    x1, w1, v1 = cvxpy_huber(T, y_mat, gamma, dt, mu, rho)
 
+    # replace huber with socp, but cvxpy
+    x2, w2, v2 = cvxpy_manual(T, y_mat, gamma, dt, mu, rho)
+
+    """
+    scs with our canon
+    """
+    # canon
+    out = static_canon(T, gamma, dt, mu, rho)
+    cones_dict = out["cones_dict"]
+
+    # solve with scs
+    tol = 1e-8
+    data = dict(P=out["P_sparse"], A=out["A_sparse"], c=c_np, b=b_np)
+   
+    solver = scs.SCS(data, cones_dict, eps_abs=tol, eps_rel=tol)
+    sol = solver.solve()
+    x = sol["x"]
+   
+    x3 = x[: T * nx]
+    w3 = x[T * nx : T * (nx + nu)]
+    s3 = x[T * (nx + nu): T * (nx + nu + 1)]
+    v3 = x[T * (nx + nu + 1):-2*T]
+    u3 = x[-T*2:-T]
+    z3 = x[-T:]
+
+    # (x_t, w_t, s_t, v_t,  u_t, z_t)
+
+    # check with our scs
+    P_jax = jnp.array(out["P_sparse"].todense())
+    A_jax = jnp.array(out["A_sparse"].todense())
+    c_jax = jnp.array(c_np)
+    b_jax = jnp.array(b_np)
+
+    cones_jax = out["cones_dict"]
+    data = dict(P=P_jax, A=A_jax, c=c_jax, b=b_jax, cones=cones_jax)
+    xp, yd, sp = scs_jax(data, iters=1000)
+    x4 = x[: T * nx]
+    w4 = x[T * nx : T * (nx + nu)]
+    s4 = x[T * (nx + nu): T * (nx + nu + 1)]
+    v4 = x[T * (nx + nu + 1):-2*T]
+    u4 = x[-T*2:-T]
+    z4 = x[-T:]
+    pdb.set_trace()
 
 
 def cvxpy_huber(T, y, gamma, dt, mu, rho):
@@ -99,15 +173,17 @@ def cvxpy_huber(T, y, gamma, dt, mu, rho):
     constr = []
     for t in range(T):
         constr += [
-            x[:, t + 1] == A * x[:, t] + B * w[:, t],
-            y[:, t] == C * x[:, t] + v[:, t],
+            x[:, t + 1] == A @ x[:, t] + B @ w[:, t],
+            y[:, t] == C @ x[:, t] + v[:, t],
         ]
 
     cp.Problem(obj, constr).solve(verbose=True)
 
     x = np.array(x.value)
     w = np.array(w.value)
-    return x, w
+    v = np.array(v.value)
+    return x, w, v
+
 
 def cvxpy_manual(T, y, gamma, dt, mu, rho):
     x = cp.Variable(shape=(4, T + 1))
@@ -119,7 +195,7 @@ def cvxpy_manual(T, y, gamma, dt, mu, rho):
     A, B, C = robust_kalman_setup(gamma, dt)
 
     obj = cp.sum_squares(w)
-    obj += cp.sum([mu * (2 * u[t] + rho*z[t]**2) for t in range(T)])
+    obj += cp.sum([mu * (2 * u[t] + rho * z[t] ** 2) for t in range(T)])
     # obj += cp.sum([tau * cp.huber(cp.norm(v[:, t]), rho) for t in range(T)])
     obj = cp.Minimize(obj)
 
@@ -131,23 +207,49 @@ def cvxpy_manual(T, y, gamma, dt, mu, rho):
             z <= rho,
             u >= 0,
             u + z == s,
-            cp.norm(v[:,t]) <= s[t]
+            cp.norm(v[:, t]) <= s[t],
         ]
 
     cp.Problem(obj, constr).solve(verbose=True)
 
     x = np.array(x.value)
     w = np.array(w.value)
-    return x, w
+    v = np.array(v.value)
+    return x, w, v
 
-def simulate_fwd(w, v):
-    return y
 
+def simulate_fwd(w_mat, v_mat, T, gamma, dt):
+    # def simulate(T, gamma, dt, sigma, p):
+    A, B, C = robust_kalman_setup(gamma, dt)
+
+    # generate random input and noise vectors
+    # w = np.random.randn(2, T)
+    # v = np.random.randn(2, T)
+
+    x = np.zeros((4, T + 1))
+    # x[:, 0] = [0, 0, 0, 0]
+    y_mat = np.zeros((2, T))
+
+    # add outliers to v
+    # np.random.seed(0)
+    # inds = np.random.rand(T) <= p
+    # v[:, inds] = sigma * np.random.randn(2, T)[:, inds]
+
+    # simulate the system forward in time
+    for t in range(T):
+        y_mat[:, t] = C.dot(x[:, t]) + v_mat[:, t]
+        x[:, t + 1] = A.dot(x[:, t]) + B.dot(w_mat[:, t])
+
+    x_true = x.copy()
+    w_true = w_mat.copy()
+    # return y, x_true, w_true, v_mat
+
+    return y_mat
 
 
 # @functools.partial(jit, static_argnums=(1, 2, 3, 4, 5, 6, 7, 8,))
 # def single_q(theta, m, n, T, nx, nu, state_box, control_box, A_dynamics):
-def single_q(theta, m, n, T):
+def single_q(theta, mu, rho, T, gamma, dt):
     """
     the observations, y_0,...,y_{T-1} are the parameters that change
     there are 6 blocks of constraints and the second one changes
@@ -156,35 +258,62 @@ def single_q(theta, m, n, T):
     3. ...
     """
     nx, nu, no = 4, 2, 2
-
-    # get A
+    single_len = nx + nu + no + 3
+    nvars = single_len * T
 
     # extract (w, v)
 
     # theta = (w_0,...,w_{T-1},v_0,...,v_{T-1})
 
     # get y
-    w = theta[:T*nu]
-    v = theta[T*nu:]
-    y = simulate_fwd(w, v)
+    w = theta[: T * nu]
+    v = theta[T * nu :]
+    w_mat = jnp.reshape(w, (nu, T))
+    v_mat = jnp.reshape(w, (no, T))
+    y_mat = simulate_fwd(w_mat, v_mat, T, gamma, dt)
+    y = jnp.ravel(y_mat.T)
+    
 
     # c
-    # c =
+    c = jnp.zeros(single_len * T)
+    c = c.at[-2 * T : -T].set(2 * mu)
 
     # b
-    # b = 
+    b_dyn = jnp.zeros((T-1) * nx)
+    # b_obs = jnp.zeros(T * no)
+    b_obs = y
 
+    # aux constraints
+    n_aux = T
+    b_aux = jnp.zeros(n_aux)
 
-    q = jnp.zeros(n + m)
-    beq = jnp.zeros(T * nx)
-    beq = beq.at[:nx].set(A_dynamics @ theta)
-    b_upper = jnp.hstack([state_box * jnp.ones(T * nx), control_box * jnp.ones(T * nu)])
-    b_lower = jnp.hstack([state_box * jnp.ones(T * nx), control_box * jnp.ones(T * nu)])
-    b = jnp.hstack([beq, b_upper, b_lower])
+    # z_ineq constraints
+    n_z_ineq = T
+    b_z_ineq = rho * jnp.ones(n_z_ineq)
+
+    # u_ineq constraints
+    n_u_ineq = T
+    b_u_ineq = jnp.zeros(n_u_ineq)
+
+    # socp constraints
+    n_socp = T * 3
+    b_socp = jnp.zeros(n_socp)
+
+    # get b
+    b = jnp.hstack([b_dyn, b_obs, b_aux, b_z_ineq, b_u_ineq, b_socp])
+
+    # q = jnp.zeros(n + m)
+    # beq = jnp.zeros(T * nx)
+    # beq = beq.at[:nx].set(A_dynamics @ theta)
+    # b_upper = jnp.hstack([state_box * jnp.ones(T * nx), control_box * jnp.ones(T * nu)])
+    # b_lower = jnp.hstack([state_box * jnp.ones(T * nx), control_box * jnp.ones(T * nu)])
+    # b = jnp.hstack([beq, b_upper, b_lower])
 
     # q
-    q = q.at[:n].set(c)
-    q = q.at[n:].set(b)
+    m = b.size
+    q = jnp.zeros(m + nvars)
+    q = q.at[:nvars].set(c)
+    q = q.at[nvars:].set(b)
     return q
 
 
@@ -525,14 +654,17 @@ def static_canon(T, gamma, dt, mu, rho):
     variables
     (x_t, w_t, s_t, v_t,  u_t, z_t) \in (nx + nu + no + 3)
     (nx,  nu,  1,   no,   no, 1, 1)
-    min \sum_{i=0}^{T-1} ||w_t||_2^2 + mu (u_t+rho*z_t^2)^2
-        s.t. x_{t+1} = Ax_t + Bw_t  t=0,...,T-1 (dyn)
+    min \sum_{i=0}^{T-1} ||w_t||_2^2 + mu (u_t+rho*z_t^2)
+        s.t. x_{t+1} = Ax_t + Bw_t  t=0,...,T-2 (dyn)
              y_t = Cx_t + v_t       t=0,...,T-1 (obs)
              u_t + z_t = s_t        t=0,...,T-1 (aux)
              z_t <= rho             t=0,...,T-1 (z ineq)
              u_t >= 0               t=0,...,T-1 (u ineq)
              ||v_t||_2 <= s_t       t=0,...,T-1 (socp)
     (x_0, ..., x_{T-1})
+    (y_0, ..., y_{T-1})
+    (w_0, ..., w_{T-2})
+    (v_0, ..., v_{T-1})
     """
     # nx, nu, no don't change
     nx, nu, no = 4, 2, 2
@@ -555,29 +687,42 @@ def static_canon(T, gamma, dt, mu, rho):
     P = np.zeros((single_len, single_len))
     P[nx : nx + nu, nx : nx + nu] = np.eye(nu)
     P[-1, -1] = mu * rho
-    P_sparse = sparse.kron(sparse.eye(T), P)
+    # P_sparse = sparse.kron(sparse.eye(T), P)
+    P_sparse = 2*sparse.kron(P, sparse.eye(T))
 
     # Linear objective
     c = np.zeros(single_len * T)
     c[-2 * T : -T] = 2 * mu
 
     # dyn constraints
+    # Ax = sparse.kron(sparse.eye(T), -sparse.eye(nx)) + sparse.kron(
+    #     sparse.eye(T, k=-1), Ad
+    # )
     Ax = sparse.kron(sparse.eye(T), -sparse.eye(nx)) + sparse.kron(
-        sparse.eye(T, k=-1), Ad
-    )
+            sparse.eye(T, k=-1), Ad
+        )
+    Ax = Ax[nx:, :]
+    
+    # Bw = sparse.kron(sparse.eye(T), Bd)
     Bw = sparse.kron(sparse.eye(T), Bd)
-    A_dyn = np.zeros((T * nx, nvars))
+    bw = Bw.todense()
+    bw = bw[:(T-1)*nx, :]
+    # A_dyn = np.zeros((T * nx, nvars))
+    A_dyn = np.zeros(((T-1) * nx, nvars))
     A_dyn[:, :w_start] = Ax.todense()
-    A_dyn[:, w_start:s_start] = Bw.todense()
-    b_dyn = np.zeros(T * nx)
+    
+    A_dyn[:, w_start:s_start] = bw #Bw.todense()
+    b_dyn = np.zeros((T-1) * nx)
+    
 
     # obs constraints
     Cx = np.kron(np.eye(T), C)
 
     Iv = np.kron(np.eye(2), np.eye(T))
+    
     A_obs = np.zeros((T * no, nvars))
     A_obs[:, :w_start] = Cx
-    # pdb.set_trace()
+    
     A_obs[:, v_start:u_start] = Iv
     # b_obs will be updated by the parameter stack(y_1, ..., y_T)
     b_obs = np.zeros(T * no)
@@ -594,7 +739,7 @@ def static_canon(T, gamma, dt, mu, rho):
     n_z_ineq = T
     A_z_ineq = np.zeros((n_z_ineq, nvars))
     A_z_ineq[:, z_start:] = np.eye(n_z_ineq)
-    b_z_ineq = rho*np.ones(n_z_ineq)
+    b_z_ineq = rho * np.ones(n_z_ineq)
 
     # u_ineq constraints
     n_u_ineq = T
@@ -603,11 +748,13 @@ def static_canon(T, gamma, dt, mu, rho):
     b_u_ineq = np.zeros(n_u_ineq)
 
     # socp constraints
-    n_socp = T*3
+    n_socp = T * 3
     A_socp = np.zeros((n_socp, nvars))
     for i in range(T):
-        A_socp[3*i, s_start+i] = -1
-        A_socp[3*i+1:3*i+3, v_start+2*i:v_start+2*(i+1)] = -np.eye(2)
+        A_socp[3 * i, s_start + i] = -1
+        A_socp[
+            3 * i + 1 : 3 * i + 3, v_start + 2 * i : v_start + 2 * (i + 1)
+        ] = -np.eye(2)
 
     b_socp = np.zeros(n_socp)
 
@@ -617,9 +764,9 @@ def static_canon(T, gamma, dt, mu, rho):
     # get b
     b = np.hstack([b_dyn, b_obs, b_aux, b_z_ineq, b_u_ineq, b_socp])
 
-    q_array = np.ones(T) * 3
+    q_array = [3 for i in range(T)]  # np.ones(T) * 3
     # q_array_jax = jnp.array(q_array)
-    cones = dict(z=T * (1 + nx + no), l=2 * (T * nx + T * nu), q=q_array)
+    cones = dict(z=T * (1 + nx + no) - nx, l=n_z_ineq + n_u_ineq, q=q_array)
     cones_array = jnp.array([cones["z"], cones["l"]])
     cones_array = jnp.concatenate([cones_array, jnp.array(cones["q"])])
 
@@ -643,6 +790,7 @@ def static_canon(T, gamma, dt, mu, rho):
     out_dict = dict(
         M=M,
         algo_factor=algo_factor,
+        cones_dict=cones,
         cones_array=cones_array,
         A_sparse=A_sparse,
         P_sparse=P_sparse,
@@ -650,7 +798,7 @@ def static_canon(T, gamma, dt, mu, rho):
         c=c,
         A_dynamics=Ad,
     )
-
+    
     return out_dict
 
 

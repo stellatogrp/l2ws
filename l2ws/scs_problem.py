@@ -14,6 +14,7 @@ import scs
 from jax import jit, random
 import functools
 import jax
+from jax import lax
 
 
 class SCSinstance(object):
@@ -86,8 +87,12 @@ def scs_jax(data, iters=5000):
     c, b = data['c'], data['b']
     cones = data['cones']
     zero_cone_int = cones['z']
+    nonneg_cone_int = cones['l']
+    num_soc = len(cones['q'])
+    soc_total = sum(cones['q'])
     print('zero_cone_int', zero_cone_int)
     m, n = A.shape
+    # pdb.set_trace()
 
     # create the matrix M
     M = jnp.zeros((n + m, n + m))
@@ -99,8 +104,18 @@ def scs_jax(data, iters=5000):
 
     @jit
     def proj(input):
-        proj = jnp.clip(input[n+zero_cone_int:], a_min=0)
-        return jnp.concatenate([input[:n+zero_cone_int], proj])
+        nonneg = jnp.clip(input[n+zero_cone_int:n+zero_cone_int+nonneg_cone_int], a_min=0)
+        socp = jnp.zeros(soc_total)
+        curr = zero_cone_int + nonneg_cone_int
+        for i in range(num_soc):
+            start = curr
+            end = curr + cones['q'][i]
+            curr_soc_proj = soc_projection(input[start+1:end], input[start])
+            soc_concat = jnp.append(curr_soc_proj[1], curr_soc_proj[0])
+            socp = socp.at[curr:end].set(soc_concat)
+            curr = end
+        
+        return jnp.concatenate([input[:n+zero_cone_int], nonneg, socp])
 
     M_plus_I = M + jnp.eye(n + m)
     mat_inv = jnp.linalg.inv(M_plus_I)
@@ -142,7 +157,11 @@ def scs_jax(data, iters=5000):
         xy = jnp.concatenate([data['x'], data['y']])
         z = M @ xy + xy + q
     else:
-        z = 0*random.normal(key, (m + n,))
+        z = 1*random.normal(key, (m + n,))
+
+    # proj
+    pw = proj(z)
+    pdb.set_trace()
 
     iter_losses = jnp.zeros(iters)
     primal_residuals = jnp.zeros(iters)
@@ -199,6 +218,29 @@ def scs_jax(data, iters=5000):
 
     pdb.set_trace()
     return xp, yd, sp
+
+
+def soc_projection(y, s):
+    y_norm = jnp.linalg.norm(y)
+
+    def case1_soc_proj(y, s):
+        # case 1: y_norm >= |s|
+        val = (s + y_norm) / (2 * y_norm)
+        t = val * y_norm
+        x = val * y
+        return x, t
+
+    def case2_soc_proj(y, s):
+        # case 2: y_norm <= |s|
+        # case 2a: s > 0
+        # case 2b: s < 0
+        def case2a(y, s):
+            return y, s
+
+        def case2b(y, s):
+            return (0.0*jnp.zeros(2), 0.0)
+        return lax.cond(s >= 0, case2a, case2b, y, s)
+    return lax.cond(y_norm >= jnp.abs(s), case1_soc_proj, case2_soc_proj, y, s)
 
 
 # @functools.partial(jit, static_argnums=(2, 3,))
