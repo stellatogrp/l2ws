@@ -10,7 +10,7 @@ from l2ws.scs_problem import SCSinstance, scs_jax, ruiz_equilibrate
 import numpy as np
 import pdb
 
-# from l2ws.launcher import Workspace
+from l2ws.launcher import Workspace
 from scipy import sparse
 import jax.numpy as jnp
 from scipy.sparse import coo_matrix, bmat, csc_matrix
@@ -62,16 +62,16 @@ def simulate(T, gamma, dt, sigma, p):
     return y, x_true, w_true, v
 
 
-def sample_theta(T, gamma, dt, sigma, p):
-    A, B, C = robust_kalman_setup(gamma, dt)
+def sample_theta(T, sigma, p):
+    # A, B, C = robust_kalman_setup(gamma, dt)
 
     # generate random input and noise vectors
     w = np.random.randn(2, T)
     v = np.random.randn(2, T)
 
-    x = np.zeros((4, T + 1))
+    # x = np.zeros((4, T + 1))
     # x[:, 0] = [0, 0, 0, 0]
-    y = np.zeros((2, T))
+    # y = np.zeros((2, T))
 
     # add outliers to v
     # np.random.seed(0)
@@ -81,6 +81,7 @@ def sample_theta(T, gamma, dt, sigma, p):
     w_flat = np.ravel(w)
     v_flat = np.ravel(v)
     theta = np.concatenate([w_flat, v_flat])
+    # pdb.set_trace()
     return theta
 
 
@@ -226,9 +227,9 @@ def simulate_fwd(w_mat, v_mat, T, gamma, dt):
     # w = np.random.randn(2, T)
     # v = np.random.randn(2, T)
 
-    x = np.zeros((4, T + 1))
+    x = jnp.zeros((4, T + 1))
     # x[:, 0] = [0, 0, 0, 0]
-    y_mat = np.zeros((2, T))
+    y_mat = jnp.zeros((2, T))
 
     # add outliers to v
     # np.random.seed(0)
@@ -237,12 +238,13 @@ def simulate_fwd(w_mat, v_mat, T, gamma, dt):
 
     # simulate the system forward in time
     for t in range(T):
-        y_mat[:, t] = C.dot(x[:, t]) + v_mat[:, t]
-        x[:, t + 1] = A.dot(x[:, t]) + B.dot(w_mat[:, t])
+        y_mat = y_mat.at[:, t].set(C.dot(x[:, t]) + v_mat[:, t])
+        x = x.at[:, t + 1].set(A.dot(x[:, t]) + B.dot(w_mat[:, t]))
 
-    x_true = x.copy()
-    w_true = w_mat.copy()
+    # x_true = x.copy()
+    # w_true = w_mat.copy()
     # return y, x_true, w_true, v_mat
+    # pdb.set_trace()
 
     return y_mat
 
@@ -314,24 +316,9 @@ def single_q(theta, mu, rho, T, gamma, dt):
     q = jnp.zeros(m + nvars)
     q = q.at[:nvars].set(c)
     q = q.at[nvars:].set(b)
+    # print('y', y)
+    # pdb.set_trace()
     return q
-
-
-def get_q_mat_control_box_only(
-    thetas, m, n, T, nx, nu, state_box, control_box, QB, vecc_gen
-):
-    N, nx = thetas.shape
-    q_mat = control_box * jnp.ones((N, n + m))
-    for i in range(N):
-        c = QB @ thetas[i, :]
-        b = control_box * jnp.ones(m)
-        if state_box != "inf":
-            start = 2 * T * nu
-            rhs = vecc_gen @ thetas[i, :]
-            b = b.at[start : start + T * nx].set(state_box - rhs)
-            b = b.at[start + T * nx : start + 2 * T * nx].set(state_box + rhs)
-        q_mat = q_mat.at[i, :n].set(c)
-    return q_mat
 
 
 def run(run_cfg):
@@ -370,31 +357,29 @@ def run(run_cfg):
             print(exc)
             setup_cfg = {}
 
-    T, control_box = setup_cfg["T"], setup_cfg["control_box"]
-    state_box = setup_cfg["state_box"]
-    nx, nu = setup_cfg["nx"], setup_cfg["nu"]
-    Q_val, QT_val = setup_cfg["Q_val"], setup_cfg["QT_val"]
-    R_val = setup_cfg["R_val"]
+    # T, control_box = setup_cfg["T"], setup_cfg["control_box"]
+    # state_box = setup_cfg["state_box"]
+    # nx, nu = setup_cfg["nx"], setup_cfg["nu"]
+    # Q_val, QT_val = setup_cfg["Q_val"], setup_cfg["QT_val"]
+    # R_val = setup_cfg["R_val"]
 
-    Ad, Bd = oscillating_masses_setup(nx, nu)
+    # Ad, Bd = oscillating_masses_setup(nx, nu)
 
     static_dict = static_canon(
-        T, nx, nu, state_box, control_box, Q_val, QT_val, R_val, Ad=Ad, Bd=Bd
+        setup_cfg['T'],
+        setup_cfg['gamma'],
+        setup_cfg['dt'],
+        setup_cfg['mu'],
+        setup_cfg['rho']
     )
-    A_sparse = static_dict["A_sparse"]
-    m, n = A_sparse.shape
 
-    get_q_single = functools.partial(
-        single_q,
-        m=m,
-        n=n,
-        T=T,
-        nx=nx,
-        nu=nu,
-        state_box=state_box,
-        control_box=control_box,
-        A_dynamics=Ad,
-    )
+    get_q_single = functools.partial(single_q,
+                                        mu=setup_cfg['mu'],
+                                        rho=setup_cfg['rho'],
+                                        T=setup_cfg['T'],
+                                        gamma=setup_cfg['gamma'],
+                                        dt=setup_cfg['dt'])
+
     get_q = vmap(get_q_single, in_axes=0, out_axes=0)
 
     """
@@ -416,11 +401,12 @@ def setup_probs(setup_cfg):
     cfg = setup_cfg
     N_train, N_test = cfg.N_train, cfg.N_test
     N = N_train + N_test
+    nx, nu, no = 4, 2, 2
 
     """
     create the dynamics depending on the system
     """
-    Ad, Bd = robust_kalman_setup(cfg.nx, cfg.nu)
+    # Ad, Bd = robust_kalman_setup(cfg.nx, cfg.nu)
 
     """
     - canonicalize according to whether we have states or not
@@ -430,15 +416,10 @@ def setup_probs(setup_cfg):
     t0 = time.time()
     out_dict = static_canon(
         cfg.T,
-        cfg.nx,
-        cfg.nu,
-        cfg.state_box,
-        cfg.control_box,
-        cfg.Q_val,
-        cfg.QT_val,
-        cfg.R_val,
-        Ad=Ad,
-        Bd=Bd,
+        cfg.gamma,
+        cfg.dt,
+        cfg.mu,
+        cfg.rho
     )
 
     t1 = time.time()
@@ -447,6 +428,7 @@ def setup_probs(setup_cfg):
     M = out_dict["M"]
     algo_factor = out_dict["algo_factor"]
     cones_array = out_dict["cones_array"]
+    cones_dict = out_dict["cones_dict"]
     A_sparse, P_sparse = out_dict["A_sparse"], out_dict["P_sparse"]
 
     """
@@ -456,7 +438,8 @@ def setup_probs(setup_cfg):
     b, c = out_dict["b"], out_dict["c"]
 
     m, n = A_sparse.shape
-    cones_dict = dict(z=int(cones_array[0]), l=int(cones_array[1]))
+    # cones_dict = dict(z=int(cones_array[0]), l=int(cones_array[1]))
+
 
     """
     save output to output_filename
@@ -482,57 +465,60 @@ def setup_probs(setup_cfg):
     q_mat = jnp.zeros((N, m + n))
 
     """
-    initialize x_init over all the problems
+    sample theta and get y for each problem
     """
     # x_init_mat initialized uniformly between x_init_box*[-1,1]
-    x_init_mat = cfg.x_init_box * (2 * np.random.rand(N, cfg.nx) - 1)
+    # x_init_mat = cfg.x_init_box * (2 * np.random.rand(N, cfg.nx) - 1)
+    thetas_np = np.zeros((N, cfg.T * (nu + no)))
+    for i in range(N):
+        thetas_np[i, :] = sample_theta(cfg.T, cfg.sigma, cfg.p)
+    thetas = jnp.array(thetas_np)
+
+    batch_q = vmap(single_q, in_axes=(0, None, None, None, None, None), out_axes=(0))
+    
+
+    q_mat = batch_q(thetas, cfg.mu, cfg.rho, cfg.T, cfg.gamma, cfg.dt)
+    # pdb.set_trace()
 
     scs_instances = []
     for i in range(N):
-        infeasible = True
-        while infeasible:
-            log.info(f"solving problem number {i}")
-            b[: cfg.nx] = Ad @ x_init_mat[i, :]
+        log.info(f"solving problem number {i}")
+        # b[: cfg.nx] = Ad @ x_init_mat[i, :]
 
-            # manual canon
-            manual_canon_dict = {
-                "P": P_sparse,
-                "A": A_sparse,
-                "b": b,
-                "c": c,
-                "cones": cones_dict,
-            }
-            scs_instance = SCSinstance(manual_canon_dict, solver, manual_canon=True)
+        # update
+        b = np.array(q_mat[i, n:])
+        c = np.array(q_mat[i, :n])
 
-            """
-            check feasibility
-            if infeasible, resample
-            """
-            if jnp.isnan(scs_instance.x_star[0]):
-                x0 = cfg.x_init_box * (2 * np.random.rand(cfg.nx) - 1)
-                x_init_mat[i, :] = x0
-            else:
-                infeasible = False
 
-            scs_instances.append(scs_instance)
-            x_stars = x_stars.at[i, :].set(scs_instance.x_star)
-            y_stars = y_stars.at[i, :].set(scs_instance.y_star)
-            s_stars = s_stars.at[i, :].set(scs_instance.s_star)
-            q_mat = q_mat.at[i, :].set(scs_instance.q)
-            solve_times[i] = scs_instance.solve_time
+        # manual canon
+        manual_canon_dict = {
+            "P": P_sparse,
+            "A": A_sparse,
+            "b": b,
+            "c": c,
+            "cones": cones_dict,
+        }
+        scs_instance = SCSinstance(manual_canon_dict, solver, manual_canon=True)
 
-            ############ check with our jax implementation
-            # P_jax = jnp.array(P_sparse.todense())
-            # A_jax = jnp.array(A_sparse.todense())
-            # c_jax, b_jax = jnp.array(c), jnp.array(b)
-            # data = dict(P=P_jax, A=A_jax, b=b_jax, c=c_jax, cones=cones_dict)
-            # # data['x'] = x_stars[i, :]
-            # # data['y'] = y_stars[i, :]
-            # x_jax, y_jax, s_jax = scs_jax(data, iters=1000)
+        scs_instances.append(scs_instance)
+        x_stars = x_stars.at[i, :].set(scs_instance.x_star)
+        y_stars = y_stars.at[i, :].set(scs_instance.y_star)
+        s_stars = s_stars.at[i, :].set(scs_instance.s_star)
+        q_mat = q_mat.at[i, :].set(scs_instance.q)
+        solve_times[i] = scs_instance.solve_time
 
-            ############
-            # qq = single_q(x_init_mat[0, :], m, n, cfg.T, cfg.nx, cfg.nu, cfg.state_box, cfg.control_box, Ad)
-            # pdb.set_trace()
+        ############ check with our jax implementation
+        # P_jax = jnp.array(P_sparse.todense())
+        # A_jax = jnp.array(A_sparse.todense())
+        # c_jax, b_jax = jnp.array(c), jnp.array(b)
+        # data = dict(P=P_jax, A=A_jax, b=b_jax, c=c_jax, cones=cones_dict)
+        # # data['x'] = x_stars[i, :]
+        # # data['y'] = y_stars[i, :]
+        # x_jax, y_jax, s_jax = scs_jax(data, iters=1000)
+
+        ############
+        # qq = single_q(x_init_mat[0, :], m, n, cfg.T, cfg.nx, cfg.nu, cfg.state_box, cfg.control_box, Ad)
+        # pdb.set_trace()
 
     # resave the data??
     # print('saving final data...', flush=True)
@@ -540,7 +526,7 @@ def setup_probs(setup_cfg):
     t0 = time.time()
     jnp.savez(
         output_filename,
-        thetas=x_init_mat,
+        thetas=thetas,
         x_stars=x_stars,
         y_stars=y_stars,
     )
@@ -555,8 +541,9 @@ def setup_probs(setup_cfg):
 
     # save plot of first 5 parameters
     for i in range(5):
-        plt.plot(x_init_mat[i, :])
+        plt.plot(thetas[i, :])
     plt.savefig("thetas.pdf")
+    pdb.set_trace()
 
 
 def our_scs():
@@ -803,24 +790,24 @@ def static_canon(T, gamma, dt, mu, rho):
 
 
 def robust_kalman_setup(gamma, dt):
-    A = np.zeros((4, 4))
-    B = np.zeros((4, 2))
-    C = np.zeros((2, 4))
+    A = jnp.zeros((4, 4))
+    B = jnp.zeros((4, 2))
+    C = jnp.zeros((2, 4))
 
-    A[0, 0] = 1
-    A[1, 1] = 1
-    A[0, 2] = (1 - gamma * dt / 2) * dt
-    A[1, 3] = (1 - gamma * dt / 2) * dt
-    A[2, 2] = 1 - gamma * dt
-    A[3, 3] = 1 - gamma * dt
+    A = A.at[0, 0].set(1)
+    A = A.at[1, 1].set(1)
+    A = A.at[0, 2].set((1 - gamma * dt / 2) * dt)
+    A = A.at[1, 3].set((1 - gamma * dt / 2) * dt)
+    A = A.at[2, 2].set(1 - gamma * dt)
+    A = A.at[3, 3].set(1 - gamma * dt)
 
-    B[0, 0] = dt**2 / 2
-    B[1, 1] = dt**2 / 2
-    B[2, 0] = dt
-    B[3, 1] = dt
+    B = B.at[0, 0].set(dt**2 / 2)
+    B = B.at[1, 1].set(dt**2 / 2)
+    B = B.at[2, 0].set(dt)
+    B = B.at[3, 1].set(dt)
 
-    C[0, 0] = 1
-    C[1, 1] = 1
+    C = C.at[0, 0].set(1)
+    C = C.at[1, 1].set(1)
 
     return A, B, C
 

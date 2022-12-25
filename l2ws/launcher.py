@@ -12,7 +12,7 @@ import hydra
 import pdb
 import time
 import jax
-from jax import random
+from jax import random, lax
 from l2ws.scs_problem import SCSinstance, scs_jax
 from scipy.spatial import distance_matrix
 plt.rcParams.update({
@@ -20,6 +20,28 @@ plt.rcParams.update({
     "font.family": "serif",   # For talks, use sans-serif
     "font.size": 16,
 })
+
+def soc_projection(y, s):
+    y_norm = jnp.linalg.norm(y)
+
+    def case1_soc_proj(y, s):
+        # case 1: y_norm >= |s|
+        val = (s + y_norm) / (2 * y_norm)
+        t = val * y_norm
+        x = val * y
+        return x, t
+
+    def case2_soc_proj(y, s):
+        # case 2: y_norm <= |s|
+        # case 2a: s > 0
+        # case 2b: s < 0
+        def case2a(y, s):
+            return y, s
+
+        def case2b(y, s):
+            return (0.0*jnp.zeros(2), 0.0)
+        return lax.cond(s >= 0, case2a, case2b, y, s)
+    return lax.cond(y_norm >= jnp.abs(s), case1_soc_proj, case2_soc_proj, y, s)
 
 
 class Workspace:
@@ -81,7 +103,8 @@ class Workspace:
 
             static_algo_factor = static_dict['algo_factor']
             cones_array = static_dict['cones_array']
-            cones = dict(z=int(cones_array[0]), l=int(cones_array[1]))
+            # cones = dict(z=int(cones_array[0]), l=int(cones_array[1]))
+            cones = static_dict['cones_dict']
 
             # call get_q_mat
             q_mat = get_M_q(thetas)
@@ -121,17 +144,34 @@ class Workspace:
 
         self.M = static_M
 
-        zero_cone, pos_cone = cones['z'], cones['l']
+        zero_cone, nonneg_cone = cones['z'], cones['l']#, cones['q']
 
         self.train_unrolls = cfg.train_unrolls
         eval_unrolls = cfg.train_unrolls
 
         zero_cone_int = int(zero_cone)
+        nonneg_cone_int = int(nonneg_cone)
+        num_soc = len(cones['q'])
+        soc_total = sum(cones['q'])
 
+        # @jit
+        # def proj(input):
+        #     proj = jnp.clip(input[n+zero_cone_int:], a_min=0)
+        #     return jnp.concatenate([input[:n+zero_cone_int], proj])
         @jit
         def proj(input):
-            proj = jnp.clip(input[n+zero_cone_int:], a_min=0)
-            return jnp.concatenate([input[:n+zero_cone_int], proj])
+            nonneg = jnp.clip(input[n+zero_cone_int:n+zero_cone_int+nonneg_cone_int], a_min=0)
+            socp = jnp.zeros(soc_total)
+            curr = zero_cone_int + nonneg_cone_int
+            for i in range(num_soc):
+                start = curr
+                end = curr + cones['q'][i]
+                curr_soc_proj = soc_projection(input[start+1:end], input[start])
+                soc_concat = jnp.append(curr_soc_proj[1], curr_soc_proj[0])
+                socp = socp.at[curr:end].set(soc_concat)
+                curr = end
+            
+            return jnp.concatenate([input[:n+zero_cone_int], nonneg, socp])
         self.proj = proj
 
         # pdb.set_trace()

@@ -4,5 +4,7 @@ rho: 2
 gamma: .05
 solve_acc: 1e-4
 dt: .05
+sigma: 20
+p: .20
 N_train: 100
 N_test: 20

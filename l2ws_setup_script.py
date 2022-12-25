@@ -2,6 +2,7 @@ import sys
 import examples.markowitz as markowitz
 import examples.osc_mass as osc_mass
 import examples.vehicle as vehicle
+import examples.robust_kalman as robust_kalman
 import hydra
 import pdb
 import cvxpy as cp
@@ -24,6 +25,11 @@ def main_setup_vehicle(cfg):
     vehicle.setup_probs(cfg)
 
 
+@hydra.main(config_path='configs/robust_kalman', config_name='robust_kalman_setup.yaml')
+def main_setup_robust_kalman(cfg):
+    robust_kalman.setup_probs(cfg)
+
+
 if __name__ == '__main__':
     if sys.argv[2] == 'cluster':
         base = 'hydra.run.dir=/scratch/gpfs/rajivs/learn2warmstart/outputs/'
@@ -44,3 +50,7 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'vehicle/data_setup_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_setup_vehicle()
+    elif sys.argv[1] == 'robust_kalman':
+        sys.argv[1] = base + 'robust_kalman/data_setup_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_setup_robust_kalman()

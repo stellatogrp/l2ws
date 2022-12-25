@@ -8,6 +8,7 @@ from jax import jit, vmap
 import examples.markowitz as markowitz
 import examples.osc_mass as osc_mass
 import examples.vehicle as vehicle
+import examples.robust_kalman as robust_kalman
 import yaml
 import numpy as np
 import time
@@ -140,6 +141,83 @@ def osc_mass_main(cfg):
                                         state_box=state_box,
                                         control_box=control_box,
                                         A_dynamics=Ad)
+    get_q = vmap(get_q_single, in_axes=0, out_axes=0)
+    M = static_dict['M']
+    static_flag = True
+    save_aggregate(static_flag, M, datetimes, example, get_q)
+
+
+
+@hydra.main(config_path='configs/robust_kalman', config_name='robust_kalman_agg.yaml')
+def robust_kalman_main(cfg):
+    '''
+    given data and time of all the previous experiments
+    creates new folder with hydra
+    combines all the npz files into 1
+    '''
+    # access first datafile via the data_cfg file
+    example = 'robust_kalman'
+    orig_cwd = hydra.utils.get_original_cwd()
+
+    datetimes = cfg.datetimes
+    if len(datetimes) == 0:
+        # get the most recent datetime and update datetimes
+        last_datetime = recover_last_datetime(orig_cwd, example, 'data_setup')
+        datetimes = [last_datetime]
+
+        cfg = {'datetimes': datetimes}
+        
+    # save the datetime to we can recover
+    with open('agg_datetimes.yaml', 'w') as file:
+        yaml.dump(cfg, file)
+
+    datetime0 = datetimes[0]
+
+    folder = f"{orig_cwd}/outputs/{example}/data_setup_outputs/{datetime0}"
+    folder_entries = os.listdir(folder)
+    entry = folder_entries[0]
+
+    '''
+    the next line is not right -- need to get the setup cfg file from
+    '''
+    #    the location specified in the aggregation cfg file
+    data_yaml_filename = f"{orig_cwd}/outputs/{example}/data_setup_outputs/{datetime0}/.hydra/config.yaml"
+
+    # read the yaml file
+    with open(data_yaml_filename, "r") as stream:
+        try:
+            setup_cfg = yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+            setup_cfg = {}
+    # T, control_box = setup_cfg['T'], setup_cfg['control_box']
+    # state_box = setup_cfg['state_box']
+    # nx, nu = setup_cfg['nx'], setup_cfg['nu']
+    # Q_val, QT_val = setup_cfg['Q_val'], setup_cfg['QT_val']
+    # R_val = setup_cfg['R_val']
+    # Ad, Bd = osc_mass.oscillating_masses_setup(nx, nu)
+
+    # save the data setup cfg file in the aggregate folder
+    with open('data_setup_copied.yaml', 'w') as file:
+        yaml.dump(setup_cfg, file)
+
+    
+    static_dict = robust_kalman.static_canon(
+        setup_cfg['T'],
+        setup_cfg['gamma'],
+        setup_cfg['dt'],
+        setup_cfg['mu'],
+        setup_cfg['rho']
+    )
+    # A_sparse = static_dict['A_sparse']
+    # m, n = A_sparse.shape
+
+    get_q_single = functools.partial(robust_kalman.single_q,
+                                        mu=setup_cfg['mu'],
+                                        rho=setup_cfg['rho'],
+                                        T=setup_cfg['T'],
+                                        gamma=setup_cfg['gamma'],
+                                        dt=setup_cfg['dt'])
     get_q = vmap(get_q_single, in_axes=0, out_axes=0)
     M = static_dict['M']
     static_flag = True
@@ -356,3 +434,10 @@ if __name__ == '__main__':
             'vehicle/aggregate_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         vehicle_main()
+    elif sys.argv[1] == 'robust_kalman':
+        # step 1. remove the markowitz argument -- otherwise hydra uses it as an override
+        # step 2. add the train_outputs/... argument for train_outputs not outputs
+        sys.argv[1] = base + \
+            'robust_kalman/aggregate_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        robust_kalman_main()
