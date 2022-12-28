@@ -14,3 +14,7 @@ quandl
 yfinance
 yahoofinancials
 get-all-tickers
+cmake
+scs==2.0.1
+osqp==0.6.1
+ecos==2.0.4

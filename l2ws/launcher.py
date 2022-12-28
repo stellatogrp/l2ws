@@ -20,6 +20,8 @@ plt.rcParams.update({
     "font.family": "serif",   # For talks, use sans-serif
     "font.size": 16,
 })
+from jax.config import config
+config.update("jax_enable_x64", True)
 
 def soc_projection(y, s):
     y_norm = jnp.linalg.norm(y)
@@ -317,8 +319,9 @@ class Workspace:
         plt.savefig(f"losses_over_examples/losses_{col}_plot.pdf", bbox_inches='tight')
         plt.clf()
 
-        primal_residuals = out_train[3].mean(axis=0)
-        dual_residuals = out_train[4].mean(axis=0)
+        angles = out_train[3]
+        primal_residuals = out_train[4].mean(axis=0)
+        dual_residuals = out_train[5].mean(axis=0)
         print('after iterations z', out_train[0][1][0,:])
         print('truth z', self.l2ws_model.w_stars_test[0, :])
         print('after iterations z', out_train[0][1][1,:])
@@ -382,6 +385,32 @@ class Workspace:
         plt.savefig('primal_dual_residuals.pdf', bbox_inches='tight')
         plt.clf()
 
+        # SRG-type plots
+        # one for each problem
+        if not os.path.exists('polar'):
+            os.mkdir('polar')
+        if not os.path.exists(f"polar/{col}"):
+            os.mkdir(f"polar/{col}")
+        for i in range(5):
+            r = out_train[2][i, :]
+            # theta = 2 * np.pi * r
+            theta = np.zeros(r.size)
+            theta[1:] = angles[i, 1:]
+
+            fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+            # ax.plot(np.cumsum(theta), r)
+            ax.plot(theta, r)
+            ax.plot(theta[self.train_unrolls], r[self.train_unrolls], 'r+')
+            # ax.set_rmax(2)
+            # ax.set_rticks([0.5, 1, 1.5, 2])  # Less radial ticks
+            # ax.set_rlabel_position(-22.5)  # Move radial labels away from plotted line
+            ax.grid(True)
+            ax.set_rscale('symlog')
+            ax.set_title("A line plot on a polar axis", va='bottom')
+            plt.savefig(f"polar/{col}/prob_{i}.pdf")
+            # pdb.set_trace()
+            plt.clf()
+
         return out_train
 
     def run(self):
@@ -412,12 +441,14 @@ class Workspace:
             self.num_samples, 'fixed_ws', train=False, plot_pretrain=False)
         
 
-        # print("Pretraining...")
-        # self.df_pretrain = pd.DataFrame(
-        #     columns=['pretrain_loss', 'pretrain_test_loss'])
-        # train_pretrain_losses, test_pretrain_losses = self.l2ws_model.pretrain(self.pretrain_cfg.pretrain_iters,
-        #                                                                       stepsize=self.pretrain_cfg.pretrain_stepsize,
-        #                                                                       df_pretrain=self.df_pretrain)
+        print("Pretraining...")
+        self.df_pretrain = pd.DataFrame(
+            columns=['pretrain_loss', 'pretrain_test_loss'])
+        train_pretrain_losses, test_pretrain_losses = self.l2ws_model.pretrain(self.pretrain_cfg.pretrain_iters,
+                                                                              stepsize=self.pretrain_cfg.pretrain_stepsize,
+                                                                              df_pretrain=self.df_pretrain)
+        out_train_fixed_ws = self.evaluate_iters(
+            self.num_samples, 'pretrain', train=False, plot_pretrain=True)
         # plt.plot(train_pretrain_losses, label='train')
         # plt.plot(test_pretrain_losses, label='test')
         # plt.yscale('log')

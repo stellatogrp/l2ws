@@ -89,19 +89,22 @@ def test_kalman():
     nx, no, nu = 4, 2, 2
     single_length = nx + no + nu + 3
     
-    T = 10
+    T = 30
     nvars = single_length * T
     gamma = 0.05
-    dt = 0.05
-    p = 20
+    dt = 0.5 #0.05
+    p = .2
     sigma = 20
-    mu = 2
+    mu = 1
     rho = 1
     # y, x_true, w_true, v = simulate(T, gamma, dt, sigma, p)
 
     # sample to get (w, v) -- returns flat theta vector theta = (flat(w), flat(v))
-    theta_np = sample_theta(T, gamma, dt, sigma, p)
+    theta_np = sample_theta(T, sigma, p)
     theta = jnp.array(theta_np)
+
+    # get (x_true, w_true)
+    x_true, w_true = get_x_w_true(theta, T, gamma, dt)
 
     # get y
     q = single_q(theta, mu, rho, T, gamma, dt)
@@ -116,8 +119,16 @@ def test_kalman():
     # with huber
     x1, w1, v1 = cvxpy_huber(T, y_mat, gamma, dt, mu, rho)
 
+    # plotting
+    time_limit = dt * T
+    ts, delt = np.linspace(0, time_limit, T, endpoint=True, retstep=True)
+    # plot_state(ts,(x_true, w_true),(x1, w1))
+    # plot_positions([x_true, y_mat], ['True', 'Noisy'])
+    # plot_positions([x_true, x1], ['True', 'KF recovery'])
+    
+
     # replace huber with socp, but cvxpy
-    x2, w2, v2 = cvxpy_manual(T, y_mat, gamma, dt, mu, rho)
+    # x2, w2, v2 = cvxpy_manual(T, y_mat, gamma, dt, mu, rho)
 
     """
     scs with our canon
@@ -129,7 +140,7 @@ def test_kalman():
     # solve with scs
     tol = 1e-8
     data = dict(P=out["P_sparse"], A=out["A_sparse"], c=c_np, b=b_np)
-   
+
     solver = scs.SCS(data, cones_dict, eps_abs=tol, eps_rel=tol)
     sol = solver.solve()
     x = sol["x"]
@@ -140,6 +151,7 @@ def test_kalman():
     v3 = x[T * (nx + nu + 1):-2*T]
     u3 = x[-T*2:-T]
     z3 = x[-T:]
+    # 
 
     # (x_t, w_t, s_t, v_t,  u_t, z_t)
 
@@ -151,14 +163,78 @@ def test_kalman():
 
     cones_jax = out["cones_dict"]
     data = dict(P=P_jax, A=A_jax, c=c_jax, b=b_jax, cones=cones_jax)
+    data['x'], data['y'] = sol['x'], sol['y']
+
     xp, yd, sp = scs_jax(data, iters=1000)
-    x4 = x[: T * nx]
-    w4 = x[T * nx : T * (nx + nu)]
-    s4 = x[T * (nx + nu): T * (nx + nu + 1)]
-    v4 = x[T * (nx + nu + 1):-2*T]
-    u4 = x[-T*2:-T]
-    z4 = x[-T:]
+    x4 = xp[: T * nx]
+    w4 = xp[T * nx : T * (nx + nu)]
+    s4 = xp[T * (nx + nu): T * (nx + nu + 1)]
+    v4 = xp[T * (nx + nu + 1):-2*T]
+    u4 = xp[-T*2:-T]
+    z4 = xp[-T:]
     pdb.set_trace()
+
+    
+
+
+def plot_state(t, actual, estimated=None):
+    '''
+    plot position, speed, and acceleration in the x and y coordinates for
+    the actual data, and optionally for the estimated data
+    '''
+    trajectories = [actual]
+    if estimated is not None:
+        trajectories.append(estimated)
+
+    fig, ax = plt.subplots(3, 2, sharex='col', sharey='row', figsize=(8,8))
+    for x, w in trajectories:
+        ax[0,0].plot(t,x[0,:-1])
+        ax[0,1].plot(t,x[1,:-1])
+        ax[1,0].plot(t,x[2,:-1])
+        ax[1,1].plot(t,x[3,:-1])
+        ax[2,0].plot(t,w[0,:])
+        ax[2,1].plot(t,w[1,:])
+
+    ax[0,0].set_ylabel('x position')
+    ax[1,0].set_ylabel('x velocity')
+    ax[2,0].set_ylabel('x input')
+
+    ax[0,1].set_ylabel('y position')
+    ax[1,1].set_ylabel('y velocity')
+    ax[2,1].set_ylabel('y input')
+
+    ax[0,1].yaxis.tick_right()
+    ax[1,1].yaxis.tick_right()
+    ax[2,1].yaxis.tick_right()
+
+    ax[0,1].yaxis.set_label_position("right")
+    ax[1,1].yaxis.set_label_position("right")
+    ax[2,1].yaxis.set_label_position("right")
+
+    ax[2,0].set_xlabel('time')
+    ax[2,1].set_xlabel('time')
+
+def plot_positions(traj, labels, axis=None,filename=None):
+    '''
+    show point clouds for true, observed, and recovered positions
+    '''
+    # matplotlib.rcParams.update({'font.size': 14})
+    n = len(traj)
+
+    fig, ax = plt.subplots(1, n, sharex=True, sharey=True,figsize=(12, 5))
+    if n == 1:
+        ax = [ax]
+
+    for i,x in enumerate(traj):
+        ax[i].plot(x[0,:], x[1,:], 'ro', alpha=.1)
+        ax[i].set_title(labels[i])
+        if axis:
+            ax[i].axis(axis)
+
+    if filename:
+        fig.savefig(filename, bbox_inches='tight')
+    else:
+        plt.show()
 
 
 def cvxpy_huber(T, y, gamma, dt, mu, rho):
@@ -178,11 +254,13 @@ def cvxpy_huber(T, y, gamma, dt, mu, rho):
             y[:, t] == C @ x[:, t] + v[:, t],
         ]
 
-    cp.Problem(obj, constr).solve(verbose=True)
+    prob = cp.Problem(obj, constr)
+    prob.solve(verbose=True)
 
     x = np.array(x.value)
     w = np.array(w.value)
     v = np.array(v.value)
+    pdb.set_trace()
     return x, w, v
 
 
@@ -244,9 +322,35 @@ def simulate_fwd(w_mat, v_mat, T, gamma, dt):
     # x_true = x.copy()
     # w_true = w_mat.copy()
     # return y, x_true, w_true, v_mat
-    # pdb.set_trace()
-
+    pdb.set_trace()
     return y_mat
+
+
+def get_x_w_true(theta, T, gamma, dt):
+    A, B, C = robust_kalman_setup(gamma, dt)
+    nx, nu, no = 4, 2, 2
+    single_len = nx + nu + no + 3
+    nvars = single_len * T
+
+    # extract (w, v)
+
+    # theta = (w_0,...,w_{T-1},v_0,...,v_{T-1})
+
+    # get y
+    w = theta[: T * nu]
+    v = theta[T * nu :]
+    w_mat = jnp.reshape(w, (nu, T))
+    v_mat = jnp.reshape(w, (no, T))
+    # y_mat = simulate_fwd(w_mat, v_mat, T, gamma, dt)
+    x = jnp.zeros((4, T + 1))
+    y_mat = jnp.zeros((2, T))
+
+    # simulate the system forward in time
+    for t in range(T):
+        y_mat = y_mat.at[:, t].set(C.dot(x[:, t]) + v_mat[:, t])
+        x = x.at[:, t + 1].set(A.dot(x[:, t]) + B.dot(w_mat[:, t]))
+    y = jnp.ravel(y_mat.T)
+    return x, w_mat
 
 
 # @functools.partial(jit, static_argnums=(1, 2, 3, 4, 5, 6, 7, 8,))
@@ -271,7 +375,7 @@ def single_q(theta, mu, rho, T, gamma, dt):
     w = theta[: T * nu]
     v = theta[T * nu :]
     w_mat = jnp.reshape(w, (nu, T))
-    v_mat = jnp.reshape(w, (no, T))
+    v_mat = jnp.reshape(v, (no, T))
     y_mat = simulate_fwd(w_mat, v_mat, T, gamma, dt)
     y = jnp.ravel(y_mat.T)
     

@@ -106,14 +106,20 @@ def scs_jax(data, iters=5000):
     def proj(input):
         nonneg = jnp.clip(input[n+zero_cone_int:n+zero_cone_int+nonneg_cone_int], a_min=0)
         socp = jnp.zeros(soc_total)
-        curr = zero_cone_int + nonneg_cone_int
+        curr = 0 #zero_cone_int + nonneg_cone_int
+        soc_input = input[n+zero_cone_int+nonneg_cone_int:]
         for i in range(num_soc):
             start = curr
             end = curr + cones['q'][i]
-            curr_soc_proj = soc_projection(input[start+1:end], input[start])
+            # curr_soc_proj = soc_projection(input[start+1:end], input[start])
+            curr_soc_proj = soc_projection(soc_input[start+1:end], soc_input[start])
             soc_concat = jnp.append(curr_soc_proj[1], curr_soc_proj[0])
+            # curr_socp = start - (zero_cone_int + nonneg_cone_int)
+            # end_socp = end - (zero_cone_int + nonneg_cone_int)
+            # socp = socp.at[curr_socp:end_socp].set(soc_concat)
             socp = socp.at[curr:end].set(soc_concat)
             curr = end
+            # pdb.set_trace()
         
         return jnp.concatenate([input[:n+zero_cone_int], nonneg, socp])
 

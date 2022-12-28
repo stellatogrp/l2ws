@@ -14,6 +14,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pdb
 import pandas as pd
+from jax.config import config
+config.update("jax_enable_x64", True)
 
 
 class L2WSmodel(object):
@@ -208,7 +210,7 @@ class L2WSmodel(object):
                 self.state = self.optimizer.init_state(self.params)
 
         t0 = time.time()
-
+        
         if self.static_flag:
             results = self.optimizer.update(params=self.params,
                                             state=self.state,
@@ -345,7 +347,6 @@ def create_loss_fn(input_dict):
         P, A = M[:n, :n], -M[n:, :n]
         b, c = q[n:], q[:n]
 
-
         if prediction_variable == 'w':
             uu = predict_y(params, input)
             w0 = M@uu + uu + q
@@ -360,6 +361,7 @@ def create_loss_fn(input_dict):
         iter_losses = jnp.zeros(iters)
         primal_residuals = jnp.zeros(iters)
         dual_residuals = jnp.zeros(iters)
+        angles = jnp.zeros(iters)
         all_x_primals = jnp.zeros((iters, n))
 
         if diff_required:
@@ -375,7 +377,7 @@ def create_loss_fn(input_dict):
         else:
             def _fp(i, val):
                 MM = M
-                z, loss_vec, primal_residuals, dual_residuals = val
+                z, z_prev, loss_vec, angles, primal_residuals, dual_residuals = val
                 z_next, u, v = fixed_point(z, factor, q)
                 diff = jnp.linalg.norm(z_next - z)
                 loss_vec = loss_vec.at[i].set(diff)
@@ -384,10 +386,17 @@ def create_loss_fn(input_dict):
                 dr = jnp.linalg.norm(A.T @ u[n:] + P @ u[:n] + c)
                 primal_residuals = primal_residuals.at[i].set(pr)
                 dual_residuals = dual_residuals.at[i].set(dr)
-                return z_next, loss_vec, primal_residuals, dual_residuals
-            val = z, iter_losses, primal_residuals, dual_residuals
+
+                d1 = z - z_prev
+                d2 = z_next - z
+                cos = d1 @ d2 / (jnp.linalg.norm(d1) * jnp.linalg.norm(d2))
+                angle = jnp.arccos(cos)
+                angles = angles.at[i].set(angle)
+                return z_next, z_prev, loss_vec, angles, primal_residuals, dual_residuals
+                # return z_next, z, loss_vec, angles, primal_residuals, dual_residuals
+            val = z, z, iter_losses,angles, primal_residuals, dual_residuals
             out = jax.lax.fori_loop(0, iters, _fp, val)
-            z, iter_losses, primal_residuals, dual_residuals = out
+            z, z_prev, iter_losses, angles, primal_residuals, dual_residuals = out
 
         # unroll 1 more time for the loss
         u_tilde = lin_sys_solve(factor, z - q)
@@ -398,14 +407,14 @@ def create_loss_fn(input_dict):
         out = x_primal, z_next, u, all_x_primals
 
         if diff_required:
-            return loss, iter_losses, out
+            return loss, iter_losses, angles, out
         else:
-            return loss, iter_losses, primal_residuals, dual_residuals, out
+            return loss, iter_losses, angles, primal_residuals, dual_residuals, out
 
     if diff_required:
-        out_axes = (0, 0, (0, 0, 0, 0))
+        out_axes = (0, 0, 0, (0, 0, 0, 0))
     else:
-        out_axes = (0, 0, 0, 0, (0, 0, 0, 0))
+        out_axes = (0, 0, 0, 0, 0, (0, 0, 0, 0))
 
     if static_flag:
         predict_final = functools.partial(predict,
@@ -418,14 +427,14 @@ def create_loss_fn(input_dict):
         # @functools.partial(jax.jit, static_argnums=(3,))
         def loss_fn(params, inputs, q, iters):
             if diff_required:
-                losses, iter_losses, out = batch_predict(
+                losses, iter_losses, angles, out = batch_predict(
                     params, inputs, q, iters)
-                loss_out = out, losses, iter_losses
+                loss_out = out, losses, iter_losses, angles
 
             else:
-                losses, iter_losses, primal_residuals, dual_residuals, out = batch_predict(
+                losses, iter_losses, angles, primal_residuals, dual_residuals, out = batch_predict(
                     params, inputs, q, iters)
-                loss_out = out, losses, iter_losses, primal_residuals, dual_residuals
+                loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
 
             return losses.mean(), loss_out
     else:
@@ -435,12 +444,12 @@ def create_loss_fn(input_dict):
         @functools.partial(jax.jit, static_argnums=(5,))
         def loss_fn(params, inputs, factor, M, q, iters):
             if diff_required:
-                losses, iter_losses, out = batch_predict(
+                losses, iter_losses, angles, out = batch_predict(
                     params, inputs, q, iters, factor, M)
-                loss_out = out, losses, iter_losses
+                loss_out = out, losses, iter_losses, angles
             else:
-                losses, iter_losses, primal_residuals, dual_residuals, out = batch_predict(
+                losses, iter_losses, angles, primal_residuals, dual_residuals, out = batch_predict(
                     params, inputs, q, iters, factor, M)
-                loss_out = out, losses, iter_losses, primal_residuals, dual_residuals
+                loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
             return losses.mean(), loss_out
     return loss_fn

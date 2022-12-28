@@ -25,6 +25,8 @@ charset-normalizer==2.1.1
     # via requests
 chex==0.1.5
     # via optax
+cmake==3.25.0
+    # via -r requirements.in
 contourpy==1.0.6
     # via matplotlib
 cvxpy==1.2.2
@@ -33,12 +35,16 @@ cycler==0.11.0
     # via matplotlib
 dm-tree==0.1.7
     # via chex
-ecos==2.0.10
-    # via cvxpy
+ecos==2.0.4
+    # via
+    #   -r requirements.in
+    #   cvxpy
 flatbuffers==2.0.7
     # via jaxlib
 fonttools==4.38.0
     # via matplotlib
+future==0.18.2
+    # via osqp
 get-all-tickers==1.8
     # via -r requirements.in
 hydra-core==1.2.0
@@ -101,8 +107,10 @@ opt-einsum==3.3.0
     # via jax
 optax==0.1.1
     # via -r requirements.in
-osqp==0.6.2.post8
-    # via cvxpy
+osqp==0.6.1
+    # via
+    #   -r requirements.in
+    #   cvxpy
 packaging==21.3
     # via
     #   hydra-core
@@ -130,8 +138,6 @@ pytz==2022.6
     #   yahoofinancials
 pyyaml==6.0
     # via omegaconf
-qdldl==0.1.5.post2
-    # via osqp
 quandl==3.7.0
     # via -r requirements.in
 requests==2.28.1
@@ -152,8 +158,10 @@ scipy==1.9.3
     #   osqp
     #   scikit-learn
     #   scs
-scs==3.2.2
-    # via cvxpy
+scs==2.0.1
+    # via
+    #   -r requirements.in
+    #   cvxpy
 six==1.16.0
     # via
     #   python-dateutil

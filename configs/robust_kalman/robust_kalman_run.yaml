@@ -11,15 +11,15 @@ nn_cfg:
 pretrain:
   pretrain_method: adam
   pretrain_stepsize: .001
-  pretrain_iters: 2
+  pretrain_iters: 500
 
 data:
   datetime: ''
 
-train_unrolls: 5
-eval_unrolls: 1500
+train_unrolls: 20
+eval_unrolls: 2500
 eval_every_x_epochs: 3
-N_train: 100
-N_test: 20
-num_samples: 20
+N_train: 1000
+N_test: 200
+num_samples: 200
 prediction_variable: w
