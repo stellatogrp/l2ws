@@ -23,6 +23,12 @@ plt.rcParams.update({
 from jax.config import config
 config.update("jax_enable_x64", True)
 
+def soc_proj_single(input):
+    y, s = input[1:], input[0]
+    pi_y, pi_s = soc_projection(y, s)
+    return jnp.append(pi_s, pi_y)
+
+
 def soc_projection(y, s):
     y_norm = jnp.linalg.norm(y)
 
@@ -156,24 +162,78 @@ class Workspace:
         num_soc = len(cones['q'])
         soc_total = sum(cones['q'])
 
-        # @jit
-        # def proj(input):
-        #     proj = jnp.clip(input[n+zero_cone_int:], a_min=0)
-        #     return jnp.concatenate([input[:n+zero_cone_int], proj])
+        soc_cones_array = np.array(cones['q'])
+        soc_sum_array = np.cumsum(soc_cones_array)
+        # soc_cones_array = list(soc_cones_array)
+        # soc_cones_array = cones['q']
+        # soc_sum_array = jnp.cumsum(jnp.array(soc_cones_array)).tolist()
+        soc_size = soc_cones_array[0]
+        soc_proj_single_batch = vmap(soc_proj_single, in_axes=(0), out_axes=(0))
+        pdb.set_trace()
+
         @jit
         def proj(input):
             nonneg = jnp.clip(input[n+zero_cone_int:n+zero_cone_int+nonneg_cone_int], a_min=0)
             socp = jnp.zeros(soc_total)
-            curr = zero_cone_int + nonneg_cone_int
-            for i in range(num_soc):
-                start = curr
-                end = curr + cones['q'][i]
-                curr_soc_proj = soc_projection(input[start+1:end], input[start])
-                soc_concat = jnp.append(curr_soc_proj[1], curr_soc_proj[0])
-                socp = socp.at[curr:end].set(soc_concat)
-                curr = end
-            
+            curr = 0 #zero_cone_int + nonneg_cone_int
+            soc_input = input[n+zero_cone_int+nonneg_cone_int:]
+
+            soc_input_reshaped = jnp.reshape(soc_input, (num_soc, soc_size))
+            soc_out_reshaped = soc_proj_single_batch(soc_input_reshaped)
+            socp = jnp.ravel(soc_out_reshaped)
+            # pdb.set_trace()
+            # for i in range(num_soc):
+            #     start = curr
+            #     end = curr + cones['q'][i]
+            #     curr_soc_proj = soc_projection(soc_input[start+1:end], soc_input[start])
+            #     soc_concat = jnp.append(curr_soc_proj[1], curr_soc_proj[0])
+
+            #     socp = socp.at[curr:end].set(soc_concat)
+            #     curr = end
             return jnp.concatenate([input[:n+zero_cone_int], nonneg, socp])
+            def body_fn(i, val):
+                # start = soc_sum_array[i]
+                # end = start + soc_cones_array[i]
+                # # start = jax.lax.dynamic_slice(soc_sum_array, (i,), (1,)) #soc_cones_array[:i].sum()
+                # # curr_cone = jax.lax.dynamic_slice(soc_cones_array, (i,), (1,))
+                # # end = start + curr_cone
+                # # curr_soc_proj = soc_projection(soc_input[start+1:end], soc_input[start])
+                # # curr_soc_proj = soc_projection(soc_input[start+1:end], soc_input[start])
+                # # in1 = jax.lax.dynamic_slice(soc_input, (soc_sum_array[i],), (soc_cones_array[i],))
+                # in1 = soc_input[soc_sum_array[i]:soc_sum_array[i]+soc_cones_array[i]]
+                # in2 = soc_input[soc_sum_array[i]]
+                # # in1 = soc_input[soc_sum_array[i]:soc_sum_array[i]+1]
+                
+                # curr_soc_proj = soc_projection(in1, in2)
+                    
+
+                # # curr_soc_proj = soc_projection(jax.lax.dynamic_slice(soc_input, (start,), (soc_cones_array[i],)), 
+                # #     jax.lax.dynamic_slice(soc_input, (start,), (1,)))
+                # soc_concat = jnp.append(curr_soc_proj[1], curr_soc_proj[0])
+                # socp = socp.at[curr:end].set(soc_concat)
+                # curr = end
+
+                # socp, start, end = val
+                # curr_soc_proj = soc_projection(soc_input[start+1:end], soc_input[start])
+                # soc_concat = jnp.append(curr_soc_proj[1], curr_soc_proj[0])
+                # socp = socp.at[start:end].set(soc_concat)
+
+                # start = end
+                # end = start + soc_cones_array[i]
+                # val = (socp, start, end)
+                print('i', i)
+                socp = val
+                start = soc_sum_array[i]
+                end = start + soc_cones_array[i]
+                curr_soc_proj = soc_projection(soc_input[start+1:start+slice_size], soc_input[start])
+                soc_concat = jnp.append(curr_soc_proj[1], curr_soc_proj[0])
+                socp = socp.at[start:end].set(soc_concat)
+
+                return socp
+            # init_val = (socp, 0, soc_cones_array[0])
+            # init_val = socp
+            # socp = jax.lax.fori_loop(0, num_soc, body_fn, init_val)
+            # return jnp.concatenate([input[:n+zero_cone_int], nonneg, socp])
         self.proj = proj
 
         # pdb.set_trace()
@@ -441,14 +501,15 @@ class Workspace:
             self.num_samples, 'fixed_ws', train=False, plot_pretrain=False)
         
 
-        print("Pretraining...")
-        self.df_pretrain = pd.DataFrame(
-            columns=['pretrain_loss', 'pretrain_test_loss'])
-        train_pretrain_losses, test_pretrain_losses = self.l2ws_model.pretrain(self.pretrain_cfg.pretrain_iters,
-                                                                              stepsize=self.pretrain_cfg.pretrain_stepsize,
-                                                                              df_pretrain=self.df_pretrain)
-        out_train_fixed_ws = self.evaluate_iters(
-            self.num_samples, 'pretrain', train=False, plot_pretrain=True)
+        if self.pretrain_cfg.pretrain_iters > 0:
+            print("Pretraining...")
+            self.df_pretrain = pd.DataFrame(
+                columns=['pretrain_loss', 'pretrain_test_loss'])
+            train_pretrain_losses, test_pretrain_losses = self.l2ws_model.pretrain(self.pretrain_cfg.pretrain_iters,
+                                                                                stepsize=self.pretrain_cfg.pretrain_stepsize,
+                                                                                df_pretrain=self.df_pretrain)
+            out_train_fixed_ws = self.evaluate_iters(
+                self.num_samples, 'pretrain', train=False, plot_pretrain=True)
         # plt.plot(train_pretrain_losses, label='train')
         # plt.plot(test_pretrain_losses, label='test')
         # plt.yscale('log')

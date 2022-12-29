@@ -81,7 +81,7 @@ def sample_theta(T, sigma, p):
     w_flat = np.ravel(w)
     v_flat = np.ravel(v)
     theta = np.concatenate([w_flat, v_flat])
-    # pdb.set_trace()
+
     return theta
 
 
@@ -151,7 +151,6 @@ def test_kalman():
     v3 = x[T * (nx + nu + 1):-2*T]
     u3 = x[-T*2:-T]
     z3 = x[-T:]
-    # 
 
     # (x_t, w_t, s_t, v_t,  u_t, z_t)
 
@@ -163,7 +162,7 @@ def test_kalman():
 
     cones_jax = out["cones_dict"]
     data = dict(P=P_jax, A=A_jax, c=c_jax, b=b_jax, cones=cones_jax)
-    data['x'], data['y'] = sol['x'], sol['y']
+    # data['x'], data['y'] = sol['x'], sol['y']
 
     xp, yd, sp = scs_jax(data, iters=1000)
     x4 = xp[: T * nx]
@@ -260,7 +259,7 @@ def cvxpy_huber(T, y, gamma, dt, mu, rho):
     x = np.array(x.value)
     w = np.array(w.value)
     v = np.array(v.value)
-    pdb.set_trace()
+    # pdb.set_trace()
     return x, w, v
 
 
@@ -322,7 +321,7 @@ def simulate_fwd(w_mat, v_mat, T, gamma, dt):
     # x_true = x.copy()
     # w_true = w_mat.copy()
     # return y, x_true, w_true, v_mat
-    pdb.set_trace()
+
     return y_mat
 
 
@@ -421,7 +420,7 @@ def single_q(theta, mu, rho, T, gamma, dt):
     q = q.at[:nvars].set(c)
     q = q.at[nvars:].set(b)
     # print('y', y)
-    # pdb.set_trace()
+
     return q
 
 
@@ -579,10 +578,8 @@ def setup_probs(setup_cfg):
     thetas = jnp.array(thetas_np)
 
     batch_q = vmap(single_q, in_axes=(0, None, None, None, None, None), out_axes=(0))
-    
 
     q_mat = batch_q(thetas, cfg.mu, cfg.rho, cfg.T, cfg.gamma, cfg.dt)
-    # pdb.set_trace()
 
     scs_instances = []
     for i in range(N):
@@ -647,96 +644,6 @@ def setup_probs(setup_cfg):
     for i in range(5):
         plt.plot(thetas[i, :])
     plt.savefig("thetas.pdf")
-    pdb.set_trace()
-
-
-def our_scs():
-    # setup problem
-    # T, nx, nu, control_box, x_init_box = 10, 200, 200, .1, .5
-    T, nx, nu, control_box, x_init_box = 3, 10, 10, 0.1, 0.5
-    np.random.seed(0)
-    # np.eye(nx) + .02 * np.random.normal(size=(nx, nx))
-    Ad = 0.05 * np.random.normal(size=(nx, nx))
-    Bd = 1 * np.random.normal(size=(nx, nu))
-
-    """
-    states as variables
-    """
-    # canonicalize with states as variables
-    t0 = time.time()
-    out_dict = static_canon(T, nx, nu, control_box, Ad=Ad, Bd=Bd, state_box=100)
-    t1 = time.time()
-    print(f"canonicalized in {t1-t0} seconds")
-    P_sparse, A_sparse = out_dict["P_sparse"], out_dict["A_sparse"]
-    A_dynamics = out_dict["A_dynamics"]
-    c, b = out_dict["c"], out_dict["b"]
-    cones_array = out_dict["cones_array"]
-    cones_dict = dict(z=int(cones_array[0]), l=int(cones_array[1]))
-
-    # update x_init
-    x_init = x_init_box * (2 * jnp.array(np.random.rand(nx)) - 1)
-    b[:nx] = -A_dynamics @ x_init
-
-    # input into our_scs
-    P, A = P_sparse.todense(), A_sparse.todense()
-    P_jax, A_jax = jnp.array(P), jnp.array(A)
-    b_jax, c_jax = jnp.array(b), jnp.array(c)
-    data = dict(P=P_jax, A=A_jax, b=b_jax, c=c_jax, cones=cones_dict)
-
-    # solve with c scs
-    data_c = dict(P=P_sparse, A=A_sparse, b=b, c=c)
-    solver = scs.SCS(data_c, cones_dict, eps_abs=1e-5, eps_rel=1e-5, max_iters=10000)
-
-    """
-    only controls as inputs
-    """
-    # canonicalize with only controls as inputs
-    t0 = time.time()
-    out_dict = static_canon_control_box_only(T, nx, nu, control_box, Ad=Ad, Bd=Bd)
-    t1 = time.time()
-    print(f"canonicalized in {t1-t0} seconds")
-    P_sparse, A_sparse = out_dict["P_sparse"], out_dict["A_sparse"]
-    A_dynamics = out_dict["A_dynamics"]
-    QB = out_dict["QB"]
-    c, b = out_dict["c"], out_dict["b"]
-    cones_array = out_dict["cones_array"]
-    cones_dict = dict(z=int(cones_array[0]), l=int(cones_array[1]))
-
-    # update x_init
-    # x_init = x_init_box*(2*jnp.array(np.random.rand(nx))-1)
-    c = np.array(QB @ x_init)  # * 2
-
-    # input into our_scs
-    P, A = P_sparse.todense(), A_sparse.todense()
-    P_jax, A_jax = jnp.array(P), jnp.array(A)
-    b_jax, c_jax = jnp.array(b), jnp.array(c)
-    data = dict(P=P_jax, A=A_jax, b=b_jax, c=c_jax, cones=cones_dict)
-
-    # solve with c scs
-    pdb.set_trace()
-    data_c = dict(P=P_sparse, A=A_sparse, b=b, c=c)
-    solver_no_state = scs.SCS(
-        data_c, cones_dict, eps_abs=1e-3, eps_rel=1e-8, max_iters=10000
-    )
-
-    # no learning
-    print("about to solve with c code")
-    t0 = time.time()
-    m, n = A.shape
-    sol = solver.solve()
-    sol_no_state = solver_no_state.solve()
-    t1 = time.time()
-    print(f"solved with c code in {t1-t0} seconds")
-    P_hat = ruiz_equilibrate(P)
-    pdb.set_trace()
-    print("true x sol", sol["x"][:5])
-    print("true y sol", sol["y"][:5])
-
-    # solve with our scs
-    # data['x'], data['y'] = sol_no_state['x'], sol_no_state['y']
-    x_jax, y_jax, s_jax = scs_jax(data, iters=500)
-    print("our x sol", x_jax[:5])
-    print("our y sol", y_jax[:5])
     pdb.set_trace()
 
 
