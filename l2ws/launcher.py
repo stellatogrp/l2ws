@@ -169,7 +169,7 @@ class Workspace:
         # soc_sum_array = jnp.cumsum(jnp.array(soc_cones_array)).tolist()
         soc_size = soc_cones_array[0]
         soc_proj_single_batch = vmap(soc_proj_single, in_axes=(0), out_axes=(0))
-        pdb.set_trace()
+        
 
         @jit
         def proj(input):
