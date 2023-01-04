@@ -1,0 +1,5 @@
+mat_sizes: [30, 3]
+sparse_frac: 0.1
+low_rank: 2
+N_train: 1000
+N_test: 200
