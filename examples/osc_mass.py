@@ -619,6 +619,7 @@ def static_canon(T, nx, nu, state_box, control_box, Q_val, QT_val, R_val, Ad=Non
     out_dict = dict(M=M,
                     algo_factor=algo_factor,
                     cones_array=cones_array,
+                    cones_dict=cones,
                     A_sparse=A_sparse,
                     P_sparse=P_sparse,
                     b=b,

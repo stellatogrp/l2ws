@@ -49,6 +49,8 @@ class L2WSmodel(object):
         self.q_mat_train = dict['q_mat_train']
         self.q_mat_test = dict['q_mat_test']
 
+        self.angle_anchors = dict['angle_anchors']
+
         self.m, self.n = dict['m'], dict['n']
 
         if self.static_flag:
@@ -85,7 +87,8 @@ class L2WSmodel(object):
                            'prediction_variable': self.prediction_variable,
                            'M_static': self.static_M,
                            'factor_static': self.static_algo_factor,
-                           'diff_required': True
+                           'diff_required': True,
+                           'angle_anchors': self.angle_anchors
                            }
         eval_loss_dict = {'static_flag': self.static_flag,
                           'lin_sys_solve': lin_sys_solve,
@@ -96,7 +99,8 @@ class L2WSmodel(object):
                           'prediction_variable': self.prediction_variable,
                           'M_static': self.static_M,
                           'factor_static': self.static_algo_factor,
-                          'diff_required': False
+                          'diff_required': False,
+                          'angle_anchors': self.angle_anchors
                           }
         fixed_ws_dict = {'static_flag': self.static_flag,
                           'lin_sys_solve': lin_sys_solve,
@@ -107,7 +111,8 @@ class L2WSmodel(object):
                           'prediction_variable': 'x',
                           'M_static': self.static_M,
                           'factor_static': self.static_algo_factor,
-                          'diff_required': False
+                          'diff_required': False,
+                          'angle_anchors': self.angle_anchors
                           }
         self.loss_fn_train = create_loss_fn(train_loss_dict)
         self.loss_fn_eval = create_loss_fn(eval_loss_dict)
@@ -329,6 +334,7 @@ def create_loss_fn(input_dict):
     m, n = input_dict['m'], input_dict['n']
     prediction_variable = input_dict['prediction_variable']
     diff_required = input_dict['diff_required']
+    angle_anchors = input_dict['angle_anchors']
 
     # if dynamic, the next 2 set to None
     M_static, factor_static = input_dict['M_static'], input_dict['factor_static']
@@ -361,8 +367,9 @@ def create_loss_fn(input_dict):
         iter_losses = jnp.zeros(iters)
         primal_residuals = jnp.zeros(iters)
         dual_residuals = jnp.zeros(iters)
-        angles = jnp.zeros(iters)
+        angles = jnp.zeros((len(angle_anchors), iters-1))
         all_x_primals = jnp.zeros((iters, n))
+        all_z = jnp.zeros((iters, z.size))
 
         if diff_required:
             def _fp(i, val):
@@ -377,7 +384,7 @@ def create_loss_fn(input_dict):
         else:
             def _fp(i, val):
                 MM = M
-                z, z_prev, loss_vec, angles, primal_residuals, dual_residuals = val
+                z, z_prev, loss_vec, all_z, primal_residuals, dual_residuals = val
                 z_next, u, v = fixed_point(z, factor, q)
                 diff = jnp.linalg.norm(z_next - z)
                 loss_vec = loss_vec.at[i].set(diff)
@@ -387,16 +394,31 @@ def create_loss_fn(input_dict):
                 primal_residuals = primal_residuals.at[i].set(pr)
                 dual_residuals = dual_residuals.at[i].set(dr)
 
-                d1 = z - z_prev
-                d2 = z_next - z
-                cos = d1 @ d2 / (jnp.linalg.norm(d1) * jnp.linalg.norm(d2))
-                angle = jnp.arccos(cos)
-                angles = angles.at[i].set(angle)
-                return z_next, z_prev, loss_vec, angles, primal_residuals, dual_residuals
+                # d1 = z - z_prev
+                # d2 = z_next - z
+                # cos = d1 @ d2 / (jnp.linalg.norm(d1) * jnp.linalg.norm(d2))
+                # angle = jnp.arccos(cos)
+                # angles = angles.at[i].set(angle)
+
+                all_z = all_z.at[i].set(z)
+                return z_next, z_prev, loss_vec, all_z, primal_residuals, dual_residuals
                 # return z_next, z, loss_vec, angles, primal_residuals, dual_residuals
-            val = z, z, iter_losses,angles, primal_residuals, dual_residuals
+            val = z, z, iter_losses, all_z, primal_residuals, dual_residuals
             out = jax.lax.fori_loop(0, iters, _fp, val)
-            z, z_prev, iter_losses, angles, primal_residuals, dual_residuals = out
+            z, z_prev, iter_losses, all_z, primal_residuals, dual_residuals = out
+
+            # do angles
+            diffs = jnp.diff(all_z, axis=0)
+
+            for j in range(len(angle_anchors)):
+                d1 = diffs[angle_anchors[j], :]
+                def compute_angle(d2):
+                    cos = d1 @ d2 / (jnp.linalg.norm(d1) * jnp.linalg.norm(d2))
+                    angle = jnp.arccos(cos)
+                    return angle
+                batch_angle = vmap(compute_angle, in_axes=(0), out_axes=(0))
+                curr_angles = batch_angle(diffs)
+                angles = angles.at[j, :].set(curr_angles)
 
         # unroll 1 more time for the loss
         u_tilde = lin_sys_solve(factor, z - q)

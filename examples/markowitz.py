@@ -289,6 +289,7 @@ def static_canon(data, a, idio_risk, scale_factor):
                     ATA_factor=ATA_factor,
                     algo_factor=algo_factor,
                     cones_array=cones_array,
+                    cones_dict=cones_dict,
                     A_sparse=A_sparse,
                     P_sparse=P_sparse,
                     b=b)

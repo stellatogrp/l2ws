@@ -17,9 +17,9 @@ data:
   datetime: ''
 
 train_unrolls: 15
-eval_unrolls: 2500
-eval_every_x_epochs: 40
-N_train: 100
-N_test: 20
-num_samples: 3
+eval_unrolls: 1000
+eval_every_x_epochs: 3
+N_train: 500
+N_test: 100
+num_samples: 100
 prediction_variable: w

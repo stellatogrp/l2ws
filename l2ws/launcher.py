@@ -65,6 +65,7 @@ class Workspace:
         self.num_samples = cfg.num_samples
         self.pretrain_cfg = cfg.pretrain
         self.prediction_variable = cfg.prediction_variable
+        self.angle_anchors = cfg.angle_anchors
 
         '''
         from the run cfg retrieve the following via the data cfg
@@ -139,7 +140,8 @@ class Workspace:
             # print('inv time', t1 - t0)
             static_M, static_algo_factor = None, None
             cones_array = static_dict['cones_array']
-            cones = dict(z=cones_array[0], l=cones_array[1])
+            # cones = dict(z=cones_array[0], l=cones_array[1])
+            cones = static_dict['cones_dict']
             M_tensor_train = M_tensor[:N_train, :, :]
             M_tensor_test = M_tensor[N_train:N, :, :]
             matrix_invs_train = matrix_invs[:N_train, :, :]
@@ -153,87 +155,38 @@ class Workspace:
         self.M = static_M
 
         zero_cone, nonneg_cone = cones['z'], cones['l']#, cones['q']
+        soc = False
+        if 'q' in cones.keys():
+            soc = True
 
         self.train_unrolls = cfg.train_unrolls
         eval_unrolls = cfg.train_unrolls
 
         zero_cone_int = int(zero_cone)
         nonneg_cone_int = int(nonneg_cone)
-        num_soc = len(cones['q'])
-        soc_total = sum(cones['q'])
+        if soc:
+            num_soc = len(cones['q'])
+            soc_total = sum(cones['q'])
 
-        soc_cones_array = np.array(cones['q'])
-        soc_sum_array = np.cumsum(soc_cones_array)
-        # soc_cones_array = list(soc_cones_array)
-        # soc_cones_array = cones['q']
-        # soc_sum_array = jnp.cumsum(jnp.array(soc_cones_array)).tolist()
-        soc_size = soc_cones_array[0]
-        soc_proj_single_batch = vmap(soc_proj_single, in_axes=(0), out_axes=(0))
+            soc_cones_array = np.array(cones['q'])
+            # soc_sum_array = np.cumsum(soc_cones_array)
+            soc_size = soc_cones_array[0]
+            soc_proj_single_batch = vmap(soc_proj_single, in_axes=(0), out_axes=(0))
         
-
         @jit
         def proj(input):
             nonneg = jnp.clip(input[n+zero_cone_int:n+zero_cone_int+nonneg_cone_int], a_min=0)
-            socp = jnp.zeros(soc_total)
-            curr = 0 #zero_cone_int + nonneg_cone_int
-            soc_input = input[n+zero_cone_int+nonneg_cone_int:]
+            if soc:
+                socp = jnp.zeros(soc_total)
+                soc_input = input[n+zero_cone_int+nonneg_cone_int:]
 
-            soc_input_reshaped = jnp.reshape(soc_input, (num_soc, soc_size))
-            soc_out_reshaped = soc_proj_single_batch(soc_input_reshaped)
-            socp = jnp.ravel(soc_out_reshaped)
-            # pdb.set_trace()
-            # for i in range(num_soc):
-            #     start = curr
-            #     end = curr + cones['q'][i]
-            #     curr_soc_proj = soc_projection(soc_input[start+1:end], soc_input[start])
-            #     soc_concat = jnp.append(curr_soc_proj[1], curr_soc_proj[0])
-
-            #     socp = socp.at[curr:end].set(soc_concat)
-            #     curr = end
-            return jnp.concatenate([input[:n+zero_cone_int], nonneg, socp])
-            def body_fn(i, val):
-                # start = soc_sum_array[i]
-                # end = start + soc_cones_array[i]
-                # # start = jax.lax.dynamic_slice(soc_sum_array, (i,), (1,)) #soc_cones_array[:i].sum()
-                # # curr_cone = jax.lax.dynamic_slice(soc_cones_array, (i,), (1,))
-                # # end = start + curr_cone
-                # # curr_soc_proj = soc_projection(soc_input[start+1:end], soc_input[start])
-                # # curr_soc_proj = soc_projection(soc_input[start+1:end], soc_input[start])
-                # # in1 = jax.lax.dynamic_slice(soc_input, (soc_sum_array[i],), (soc_cones_array[i],))
-                # in1 = soc_input[soc_sum_array[i]:soc_sum_array[i]+soc_cones_array[i]]
-                # in2 = soc_input[soc_sum_array[i]]
-                # # in1 = soc_input[soc_sum_array[i]:soc_sum_array[i]+1]
-                
-                # curr_soc_proj = soc_projection(in1, in2)
-                    
-
-                # # curr_soc_proj = soc_projection(jax.lax.dynamic_slice(soc_input, (start,), (soc_cones_array[i],)), 
-                # #     jax.lax.dynamic_slice(soc_input, (start,), (1,)))
-                # soc_concat = jnp.append(curr_soc_proj[1], curr_soc_proj[0])
-                # socp = socp.at[curr:end].set(soc_concat)
-                # curr = end
-
-                # socp, start, end = val
-                # curr_soc_proj = soc_projection(soc_input[start+1:end], soc_input[start])
-                # soc_concat = jnp.append(curr_soc_proj[1], curr_soc_proj[0])
-                # socp = socp.at[start:end].set(soc_concat)
-
-                # start = end
-                # end = start + soc_cones_array[i]
-                # val = (socp, start, end)
-                print('i', i)
-                socp = val
-                start = soc_sum_array[i]
-                end = start + soc_cones_array[i]
-                curr_soc_proj = soc_projection(soc_input[start+1:start+slice_size], soc_input[start])
-                soc_concat = jnp.append(curr_soc_proj[1], curr_soc_proj[0])
-                socp = socp.at[start:end].set(soc_concat)
-
-                return socp
-            # init_val = (socp, 0, soc_cones_array[0])
-            # init_val = socp
-            # socp = jax.lax.fori_loop(0, num_soc, body_fn, init_val)
-            # return jnp.concatenate([input[:n+zero_cone_int], nonneg, socp])
+                soc_input_reshaped = jnp.reshape(soc_input, (num_soc, soc_size))
+                soc_out_reshaped = soc_proj_single_batch(soc_input_reshaped)
+                socp = jnp.ravel(soc_out_reshaped)
+                return jnp.concatenate([input[:n+zero_cone_int], nonneg, socp])
+            else:
+                return jnp.concatenate([input[:n+zero_cone_int], nonneg])
+            
         self.proj = proj
 
         # pdb.set_trace()
@@ -296,6 +249,7 @@ class Workspace:
                       'matrix_invs_train': matrix_invs_train,
                       'matrix_invs_test': matrix_invs_test,
                       #   'dynamic_algo_factors': matrix_invs,
+                      'angle_anchors': self.angle_anchors
                       }
 
         self.l2ws_model = L2WSmodel(input_dict)
@@ -392,13 +346,13 @@ class Workspace:
         plt.savefig('debug.pdf', bbox_inches='tight')
         plt.clf()
 
-        if not train:
-            self.iters_df[col] = iter_losses_mean
-            self.iters_df.to_csv('iters_compared.csv')
-            self.primal_residuals_df[col] = primal_residuals
-            self.primal_residuals_df.to_csv('primal_residuals.csv')
-            self.dual_residuals_df[col] = dual_residuals
-            self.dual_residuals_df.to_csv('dual_residuals.csv')
+        # if not train:
+        self.iters_df[col] = iter_losses_mean
+        self.iters_df.to_csv('iters_compared.csv')
+        self.primal_residuals_df[col] = primal_residuals
+        self.primal_residuals_df.to_csv('primal_residuals.csv')
+        self.dual_residuals_df[col] = dual_residuals
+        self.dual_residuals_df.to_csv('dual_residuals.csv')
 
         '''
         now save the plots so we can monitor
@@ -451,24 +405,37 @@ class Workspace:
             os.mkdir('polar')
         if not os.path.exists(f"polar/{col}"):
             os.mkdir(f"polar/{col}")
+        
+        num_angles = len(self.angle_anchors)
         for i in range(5):
-            r = out_train[2][i, :]
-            # theta = 2 * np.pi * r
-            theta = np.zeros(r.size)
-            theta[1:] = angles[i, 1:]
-
             fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
-            # ax.plot(np.cumsum(theta), r)
-            ax.plot(theta, r)
-            ax.plot(theta[self.train_unrolls], r[self.train_unrolls], 'r+')
-            # ax.set_rmax(2)
-            # ax.set_rticks([0.5, 1, 1.5, 2])  # Less radial ticks
-            # ax.set_rlabel_position(-22.5)  # Move radial labels away from plotted line
-            ax.grid(True)
-            ax.set_rscale('symlog')
-            ax.set_title("A line plot on a polar axis", va='bottom')
+            for j in range(num_angles):
+                angle = self.angle_anchors[j]
+                # r = out_train[2][i, angle-1:-1]
+                print('out_train[2]', out_train[2].shape)
+                print('angles', angles.shape)
+                # r = out_train[2][i, angle-1:-1]
+                r = out_train[2][i, angle:-1]
+                theta = np.zeros(r.size)
+                # theta[1:] = angles[i, 1:]
+                print('r', r.shape)
+                print('angles[i, j, angle-1+1:]', angles[i, j, angle+1:].shape)
+                print('angle', angle)
+                theta[1:] = angles[i, j, angle+1:]
+
+                
+                # ax.plot(np.cumsum(theta), r)
+                # ax.plot(theta[1:], r[1:], label=f"anchor={angle}") # ignore first point
+                ax.plot(theta, r, label=f"anchor={angle}")
+                ax.plot(theta[self.train_unrolls-angle], r[self.train_unrolls-angle], 'r+')
+                # ax.set_rmax(2)
+                # ax.set_rticks([0.5, 1, 1.5, 2])  # Less radial ticks
+                # ax.set_rlabel_position(-22.5)  # Move radial labels away from plotted line
+                ax.grid(True)
+                ax.set_rscale('symlog')
+                ax.set_title("A line plot on a polar axis", va='bottom')
+            plt.legend()
             plt.savefig(f"polar/{col}/prob_{i}.pdf")
-            # pdb.set_trace()
             plt.clf()
 
         return out_train
@@ -492,13 +459,13 @@ class Workspace:
         no learning evaluation
         '''
         out_train_start = self.evaluate_iters(
-            self.num_samples, 'no_train', train=False, plot_pretrain=False)
+            self.num_samples, 'no_train', train=True, plot_pretrain=False)
 
         '''
         fixed ws evaluation
         '''
         out_train_fixed_ws = self.evaluate_iters(
-            self.num_samples, 'fixed_ws', train=False, plot_pretrain=False)
+            self.num_samples, 'fixed_ws', train=True, plot_pretrain=False)
         
 
         if self.pretrain_cfg.pretrain_iters > 0:
@@ -551,7 +518,7 @@ class Workspace:
                 curr_iter += 1
             if epoch % self.eval_every_x_epochs == 0:
                 out_train = self.evaluate_iters(
-                    self.num_samples, f"train_iter_{curr_iter}", train=False)
+                    self.num_samples, f"train_iter_{curr_iter}", train=True)
                 # out_trains.append(out_train)
             self.l2ws_model.epoch += 1
 

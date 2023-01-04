@@ -16,10 +16,11 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 20
+train_unrolls: 15
 eval_unrolls: 500
 eval_every_x_epochs: 10
 N_train: 100
 N_test: 20
 num_samples: 200
 prediction_variable: w
+angle_anchors: [0, 5, 10]
