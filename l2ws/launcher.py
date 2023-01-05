@@ -1,3 +1,4 @@
+from jax.config import config
 from ast import Return
 import csv
 import os
@@ -15,18 +16,29 @@ import jax
 from jax import random, lax
 from l2ws.scs_problem import SCSinstance, scs_jax
 from scipy.spatial import distance_matrix
+from utils.generic_utils import vec_symm, unvec_symm
+from functools import partial
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
     "font.size": 16,
 })
-from jax.config import config
 config.update("jax_enable_x64", True)
+
 
 def soc_proj_single(input):
     y, s = input[1:], input[0]
     pi_y, pi_s = soc_projection(y, s)
     return jnp.append(pi_s, pi_y)
+
+
+def sdp_proj_single(x, dim):
+    X = unvec_symm(x, dim)
+    evals, evecs = jnp.linalg.eigh(X)
+    evals_plus = jnp.clip(evals, 0, jnp.inf)
+    X_proj = evecs @ jnp.diag(evals_plus) @ evecs.T
+    x_proj = vec_symm(X_proj)
+    return x_proj
 
 
 def soc_projection(y, s):
@@ -107,11 +119,8 @@ class Workspace:
         if static_flag:
             static_M = static_dict['M']
 
-            
-
-
             static_algo_factor = static_dict['algo_factor']
-            cones_array = static_dict['cones_array']
+            # cones_array = static_dict['cones_array']
             # cones = dict(z=int(cones_array[0]), l=int(cones_array[1]))
             cones = static_dict['cones_dict']
 
@@ -150,14 +159,19 @@ class Workspace:
         # alternate -- load it if available (but this is memory-intensive)
         q_mat_train = q_mat[:N_train, :]
         q_mat_test = q_mat[N_train:N, :]
-        print('q_mat_train', q_mat_train[0,n:])
+        print('q_mat_train', q_mat_train[0, n:])
 
         self.M = static_M
 
-        zero_cone, nonneg_cone = cones['z'], cones['l']#, cones['q']
-        soc = False
-        if 'q' in cones.keys():
-            soc = True
+        zero_cone, nonneg_cone = cones['z'], cones['l']  # , cones['q']
+        # soc, sdp = False, False
+        # if 's' in cones.keys():
+        #     sdp = True
+        # if 'q' in cones.keys():
+        #     soc = True
+        soc = 'q' in cones.keys() and len(cones['q']) > 0
+        sdp_ = 's' in cones.keys() and len(cones['s']) > 0
+        # pdb.set_trace()
 
         self.train_unrolls = cfg.train_unrolls
         eval_unrolls = cfg.train_unrolls
@@ -167,26 +181,46 @@ class Workspace:
         if soc:
             num_soc = len(cones['q'])
             soc_total = sum(cones['q'])
-
             soc_cones_array = np.array(cones['q'])
-            # soc_sum_array = np.cumsum(soc_cones_array)
             soc_size = soc_cones_array[0]
             soc_proj_single_batch = vmap(soc_proj_single, in_axes=(0), out_axes=(0))
-        
+        else:
+            soc_total = 0
+        if sdp_:
+            num_sdp = len(cones['s'])
+            sdp_total = sum(cones['s'])
+            sdp_cones_array = np.array(cones['s'])
+            sdp_size = int(sdp_cones_array[0] * (sdp_cones_array[0]+1) / 2)
+            sdp_proj_single_dim = partial(sdp_proj_single, dim=sdp_cones_array[0])
+            sdp_proj_single_batch = vmap(sdp_proj_single_dim, in_axes=(0), out_axes=(0))
+
         @jit
         def proj(input):
             nonneg = jnp.clip(input[n+zero_cone_int:n+zero_cone_int+nonneg_cone_int], a_min=0)
+            projection = jnp.concatenate([input[:n+zero_cone_int], nonneg])
             if soc:
                 socp = jnp.zeros(soc_total)
-                soc_input = input[n+zero_cone_int+nonneg_cone_int:]
-
+                soc_input = input[n+zero_cone_int+nonneg_cone_int:n +
+                                  zero_cone_int+nonneg_cone_int+soc_total]
                 soc_input_reshaped = jnp.reshape(soc_input, (num_soc, soc_size))
                 soc_out_reshaped = soc_proj_single_batch(soc_input_reshaped)
                 socp = jnp.ravel(soc_out_reshaped)
-                return jnp.concatenate([input[:n+zero_cone_int], nonneg, socp])
-            else:
-                return jnp.concatenate([input[:n+zero_cone_int], nonneg])
-            
+                projection = jnp.concatenate([projection, socp])
+            if sdp_:
+                sdp = jnp.zeros(sdp_total)
+                sdp_input = input[n + zero_cone_int+nonneg_cone_int+soc_total:]
+                sdp_input_reshaped = jnp.reshape(sdp_input, (num_sdp, sdp_size))
+                sdp_out_reshaped = sdp_proj_single_batch(sdp_input_reshaped)
+                sdp = jnp.ravel(sdp_out_reshaped)
+                projection = jnp.concatenate([projection, sdp])
+            return projection
+            # else:
+            #     socp = jnp.array([])
+            # projection = jnp.append()
+            #     return jnp.concatenate([input[:n+zero_cone_int], nonneg, socp])
+            # else:
+            #     return jnp.concatenate([input[:n+zero_cone_int], nonneg])
+
         self.proj = proj
 
         # pdb.set_trace()
@@ -212,7 +246,7 @@ class Workspace:
         plt.savefig('sample_problems.pdf')
         plt.clf()
 
-        ########### check
+        # check
         # P_jax = static_M[:n,:n]
         # A_jax = -static_M[n:,:n]
         # c_jax, b_jax = q_mat_train[0,:n], q_mat_train[0,n:]
@@ -221,7 +255,7 @@ class Workspace:
         # data['y'] = y_stars[0, :]
         # x_jax, y_jax, s_jax = scs_jax(data, iters=1000)
         # pdb.set_trace()
-        ########### end check
+        # end check
 
         input_dict = {'nn_cfg': self.nn_cfg,
                       'proj': proj,
@@ -266,16 +300,16 @@ class Workspace:
         if train:
             if self.l2ws_model.static_flag:
                 eval_out = self.l2ws_model.evaluate(self.eval_unrolls,
-                                                   self.l2ws_model.train_inputs[:num, :],
-                                                   self.l2ws_model.q_mat_train[:num, :],
-                                                   tag='train')
+                                                    self.l2ws_model.train_inputs[:num, :],
+                                                    self.l2ws_model.q_mat_train[:num, :],
+                                                    tag='train')
             else:
                 eval_out = self.l2ws_model.dynamic_eval(self.eval_unrolls,
-                                                   self.l2ws_model.train_inputs[:num, :],
-                                                   self.l2ws_model.matrix_invs_train[:num, :],
-                                                   self.l2ws_model.M_tensor_train[:num, :],
-                                                   self.l2ws_model.q_mat_train[:num, :],
-                                                   tag='train')
+                                                        self.l2ws_model.train_inputs[:num, :],
+                                                        self.l2ws_model.matrix_invs_train[:num, :],
+                                                        self.l2ws_model.M_tensor_train[:num, :],
+                                                        self.l2ws_model.q_mat_train[:num, :],
+                                                        tag='train')
         else:
             if fixed_ws:
                 '''
@@ -284,7 +318,8 @@ class Workspace:
                 '''
 
                 # compute distances to train inputs
-                distances = distance_matrix(np.array(self.l2ws_model.test_inputs[:num,:]), np.array(self.l2ws_model.train_inputs))
+                distances = distance_matrix(
+                    np.array(self.l2ws_model.test_inputs[:num, :]), np.array(self.l2ws_model.train_inputs))
                 print('distances', distances)
                 indices = np.argmin(distances, axis=1)
                 print('indices', indices)
@@ -293,10 +328,9 @@ class Workspace:
                 plt.plot(indices)
                 plt.savefig(f"indices_plot.pdf", bbox_inches='tight')
                 plt.clf()
-                
+
                 inputs = self.l2ws_model.w_stars_train[indices, :]
 
-                
             elif col == 'no_train':
                 # random init with neural network
                 # _, predict_size = self.l2ws_model.w_stars_test.shape
@@ -304,26 +338,26 @@ class Workspace:
                 # inputs = jnp.array(random_start)
                 # fixed_ws = True
 
-                # 
+                #
                 inputs = self.l2ws_model.test_inputs[:num, :]
                 fixed_ws = False
             else:
                 inputs = self.l2ws_model.test_inputs[:num, :]
             if self.l2ws_model.static_flag:
                 eval_out = self.l2ws_model.evaluate(self.eval_unrolls,
-                                               inputs,
-                                               self.l2ws_model.q_mat_test[:num, :],
-                                               tag='test',
-                                               fixed_ws=fixed_ws)
+                                                    inputs,
+                                                    self.l2ws_model.q_mat_test[:num, :],
+                                                    tag='test',
+                                                    fixed_ws=fixed_ws)
             else:
                 eval_out = self.l2ws_model.dynamic_eval(self.eval_unrolls,
-                                                inputs,
-                                                self.l2ws_model.matrix_invs_test[:num, :, :],
-                                                self.l2ws_model.M_tensor_test[:num, :, :],
-                                                self.l2ws_model.q_mat_test[:num, :],
-                                                tag='test',
-                                                fixed_ws=fixed_ws)
-                
+                                                        inputs,
+                                                        self.l2ws_model.matrix_invs_test[:num, :, :],
+                                                        self.l2ws_model.M_tensor_test[:num, :, :],
+                                                        self.l2ws_model.q_mat_test[:num, :],
+                                                        tag='test',
+                                                        fixed_ws=fixed_ws)
+
         loss_train, out_train, train_time = eval_out
         iter_losses_mean = out_train[2].mean(axis=0)
         if not os.path.exists('losses_over_examples'):
@@ -336,13 +370,13 @@ class Workspace:
         angles = out_train[3]
         primal_residuals = out_train[4].mean(axis=0)
         dual_residuals = out_train[5].mean(axis=0)
-        print('after iterations z', out_train[0][1][0,:])
+        print('after iterations z', out_train[0][1][0, :])
         print('truth z', self.l2ws_model.w_stars_test[0, :])
-        print('after iterations z', out_train[0][1][1,:])
+        print('after iterations z', out_train[0][1][1, :])
         print('truth z', self.l2ws_model.w_stars_test[1, :])
         # plt.plot(out_train[0][1][0,:], label='after iters')
         # plt.plot(self.l2ws_model.w_stars_test[0, :], label='truth')
-        plt.plot(self.l2ws_model.w_stars_test[0, :] - out_train[0][1][0,:], label='truth')
+        plt.plot(self.l2ws_model.w_stars_test[0, :] - out_train[0][1][0, :], label='truth')
         plt.savefig('debug.pdf', bbox_inches='tight')
         plt.clf()
 
@@ -405,25 +439,24 @@ class Workspace:
             os.mkdir('polar')
         if not os.path.exists(f"polar/{col}"):
             os.mkdir(f"polar/{col}")
-        
+
         num_angles = len(self.angle_anchors)
         for i in range(5):
             fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
             for j in range(num_angles):
                 angle = self.angle_anchors[j]
                 # r = out_train[2][i, angle-1:-1]
-                print('out_train[2]', out_train[2].shape)
-                print('angles', angles.shape)
+                # print('out_train[2]', out_train[2].shape)
+                # print('angles', angles.shape)
                 # r = out_train[2][i, angle-1:-1]
                 r = out_train[2][i, angle:-1]
                 theta = np.zeros(r.size)
                 # theta[1:] = angles[i, 1:]
-                print('r', r.shape)
-                print('angles[i, j, angle-1+1:]', angles[i, j, angle+1:].shape)
-                print('angle', angle)
+                # print('r', r.shape)
+                # print('angles[i, j, angle-1+1:]', angles[i, j, angle+1:].shape)
+                # print('angle', angle)
                 theta[1:] = angles[i, j, angle+1:]
 
-                
                 # ax.plot(np.cumsum(theta), r)
                 # ax.plot(theta[1:], r[1:], label=f"anchor={angle}") # ignore first point
                 ax.plot(theta, r, label=f"anchor={angle}")
@@ -466,15 +499,14 @@ class Workspace:
         '''
         out_train_fixed_ws = self.evaluate_iters(
             self.num_samples, 'fixed_ws', train=True, plot_pretrain=False)
-        
 
         if self.pretrain_cfg.pretrain_iters > 0:
             print("Pretraining...")
             self.df_pretrain = pd.DataFrame(
                 columns=['pretrain_loss', 'pretrain_test_loss'])
             train_pretrain_losses, test_pretrain_losses = self.l2ws_model.pretrain(self.pretrain_cfg.pretrain_iters,
-                                                                                stepsize=self.pretrain_cfg.pretrain_stepsize,
-                                                                                df_pretrain=self.df_pretrain)
+                                                                                   stepsize=self.pretrain_cfg.pretrain_stepsize,
+                                                                                   df_pretrain=self.df_pretrain)
             out_train_fixed_ws = self.evaluate_iters(
                 self.num_samples, 'pretrain', train=False, plot_pretrain=True)
         # plt.plot(train_pretrain_losses, label='train')

@@ -1,0 +1,355 @@
+import functools
+import hydra
+import cvxpy as cp
+from l2ws.scs_problem import SCSinstance, scs_jax
+import numpy as np
+import pdb
+from l2ws.launcher import Workspace
+from scipy import sparse
+import jax.numpy as jnp
+from scipy.sparse import csc_matrix
+import jax.scipy as jsp
+import time
+import matplotlib.pyplot as plt
+import os
+import scs
+import logging
+import yaml
+from jax import vmap
+
+
+plt.rcParams.update(
+    {
+        "text.usetex": True,
+        "font.family": "serif",
+        "font.size": 16,
+    }
+)
+log = logging.getLogger(__name__)
+
+
+def run(run_cfg):
+    """
+    retrieve data for this config
+    theta is all of the following
+    theta = (ret, pen_risk, pen_hold, pen_trade, w0)
+
+    Sigma is constant
+
+     just need (theta, factor, u_star), Pi
+    """
+    # todo: retrieve data and put into a nice form - OR - just save to nice form
+
+    """
+    create workspace
+    needs to know the following somehow -- from the run_cfg
+    1. nn cfg
+    2. (theta, factor, u_star)_i=1^N
+    3. Pi
+
+    2. and 3. are stored in data files and the run_cfg holds the location
+
+    it will create the l2a_model
+    """
+    datetime = run_cfg.data.datetime
+    orig_cwd = hydra.utils.get_original_cwd()
+    example = "robust_pca"
+    data_yaml_filename = f"{orig_cwd}/outputs/{example}/aggregate_outputs/{datetime}/data_setup_copied.yaml"
+
+    # read the yaml file
+    with open(data_yaml_filename, "r") as stream:
+        try:
+            setup_cfg = yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+            setup_cfg = {}
+
+    static_dict = static_canon(
+        setup_cfg['p'],
+        setup_cfg['q']
+    )
+    A_sparse = static_dict['A_sparse']
+    m, n = A_sparse.shape
+
+    get_q_single = functools.partial(single_q,
+                                     m=m,
+                                     n=n,
+                                     p=setup_cfg['p'],
+                                     q=setup_cfg['q'])
+    get_q = vmap(get_q_single, in_axes=0, out_axes=0)
+
+    """
+    static_flag = True
+    means that the matrices don't change across problems
+    we only need to factor once
+    """
+    static_flag = True
+    workspace = Workspace(run_cfg, static_flag, static_dict, example, get_q)
+
+    """
+    run the workspace
+    """
+    workspace.run()
+
+
+def sample_theta(p, q, sparse_frac, low_rank, A_star=None, B_star=None):
+    # L, S, M are (p, q)
+    # A is (p, r), B is (q, r)
+    if A_star is None:
+        A_star = np.random.normal(size=(p, low_rank))
+    if B_star is None:
+        B_star = np.random.normal(size=(q, low_rank))
+    L_star = A_star @ B_star.T
+
+    # generate random, sparse S_star
+    S_original = np.random.normal(size=(p, q))
+    S_mask = np.random.choice(2, size=(p, q), replace=True,
+                              p=np.array([1 - sparse_frac, sparse_frac]))
+    S_star = np.multiply(S_original, S_mask)
+
+    M = L_star + S_star
+    M_vec = np.ravel(M)
+    mu_star = np.sum(np.abs(S_star))
+    theta = np.append(mu_star, M_vec)
+    return theta
+
+
+def setup_probs(setup_cfg):
+    print("entered robust kalman setup", flush=True)
+    cfg = setup_cfg
+    N_train, N_test = cfg.N_train, cfg.N_test
+    N = N_train + N_test
+    p, q = cfg.p, cfg.q
+
+    '''
+    sample theta
+    '''
+    thetas_np = np.zeros((N, 1 + p * q))
+    for i in range(N):
+        thetas_np[i, :] = sample_theta(p, q, cfg.sparse_frac, cfg.low_rank)
+    thetas = jnp.array(thetas_np)
+
+
+    """
+    - canonicalize according to whether we have states or not
+    - extract information dependent on the setup
+    """
+    log.info("creating static canonicalization...")
+    t0 = time.time()
+    
+    out_dict = static_canon(p, q)
+
+    t1 = time.time()
+    log.info(f"finished static canonicalization - took {t1-t0} seconds")
+
+    M = out_dict["M"]
+    algo_factor = out_dict["algo_factor"]
+    # cones_array = out_dict["cones_array"]
+    cones_dict = out_dict["cones_dict"]
+    A_sparse, P_sparse = out_dict["A_sparse"], out_dict["P_sparse"]
+
+    """
+    if with_states, b is updated
+    if w/out states, c is updated
+    """
+    b, c = out_dict["b"], out_dict["c"]
+
+    m, n = A_sparse.shape
+    # cones_dict = dict(z=int(cones_array[0]), l=int(cones_array[1]))
+
+    """
+    save output to output_filename
+    """
+    # save to outputs/mm-dd-ss/... file
+    if "SLURM_ARRAY_TASK_ID" in os.environ.keys():
+        slurm_idx = os.environ["SLURM_ARRAY_TASK_ID"]
+        output_filename = f"{os.getcwd()}/data_setup_slurm_{slurm_idx}"
+    else:
+        output_filename = f"{os.getcwd()}/data_setup_slurm"
+    """
+    create scs solver object
+    we can cache the factorization if we do it like this
+    """
+
+    data = dict(P=P_sparse, A=A_sparse, b=b, c=c)
+    tol = cfg.solve_acc
+    solver = scs.SCS(data, cones_dict, eps_abs=tol, eps_rel=tol)
+    solve_times = np.zeros(N)
+    x_stars = jnp.zeros((N, n))
+    y_stars = jnp.zeros((N, m))
+    s_stars = jnp.zeros((N, m))
+    q_mat = jnp.zeros((N, m + n))
+
+    """
+    sample theta and get y for each problem
+    """
+    
+    batch_q = vmap(single_q, in_axes=(0, None, None, None, None), out_axes=(0))
+
+    m, n = A_sparse.shape
+    q_mat = batch_q(thetas, m, n, p, q)
+
+    scs_instances = []
+    for i in range(N):
+        log.info(f"solving problem number {i}")
+
+        # update
+        b_np = np.array(q_mat[i, n:])
+        c_np = np.array(q_mat[i, :n])
+
+        # manual canon
+        manual_canon_dict = {
+            "P": P_sparse,
+            "A": A_sparse,
+            "b": b_np,
+            "c": c_np,
+            "cones": cones_dict,
+        }
+        scs_instance = SCSinstance(manual_canon_dict, solver, manual_canon=True)
+
+        scs_instances.append(scs_instance)
+        x_stars = x_stars.at[i, :].set(scs_instance.x_star)
+        y_stars = y_stars.at[i, :].set(scs_instance.y_star)
+        s_stars = s_stars.at[i, :].set(scs_instance.s_star)
+        q_mat = q_mat.at[i, :].set(scs_instance.q)
+        solve_times[i] = scs_instance.solve_time
+
+        # check with our jax implementation
+        # P_jax = jnp.array(P_sparse.todense())
+        # A_jax = jnp.array(A_sparse.todense())
+        # c_jax, b_jax = jnp.array(c), jnp.array(b)
+        # data = dict(P=P_jax, A=A_jax, b=b_jax, c=c_jax, cones=cones_dict)
+        # # data['x'] = x_stars[i, :]
+        # # data['y'] = y_stars[i, :]
+        # x_jax, y_jax, s_jax = scs_jax(data, iters=1000)
+
+        ############
+        # qq = single_q(x_init_mat[0, :], m, n, cfg.T, cfg.nx, cfg.nu, cfg.state_box, cfg.control_box, Ad)
+
+    # resave the data??
+    # print('saving final data...', flush=True)
+    log.info("saving final data...")
+    t0 = time.time()
+    jnp.savez(
+        output_filename,
+        thetas=thetas,
+        x_stars=x_stars,
+        y_stars=y_stars,
+    )
+    # print(f"finished saving final data... took {save_time-t0}'", flush=True)
+    save_time = time.time()
+    log.info(f"finished saving final data... took {save_time-t0}'")
+
+    # save plot of first 5 solutions
+    for i in range(5):
+        plt.plot(x_stars[i, :])
+    plt.savefig("opt_solutions.pdf")
+    plt.clf()
+
+    # save plot of first 5 parameters
+    for i in range(5):
+        plt.plot(thetas[i, :])
+    plt.savefig("thetas.pdf")
+    pdb.set_trace()
+
+
+def static_canon(p, q):
+    # nothing to do with theta
+    # just need the appropriate sizes
+    # don't need to do this in jax
+    # create cvxpy problem
+    # M has size (p, q)
+
+    L = cp.Variable((p, q))
+    S = cp.Variable((p, q))
+    theta = sample_theta(p, q, .1, 2)
+    mu = theta[0]
+    M_vec = theta[1:]
+    M = np.reshape(M_vec, (p, q))
+
+    constraints = [L + S == M, cp.sum(cp.abs(S)) <= mu]
+    obj = cp.Minimize(cp.norm(L, 'nuc'))
+    prob = cp.Problem(obj, constraints)
+    # sol = prob.solve(verbose=True)
+    data, _, __ = prob.get_problem_data(cp.SCS)
+
+    A, b, c = data['A'], data['b'], data['c']
+    m, n = A.shape
+    P = np.zeros((n, n))
+
+    P_jax = jnp.array(P)
+    A_jax = jnp.array(A.todense())
+    M = jnp.zeros((n + m, n + m))
+    M = M.at[:n, :n].set(P_jax)
+    M = M.at[:n, n:].set(A_jax.T)
+    M = M.at[n:, :n].set(-A_jax)
+
+    # factor for DR splitting
+    algo_factor = jsp.linalg.lu_factor(M + jnp.eye(n + m))
+
+    A_sparse = csc_matrix(A)
+    P_sparse = csc_matrix(P)
+    cones_cp = data['dims']
+    cones = {'z': cones_cp.zero, 'l': cones_cp.nonneg, 'q': cones_cp.soc, 's': cones_cp.psd}
+    out_dict = dict(
+        M=M,
+        algo_factor=algo_factor,
+        cones_dict=cones,
+        # cones_array=cones_array,
+        A_sparse=A_sparse,
+        P_sparse=P_sparse,
+        b=b,
+        c=c
+        # A_dynamics=Ad,
+    )
+    # data_scs = {
+    #     'P': csc_matrix(np.zeros((n, n))),
+    #     'A': data['A'],
+    #     'b': data['b'],
+    #     'c': data['c'],
+    # }
+    # soln = scs.solve(data_scs, cones, verbose=True)
+    # pdb.set_trace()
+    return out_dict
+
+
+def single_q(thetas, m, n, p, q):
+    vec_M = thetas[1:]
+    mu = thetas[0]
+    M = jnp.reshape(vec_M, (p, q))
+
+    b = jnp.zeros(m)
+    b = b.at[:p*q].set(jnp.ravel(M.T))
+    b = b.at[3*p*q].set(mu)
+
+    c = jnp.zeros(n)
+    # psd_size = p + q
+
+    # vec_c_size = int(psd_size * (psd_size + 1) / 2)
+    # eye = jnp.eye(psd_size)
+    # I_vec = eye[jnp.triu_indices(psd_size)]
+    vec_c1_size = int(p * (p + 1) / 2)
+    eye1 = jnp.eye(p)
+    I1_vec = eye1[jnp.triu_indices(p)]
+
+    vec_c2_size = int(q * (q + 1) / 2)
+    eye2 = jnp.eye(q)
+    I2_vec = eye2[jnp.triu_indices(q)]
+
+    c = c.at[:vec_c1_size].set(0.5 * I1_vec)
+    c = c.at[vec_c1_size:vec_c1_size+vec_c2_size].set(0.5 * I2_vec)
+    # m, nvars = 0, 0
+    qvec = jnp.zeros(m + n)
+    qvec = qvec.at[:n].set(c)
+    qvec = qvec.at[n:].set(b)
+    # pdb.set_trace()
+    return qvec
+
+
+def symmvec(A):
+    # todo
+    return jnp.triu(A)
+
+
+if __name__ == "__main__":
+    test_robust_pca()

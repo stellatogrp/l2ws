@@ -3,6 +3,7 @@ import examples.markowitz as markowitz
 import examples.osc_mass as osc_mass
 import examples.vehicle as vehicle
 import examples.robust_kalman as robust_kalman
+import examples.robust_pca as robust_pca
 import hydra
 import pdb
 import cvxpy as cp
@@ -14,7 +15,7 @@ import numpy as np
 def main_setup_markowitz(cfg):
     markowitz.setup_probs(cfg)
 
-    
+
 @hydra.main(config_path='configs/osc_mass', config_name='osc_mass_setup.yaml')
 def main_setup_osc_mass(cfg):
     osc_mass.setup_probs(cfg)
@@ -28,6 +29,11 @@ def main_setup_vehicle(cfg):
 @hydra.main(config_path='configs/robust_kalman', config_name='robust_kalman_setup.yaml')
 def main_setup_robust_kalman(cfg):
     robust_kalman.setup_probs(cfg)
+
+
+@hydra.main(config_path='configs/robust_pca', config_name='robust_pca_setup.yaml')
+def main_setup_robust_pca(cfg):
+    robust_pca.setup_probs(cfg)
 
 
 if __name__ == '__main__':
@@ -54,3 +60,7 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'robust_kalman/data_setup_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_setup_robust_kalman()
+    elif sys.argv[1] == 'robust_pca':
+        sys.argv[1] = base + 'robust_pca/data_setup_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_setup_robust_pca()

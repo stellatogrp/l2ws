@@ -3,6 +3,7 @@ import examples.markowitz as markowitz
 import examples.osc_mass as osc_mass
 import examples.vehicle as vehicle
 import examples.robust_kalman as robust_kalman
+import examples.robust_pca as robust_pca
 import hydra
 import pdb
 import yaml
@@ -48,6 +49,19 @@ def main_run_robust_kalman(cfg):
     robust_kalman.run(cfg)
 
 
+@hydra.main(config_path='configs/robust_pca', config_name='robust_pca_run.yaml')
+def main_run_robust_pca(cfg):
+    orig_cwd = hydra.utils.get_original_cwd()
+    example = 'robust_pca'
+    agg_datetime = cfg.data.datetime
+    if agg_datetime == '':
+        # get the most recent datetime and update datetimes
+        agg_datetime = recover_last_datetime(orig_cwd, example, 'aggregate')
+        cfg.data.datetime = agg_datetime
+    copy_data_file(example, agg_datetime)
+    robust_pca.run(cfg)
+
+
 @hydra.main(config_path='configs/vehicle', config_name='vehicle_run.yaml')
 def main_run_vehicle(cfg):
     orig_cwd = hydra.utils.get_original_cwd()
@@ -85,3 +99,7 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'robust_kalman/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_run_robust_kalman()
+    elif sys.argv[1] == 'robust_pca':
+        sys.argv[1] = base + 'robust_pca/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_run_robust_pca()

@@ -1,29 +1,21 @@
-from ast import Return
 import functools
 import hydra
 import cvxpy as cp
-from jax import linear_transpose
-import pandas as pd
-from pandas import read_csv
-
-from l2ws.scs_problem import SCSinstance, scs_jax, ruiz_equilibrate
+from l2ws.scs_problem import SCSinstance, scs_jax
 import numpy as np
 import pdb
-
 from l2ws.launcher import Workspace
 from scipy import sparse
 import jax.numpy as jnp
-from scipy.sparse import coo_matrix, bmat, csc_matrix
+from scipy.sparse import csc_matrix
 import jax.scipy as jsp
 import time
 import matplotlib.pyplot as plt
 import os
 import scs
 import logging
-from scipy import sparse
 import yaml
-from jax import jit, vmap
-import cvxpy as cp
+from jax import vmap
 
 
 plt.rcParams.update(
@@ -125,7 +117,6 @@ def test_kalman():
     # plot_state(ts,(x_true, w_true),(x1, w1))
     # plot_positions([x_true, y_mat], ['True', 'Noisy'])
     # plot_positions([x_true, x1], ['True', 'KF recovery'])
-    
 
     # replace huber with socp, but cvxpy
     # x2, w2, v2 = cvxpy_manual(T, y_mat, gamma, dt, mu, rho)

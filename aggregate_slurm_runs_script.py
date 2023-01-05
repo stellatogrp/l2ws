@@ -9,11 +9,13 @@ import examples.markowitz as markowitz
 import examples.osc_mass as osc_mass
 import examples.vehicle as vehicle
 import examples.robust_kalman as robust_kalman
+import examples.robust_pca as robust_pca
 import yaml
 import numpy as np
 import time
 from utils.data_utils import recover_last_datetime
 # from l2ws.scs_problem import SCSinstance, scs_jax
+
 
 @hydra.main(config_path='configs/markowitz', config_name='markowitz_agg.yaml')
 def markowitz_main(cfg):
@@ -31,7 +33,7 @@ def markowitz_main(cfg):
         datetimes = [last_datetime]
 
         cfg = {'datetimes': datetimes}
-        
+
         # save the datetime to we can recover
         with open('agg_datetimes.yaml', 'w') as file:
             yaml.dump(cfg, file)
@@ -41,7 +43,7 @@ def markowitz_main(cfg):
     example = 'markowitz'
 
     # the location specified in the aggregation cfg file
-    
+
     data_yaml_filename = f"{orig_cwd}/outputs/{example}/data_setup_outputs/{datetime0}/.hydra/config.yaml"
 
     # read the yaml file
@@ -54,8 +56,10 @@ def markowitz_main(cfg):
     pen_ret = 10**setup_cfg['pen_rets_min']
     # extract M
     a = setup_cfg['a']
-    static_dict = markowitz.static_canon(setup_cfg['data'], a, setup_cfg['idio_risk'], setup_cfg['scale_factor'])
+    static_dict = markowitz.static_canon(
+        setup_cfg['data'], a, setup_cfg['idio_risk'], setup_cfg['scale_factor'])
     M = static_dict['M']
+
     def get_q(theta):
         q = jnp.zeros(2*a + 1)
         q = q.at[:a].set(-theta * pen_ret)
@@ -66,7 +70,6 @@ def markowitz_main(cfg):
     with open('data_setup_copied.yaml', 'w') as file:
         yaml.dump(setup_cfg, file)
     save_aggregate(static_flag, M, datetimes, example, get_q_batch)
-    
 
 
 @hydra.main(config_path='configs/osc_mass', config_name='osc_mass_agg.yaml')
@@ -87,7 +90,7 @@ def osc_mass_main(cfg):
         datetimes = [last_datetime]
 
         cfg = {'datetimes': datetimes}
-        
+
     # save the datetime to we can recover
     with open('agg_datetimes.yaml', 'w') as file:
         yaml.dump(cfg, file)
@@ -123,29 +126,28 @@ def osc_mass_main(cfg):
         yaml.dump(setup_cfg, file)
 
     static_dict = osc_mass.static_canon(T, nx, nu,
-                                    state_box,
-                                    control_box,
-                                    Q_val,
-                                    QT_val,
-                                    R_val,
-                                    Ad=Ad,
-                                    Bd=Bd)
+                                        state_box,
+                                        control_box,
+                                        Q_val,
+                                        QT_val,
+                                        R_val,
+                                        Ad=Ad,
+                                        Bd=Bd)
     A_sparse = static_dict['A_sparse']
     m, n = A_sparse.shape
     get_q_single = functools.partial(osc_mass.single_q,
-                                        m=m,
-                                        n=n,
-                                        T=T,
-                                        nx=nx,
-                                        nu=nu,
-                                        state_box=state_box,
-                                        control_box=control_box,
-                                        A_dynamics=Ad)
+                                     m=m,
+                                     n=n,
+                                     T=T,
+                                     nx=nx,
+                                     nu=nu,
+                                     state_box=state_box,
+                                     control_box=control_box,
+                                     A_dynamics=Ad)
     get_q = vmap(get_q_single, in_axes=0, out_axes=0)
     M = static_dict['M']
     static_flag = True
     save_aggregate(static_flag, M, datetimes, example, get_q)
-
 
 
 @hydra.main(config_path='configs/robust_kalman', config_name='robust_kalman_agg.yaml')
@@ -166,7 +168,7 @@ def robust_kalman_main(cfg):
         datetimes = [last_datetime]
 
         cfg = {'datetimes': datetimes}
-        
+
     # save the datetime to we can recover
     with open('agg_datetimes.yaml', 'w') as file:
         yaml.dump(cfg, file)
@@ -201,7 +203,6 @@ def robust_kalman_main(cfg):
     with open('data_setup_copied.yaml', 'w') as file:
         yaml.dump(setup_cfg, file)
 
-    
     static_dict = robust_kalman.static_canon(
         setup_cfg['T'],
         setup_cfg['gamma'],
@@ -213,11 +214,76 @@ def robust_kalman_main(cfg):
     # m, n = A_sparse.shape
 
     get_q_single = functools.partial(robust_kalman.single_q,
-                                        mu=setup_cfg['mu'],
-                                        rho=setup_cfg['rho'],
-                                        T=setup_cfg['T'],
-                                        gamma=setup_cfg['gamma'],
-                                        dt=setup_cfg['dt'])
+                                     mu=setup_cfg['mu'],
+                                     rho=setup_cfg['rho'],
+                                     T=setup_cfg['T'],
+                                     gamma=setup_cfg['gamma'],
+                                     dt=setup_cfg['dt'])
+    get_q = vmap(get_q_single, in_axes=0, out_axes=0)
+    M = static_dict['M']
+    static_flag = True
+    save_aggregate(static_flag, M, datetimes, example, get_q)
+
+
+@hydra.main(config_path='configs/robust_pca', config_name='robust_pca_agg.yaml')
+def robust_pca_main(cfg):
+    '''
+    given data and time of all the previous experiments
+    creates new folder with hydra
+    combines all the npz files into 1
+    '''
+    # access first datafile via the data_cfg file
+    example = 'robust_pca'
+    orig_cwd = hydra.utils.get_original_cwd()
+
+    datetimes = cfg.datetimes
+    if len(datetimes) == 0:
+        # get the most recent datetime and update datetimes
+        last_datetime = recover_last_datetime(orig_cwd, example, 'data_setup')
+        datetimes = [last_datetime]
+
+        cfg = {'datetimes': datetimes}
+
+    # save the datetime to we can recover
+    with open('agg_datetimes.yaml', 'w') as file:
+        yaml.dump(cfg, file)
+
+    datetime0 = datetimes[0]
+
+    folder = f"{orig_cwd}/outputs/{example}/data_setup_outputs/{datetime0}"
+    folder_entries = os.listdir(folder)
+    entry = folder_entries[0]
+
+    '''
+    the next line is not right -- need to get the setup cfg file from
+    '''
+    #    the location specified in the aggregation cfg file
+    data_yaml_filename = f"{orig_cwd}/outputs/{example}/data_setup_outputs/{datetime0}/.hydra/config.yaml"
+
+    # read the yaml file
+    with open(data_yaml_filename, "r") as stream:
+        try:
+            setup_cfg = yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+            setup_cfg = {}
+
+    # save the data setup cfg file in the aggregate folder
+    with open('data_setup_copied.yaml', 'w') as file:
+        yaml.dump(setup_cfg, file)
+
+    static_dict = robust_pca.static_canon(
+        setup_cfg['p'],
+        setup_cfg['q']
+    )
+    A_sparse = static_dict['A_sparse']
+    m, n = A_sparse.shape
+
+    get_q_single = functools.partial(robust_pca.single_q,
+                                     m=m,
+                                     n=n,
+                                     p=setup_cfg['p'],
+                                     q=setup_cfg['q'])
     get_q = vmap(get_q_single, in_axes=0, out_axes=0)
     M = static_dict['M']
     static_flag = True
@@ -363,7 +429,7 @@ def save_aggregate(static_flag, M, datetimes, example, get_q):
                 q_mat_list.append(q_mat)
                 x_stars_list.append(x_stars)
                 y_stars_list.append(y_stars)
-        
+
     thetas = jnp.vstack(thetas_list)
     x_stars = jnp.vstack(x_stars_list)
     y_stars = jnp.vstack(y_stars_list)
@@ -385,17 +451,17 @@ def save_aggregate(static_flag, M, datetimes, example, get_q):
         @jit
         def inv(M_in):
             return jnp.linalg.inv(M_in + jnp.eye(m+n))
-        batch_inv  = vmap(inv, in_axes=(0), out_axes=(0))
+        batch_inv = vmap(inv, in_axes=(0), out_axes=(0))
         print('inverting...')
         t0 = time.time()
 
         matrix_invs_tensor = batch_inv(M_tensors)
-        
+
         t1 = time.time()
         print('inversion time', t1 - t0)
         print('M tensor shape', M_tensor.shape)
         print('q mat shape', q_mat.shape)
-        
+
         M_tensor = jnp.vstack(M_tensor_list)
         w_stars = batch_get_w_star_Mq(x_stars, y_stars, M_tensor, q_mat)
         jnp.savez(output_filename,
@@ -441,3 +507,10 @@ if __name__ == '__main__':
             'robust_kalman/aggregate_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         robust_kalman_main()
+    elif sys.argv[1] == 'robust_pca':
+        # step 1. remove the markowitz argument -- otherwise hydra uses it as an override
+        # step 2. add the train_outputs/... argument for train_outputs not outputs
+        sys.argv[1] = base + \
+            'robust_pca/aggregate_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        robust_pca_main()
