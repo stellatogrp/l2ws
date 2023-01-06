@@ -349,14 +349,15 @@ def create_loss_fn(input_dict):
         #
         return z, u, v
 
-    def predict(params, input, q, iters, factor, M):
+    # def predict(params, input, q, iters, factor, M):
+    def predict(params, input, q, iters, factor, M, z_star):
         P, A = M[:n, :n], -M[n:, :n]
         b, c = q[n:], q[:n]
 
         if prediction_variable == 'w':
             uu = predict_y(params, input)
-            w0 = M@uu + uu + q
-            # w0 = uu
+            # w0 = M@uu + uu + q
+            w0 = uu
             x_primal = w0
         elif prediction_variable == 'x':
             # w0, x_primal = get_w0(params, input, q)
@@ -425,7 +426,17 @@ def create_loss_fn(input_dict):
         u_temp = 2*u_tilde - z
         u = proj(u_temp)
         z_next = z + u - u_tilde
-        loss = jnp.linalg.norm(z_next - z)
+
+        # loss = jnp.linalg.norm(z_next - z)
+        loss = jnp.linalg.norm(z_next - z_star)
+
+        # u_tilde2 = lin_sys_solve(factor, z_next - q)
+        # u_temp2 = 2*u_tilde2 - z_next
+        # u2 = proj(u_temp2)
+        # z_next2 = z_next + u2 - u_tilde2
+
+        # loss = jnp.linalg.norm(z_next2 - z_next) + jnp.linalg.norm(z_next2 - z_next) / jnp.linalg.norm(z_next - z)
+
         out = x_primal, z_next, u, all_x_primals
 
         if diff_required:
@@ -443,12 +454,16 @@ def create_loss_fn(input_dict):
                                           factor=factor_static,
                                           M=M_static
                                           )
+        # batch_predict = vmap(predict_final, in_axes=(
+        #     None, 0, 0, None), out_axes=out_axes)
         batch_predict = vmap(predict_final, in_axes=(
-            None, 0, 0, None), out_axes=out_axes)
+            None, 0, 0, None, 0), out_axes=out_axes)
 
-        # @functools.partial(jax.jit, static_argnums=(3,))
+        # def loss_fn(params, inputs, q, iters):
         def loss_fn(params, inputs, q, iters):
             if diff_required:
+                losses, iter_losses, angles, out = batch_predict(
+                    params, inputs, q, iters, z_star)
                 losses, iter_losses, angles, out = batch_predict(
                     params, inputs, q, iters)
                 loss_out = out, losses, iter_losses, angles

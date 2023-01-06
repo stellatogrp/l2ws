@@ -400,7 +400,7 @@ class Workspace:
         if col != 'no_train':
             plt.plot(self.iters_df['fixed_ws'], 'm-', label='naive warm start')
         if plot_pretrain:
-            plt.plot(self.iters_df['pretrain'], 'r+', label='pretraining')
+            plt.plot(self.iters_df['pretrain'], 'r-', label='pretraining')
         if col != 'no_train' and col != 'pretrain' and col != 'fixed_ws':
             plt.plot(self.iters_df[col], label=f"train k={self.train_unrolls}")
         plt.yscale('log')
@@ -458,8 +458,8 @@ class Workspace:
                 theta[1:] = angles[i, j, angle+1:]
 
                 # ax.plot(np.cumsum(theta), r)
-                # ax.plot(theta[1:], r[1:], label=f"anchor={angle}") # ignore first point
-                ax.plot(theta, r, label=f"anchor={angle}")
+                ax.plot(theta[3:], r[3:], label=f"anchor={angle}") # ignore first point
+                # ax.plot(theta, r, label=f"anchor={angle}")
                 ax.plot(theta[self.train_unrolls-angle], r[self.train_unrolls-angle], 'r+')
                 # ax.set_rmax(2)
                 # ax.set_rticks([0.5, 1, 1.5, 2])  # Less radial ticks
@@ -491,6 +491,7 @@ class Workspace:
         '''
         no learning evaluation
         '''
+        pretrain_on = self.pretrain_cfg.pretrain_iters > 0
         out_train_start = self.evaluate_iters(
             self.num_samples, 'no_train', train=True, plot_pretrain=False)
 
@@ -500,7 +501,7 @@ class Workspace:
         out_train_fixed_ws = self.evaluate_iters(
             self.num_samples, 'fixed_ws', train=True, plot_pretrain=False)
 
-        if self.pretrain_cfg.pretrain_iters > 0:
+        if pretrain_on:
             print("Pretraining...")
             self.df_pretrain = pd.DataFrame(
                 columns=['pretrain_loss', 'pretrain_test_loss'])
@@ -508,7 +509,7 @@ class Workspace:
                                                                                    stepsize=self.pretrain_cfg.pretrain_stepsize,
                                                                                    df_pretrain=self.df_pretrain)
             out_train_fixed_ws = self.evaluate_iters(
-                self.num_samples, 'pretrain', train=False, plot_pretrain=True)
+                self.num_samples, 'pretrain', train=True, plot_pretrain=pretrain_on)
         # plt.plot(train_pretrain_losses, label='train')
         # plt.plot(test_pretrain_losses, label='test')
         # plt.yscale('log')
@@ -550,7 +551,7 @@ class Workspace:
                 curr_iter += 1
             if epoch % self.eval_every_x_epochs == 0:
                 out_train = self.evaluate_iters(
-                    self.num_samples, f"train_iter_{curr_iter}", train=True)
+                    self.num_samples, f"train_iter_{curr_iter}", train=True, plot_pretrain=pretrain_on)
                 # out_trains.append(out_train)
             self.l2ws_model.epoch += 1
 
