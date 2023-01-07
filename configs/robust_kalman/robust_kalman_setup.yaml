@@ -1,10 +1,10 @@
-T: 100
+T: 50
 mu: 2
 rho: 2
 gamma: .05
 solve_acc: 1e-4
 dt: .5
 sigma: 20
-p: 0
+p: 0.1
 N_train: 1000
 N_test: 200

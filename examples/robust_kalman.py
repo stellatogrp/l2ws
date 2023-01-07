@@ -630,6 +630,7 @@ def setup_probs(setup_cfg):
     for i in range(5):
         plt.plot(x_stars[i, :])
     plt.savefig("opt_solutions.pdf")
+    plt.clf()
 
     # save plot of first 5 parameters
     for i in range(5):

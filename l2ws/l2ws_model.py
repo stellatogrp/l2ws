@@ -50,6 +50,7 @@ class L2WSmodel(object):
         self.q_mat_test = dict['q_mat_test']
 
         self.angle_anchors = dict['angle_anchors']
+        self.supervised = dict['supervised']
 
         self.m, self.n = dict['m'], dict['n']
 
@@ -88,7 +89,8 @@ class L2WSmodel(object):
                            'M_static': self.static_M,
                            'factor_static': self.static_algo_factor,
                            'diff_required': True,
-                           'angle_anchors': self.angle_anchors
+                           'angle_anchors': self.angle_anchors,
+                           'supervised': self.supervised
                            }
         eval_loss_dict = {'static_flag': self.static_flag,
                           'lin_sys_solve': lin_sys_solve,
@@ -100,7 +102,8 @@ class L2WSmodel(object):
                           'M_static': self.static_M,
                           'factor_static': self.static_algo_factor,
                           'diff_required': False,
-                          'angle_anchors': self.angle_anchors
+                          'angle_anchors': self.angle_anchors,
+                          'supervised': self.supervised
                           }
         fixed_ws_dict = {'static_flag': self.static_flag,
                           'lin_sys_solve': lin_sys_solve,
@@ -112,7 +115,8 @@ class L2WSmodel(object):
                           'M_static': self.static_M,
                           'factor_static': self.static_algo_factor,
                           'diff_required': False,
-                          'angle_anchors': self.angle_anchors
+                          'angle_anchors': self.angle_anchors,
+                          'supervised': self.supervised
                           }
         self.loss_fn_train = create_loss_fn(train_loss_dict)
         self.loss_fn_eval = create_loss_fn(eval_loss_dict)
@@ -203,6 +207,7 @@ class L2WSmodel(object):
     def train_batch(self, batch_indices, decay_lr_flag=False, writer=None, logf=None):
         batch_inputs = self.train_inputs[batch_indices, :]
         batch_q_data = self.q_mat_train[batch_indices, :]
+        batch_z_stars = self.w_stars_train[batch_indices, :]
 
         # check if we need to update lr
         if decay_lr_flag:
@@ -221,7 +226,8 @@ class L2WSmodel(object):
                                             state=self.state,
                                             inputs=batch_inputs,
                                             q=batch_q_data,
-                                            iters=self.train_unrolls)
+                                            iters=self.train_unrolls,
+                                            z_stars=batch_z_stars)
         else:
             batch_inv_data = self.matrix_invs_train[batch_indices, :, :]
             batch_M_data = self.M_tensor_train[batch_indices, :, :]
@@ -245,7 +251,8 @@ class L2WSmodel(object):
         if self.static_flag:
             test_loss, test_out, time_per = self.evaluate(self.train_unrolls,
                                                           self.test_inputs,
-                                                          self.q_mat_test)
+                                                          self.q_mat_test,
+                                                          self.w_stars_test)
         else:
             eval_out = self.dynamic_eval(self.train_unrolls,
                                          self.test_inputs,
@@ -253,7 +260,7 @@ class L2WSmodel(object):
                                          self.M_tensor_test,
                                          self.q_mat_test)
             test_loss, test_out, time_per = eval_out
-
+        # test_loss = 0
         row = np.array([self.state.value, test_loss])
         self.train_data.append(pd.Series(row))
         self.tr_losses_batch.append(self.state.value)
@@ -269,15 +276,18 @@ class L2WSmodel(object):
             })
             logf.flush()
 
-    def evaluate(self, k, inputs, q, tag='test', fixed_ws=False):
+    # def evaluate(self, k, inputs, q, tag='test', fixed_ws=False):
+    def evaluate(self, k, inputs, q, z_stars, tag='test', fixed_ws=False):
         if fixed_ws:
             curr_loss_fn = self.loss_fn_fixed_ws
         else:
             curr_loss_fn = self.loss_fn_eval
         num_probs, _ = inputs.shape
         test_time0 = time.time()
+        # loss, out = curr_loss_fn(
+        #     self.params, inputs, q, k)
         loss, out = curr_loss_fn(
-            self.params, inputs, q, k)
+            self.params, inputs, q, k, z_stars)
         time_per_prob = (time.time() - test_time0)/num_probs
         print('eval time per prob', time_per_prob)
         print(f"[Epoch {self.epoch}] [k {k}] {tag} loss: {loss:.6f}")
@@ -335,6 +345,7 @@ def create_loss_fn(input_dict):
     prediction_variable = input_dict['prediction_variable']
     diff_required = input_dict['diff_required']
     angle_anchors = input_dict['angle_anchors']
+    supervised = input_dict['supervised']
 
     # if dynamic, the next 2 set to None
     M_static, factor_static = input_dict['M_static'], input_dict['factor_static']
@@ -350,7 +361,7 @@ def create_loss_fn(input_dict):
         return z, u, v
 
     # def predict(params, input, q, iters, factor, M):
-    def predict(params, input, q, iters, factor, M, z_star):
+    def predict(params, input, q, iters, z_star, factor, M):
         P, A = M[:n, :n], -M[n:, :n]
         b, c = q[n:], q[:n]
 
@@ -427,8 +438,10 @@ def create_loss_fn(input_dict):
         u = proj(u_temp)
         z_next = z + u - u_tilde
 
-        # loss = jnp.linalg.norm(z_next - z)
-        loss = jnp.linalg.norm(z_next - z_star)
+        if supervised:
+            loss = jnp.linalg.norm(z_next - z_star)
+        else:
+            loss = jnp.linalg.norm(z_next - z)
 
         # u_tilde2 = lin_sys_solve(factor, z_next - q)
         # u_temp2 = 2*u_tilde2 - z_next
@@ -460,17 +473,19 @@ def create_loss_fn(input_dict):
             None, 0, 0, None, 0), out_axes=out_axes)
 
         # def loss_fn(params, inputs, q, iters):
-        def loss_fn(params, inputs, q, iters):
+        def loss_fn(params, inputs, q, iters, z_stars):
             if diff_required:
+                # losses, iter_losses, angles, out = batch_predict(
+                #     params, inputs, q, iters)
                 losses, iter_losses, angles, out = batch_predict(
-                    params, inputs, q, iters, z_star)
-                losses, iter_losses, angles, out = batch_predict(
-                    params, inputs, q, iters)
+                    params, inputs, q, iters, z_stars)
                 loss_out = out, losses, iter_losses, angles
 
             else:
+                # losses, iter_losses, angles, primal_residuals, dual_residuals, out = batch_predict(
+                #     params, inputs, q, iters)
                 losses, iter_losses, angles, primal_residuals, dual_residuals, out = batch_predict(
-                    params, inputs, q, iters)
+                    params, inputs, q, iters, z_stars)
                 loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
 
             return losses.mean(), loss_out

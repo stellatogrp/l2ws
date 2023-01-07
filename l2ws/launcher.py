@@ -78,6 +78,7 @@ class Workspace:
         self.pretrain_cfg = cfg.pretrain
         self.prediction_variable = cfg.prediction_variable
         self.angle_anchors = cfg.angle_anchors
+        self.supervised = cfg.supervised
 
         '''
         from the run cfg retrieve the following via the data cfg
@@ -283,7 +284,8 @@ class Workspace:
                       'matrix_invs_train': matrix_invs_train,
                       'matrix_invs_test': matrix_invs_test,
                       #   'dynamic_algo_factors': matrix_invs,
-                      'angle_anchors': self.angle_anchors
+                      'angle_anchors': self.angle_anchors,
+                      'supervised': self.supervised
                       }
 
         self.l2ws_model = L2WSmodel(input_dict)
@@ -302,6 +304,7 @@ class Workspace:
                 eval_out = self.l2ws_model.evaluate(self.eval_unrolls,
                                                     self.l2ws_model.train_inputs[:num, :],
                                                     self.l2ws_model.q_mat_train[:num, :],
+                                                    self.l2ws_model.w_stars_train[:num, :],
                                                     tag='train')
             else:
                 eval_out = self.l2ws_model.dynamic_eval(self.eval_unrolls,
@@ -510,14 +513,14 @@ class Workspace:
                                                                                    df_pretrain=self.df_pretrain)
             out_train_fixed_ws = self.evaluate_iters(
                 self.num_samples, 'pretrain', train=True, plot_pretrain=pretrain_on)
-        # plt.plot(train_pretrain_losses, label='train')
-        # plt.plot(test_pretrain_losses, label='test')
-        # plt.yscale('log')
-        # plt.xlabel('pretrain iterations')
-        # plt.ylabel('pretrain loss')
-        # plt.legend()
-        # plt.savefig('pretrain_losses.pdf')
-        # plt.clf()
+            plt.plot(train_pretrain_losses, label='train')
+            plt.plot(test_pretrain_losses, label='test')
+            plt.yscale('log')
+            plt.xlabel('pretrain iterations')
+            plt.ylabel('pretrain loss')
+            plt.legend()
+            plt.savefig('pretrain_losses.pdf')
+            plt.clf()
 
         self.logf = open('train_results.csv', 'a')
         fieldnames = ['iter', 'train_loss', 'moving_avg_train', 'test_loss']
@@ -568,4 +571,13 @@ class Workspace:
             plt.ylabel('fixed point residual average')
             plt.legend()
             plt.savefig('losses_over_training.pdf', bbox_inches='tight')
+            plt.clf()
+
+            plt.plot(epoch_axis, batch_losses, label='train')
+            # plt.plot(epoch_axis, te_losses, label='test')
+            plt.yscale('log')
+            plt.xlabel('epochs')
+            plt.ylabel('fixed point residual average')
+            plt.legend()
+            plt.savefig('train_losses_over_training.pdf', bbox_inches='tight')
             plt.clf()
