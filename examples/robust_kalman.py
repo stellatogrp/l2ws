@@ -551,7 +551,7 @@ def setup_probs(setup_cfg):
 
     data = dict(P=P_sparse, A=A_sparse, b=b, c=c)
     tol = cfg.solve_acc
-    solver = scs.SCS(data, cones_dict, eps_abs=tol, eps_rel=tol)
+    solver = scs.SCS(data, cones_dict, eps_abs=tol, eps_rel=0)
     solve_times = np.zeros(N)
     x_stars = jnp.zeros((N, n))
     y_stars = jnp.zeros((N, m))
@@ -600,17 +600,21 @@ def setup_probs(setup_cfg):
         solve_times[i] = scs_instance.solve_time
 
         ############ check with our jax implementation
-        # P_jax = jnp.array(P_sparse.todense())
-        # A_jax = jnp.array(A_sparse.todense())
-        # c_jax, b_jax = jnp.array(c), jnp.array(b)
-        # data = dict(P=P_jax, A=A_jax, b=b_jax, c=c_jax, cones=cones_dict)
-        # # data['x'] = x_stars[i, :]
-        # # data['y'] = y_stars[i, :]
-        # x_jax, y_jax, s_jax = scs_jax(data, iters=1000)
+        P_jax = jnp.array(P_sparse.todense())
+        A_jax = jnp.array(A_sparse.todense())
+        c_jax, b_jax = jnp.array(c), jnp.array(b)
+        data = dict(P=P_jax, A=A_jax, b=b_jax, c=c_jax, cones=cones_dict)
+        disturbance_x = np.random.normal(size=(n))
+        disturbance_x = disturbance_x / np.linalg.norm(disturbance_x) * 1e-2
+        disturbance_y = np.random.normal(size=(m))
+        disturbance_y = disturbance_y / np.linalg.norm(disturbance_y) * 1e-2
+        data['x'] = x_stars[i, :] + disturbance_x
+        data['y'] = y_stars[i, :] + disturbance_y
+        x_jax, y_jax, s_jax = scs_jax(data, iters=1000)
 
         ############
         # qq = single_q(x_init_mat[0, :], m, n, cfg.T, cfg.nx, cfg.nu, cfg.state_box, cfg.control_box, Ad)
-        # pdb.set_trace()
+        pdb.set_trace()
 
     # resave the data??
     # print('saving final data...', flush=True)
