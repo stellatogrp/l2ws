@@ -1,5 +1,5 @@
 nn_cfg:
-  lr: 1e-4
+  lr: 1e-10
   method: adam
   intermediate_layer_sizes: [500, 500]
   batch_size: 1000
@@ -10,8 +10,9 @@ nn_cfg:
 
 pretrain:
   pretrain_method: adam
-  pretrain_stepsize: .0001
-  pretrain_iters: 500
+  pretrain_stepsize: 1e-5
+  pretrain_iters: 1e5
+  pretrain_batches: 10
 
 data:
   datetime: ''
@@ -19,7 +20,7 @@ data:
 train_unrolls: 20
 eval_unrolls: 500
 eval_every_x_epochs: 10
-N_train: 10
+N_train: 100
 N_test: 20
 num_samples: 20
 prediction_variable: w

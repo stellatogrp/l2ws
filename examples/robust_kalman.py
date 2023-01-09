@@ -16,6 +16,7 @@ import scs
 import logging
 import yaml
 from jax import vmap
+import pandas as pd
 
 
 plt.rcParams.update(
@@ -550,8 +551,9 @@ def setup_probs(setup_cfg):
     """
 
     data = dict(P=P_sparse, A=A_sparse, b=b, c=c)
-    tol = cfg.solve_acc
-    solver = scs.SCS(data, cones_dict, eps_abs=tol, eps_rel=tol)
+    tol_abs = cfg.solve_acc_abs
+    tol_rel = cfg.solve_acc_rel
+    solver = scs.SCS(data, cones_dict, eps_abs=tol_abs, eps_rel=tol_rel)
     solve_times = np.zeros(N)
     x_stars = jnp.zeros((N, n))
     y_stars = jnp.zeros((N, m))
@@ -620,8 +622,13 @@ def setup_probs(setup_cfg):
         output_filename,
         thetas=thetas,
         x_stars=x_stars,
-        y_stars=y_stars,
+        y_stars=y_stars
     )
+
+    # save solve times
+    df_solve_times = pd.DataFrame(solve_times, columns=['solve_times'])
+    df_solve_times.to_csv('solve_times.csv')
+
     # print(f"finished saving final data... took {save_time-t0}'", flush=True)
     save_time = time.time()
     log.info(f"finished saving final data... took {save_time-t0}'")

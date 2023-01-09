@@ -151,23 +151,25 @@ class L2WSmodel(object):
         self.te_losses = []
         
 
-    def pretrain(self, num_iters, stepsize=.001, method='adam', df_pretrain=None):
+    def pretrain(self, num_iters, stepsize=.001, method='adam', df_pretrain=None, batches=1):
         # create pretrain function
         def pretrain_loss(params, inputs, targets):
             y_dual = self.batched_predict_y(params, inputs)
             pretrain_loss = jnp.mean(jnp.sum((y_dual - targets)**2, axis=1))
             return pretrain_loss
 
+        maxiters = int(num_iters / batches)
+
         if method == 'adam':
             optimizer_pretrain = OptaxSolver(
-                opt=optax.adam(stepsize), fun=pretrain_loss, jit=True)
+                opt=optax.adam(stepsize), fun=pretrain_loss, jit=True, maxiter=maxiters)
         elif method == 'sgd':
             optimizer_pretrain = OptaxSolver(
-                opt=optax.sgd(stepsize), fun=pretrain_loss, jit=True)
+                opt=optax.sgd(stepsize), fun=pretrain_loss, jit=True, maxiter=maxiters)
         state = optimizer_pretrain.init_state(self.params)
         params = self.params
-        pretrain_losses = np.zeros(num_iters)
-        pretrain_test_losses = np.zeros(num_iters)
+        pretrain_losses = np.zeros(batches)
+        pretrain_test_losses = np.zeros(batches)
 
         if self.prediction_variable == 'w':
             train_targets = self.w_stars_train
@@ -176,29 +178,64 @@ class L2WSmodel(object):
             train_targets = self.x_stars_train
             test_targets = self.x_stars_test
 
-        for _ in range(num_iters):
-            out = optimizer_pretrain.update(params=params,
-                                            state=state,
+        # get initial losses
+        # init_pretrain_test_loss = pretrain_loss(
+        #         params, self.test_inputs, test_targets)
+        # init_pretrain_loss = pretrain_loss(
+        #         params, self.train_inputs, train_targets)
+
+        # pretrain_losses = np.array([init_pretrain_loss])
+        # pretrain_test_losses = np.array([init_pretrain_test_loss])
+        for i in range(batches):
+            out = optimizer_pretrain.run(init_params=params,
                                             inputs=self.train_inputs,
                                             targets=train_targets)
-
-            params, state = out
-
-            pretrain_losses[_] = state.value
-
-            pretrain_test_losses[_] = pretrain_loss(
+            params = out.params
+            state = out.state
+            curr_pretrain_test_loss = pretrain_loss(
                 params, self.test_inputs, test_targets)
-            if _ % 10 == 0:
-                print(
-                    f"[Step {state.iter_num}] train loss: {state.value:.6f}")
-                print(
-                    f"[Step {state.iter_num}] test loss: {pretrain_test_losses[_]:.6f}")
-            if df_pretrain is not None:
-                data = np.vstack([pretrain_losses, pretrain_test_losses])
-                data = data.T
-                df_pretrain = pd.DataFrame(
-                    data, columns=['pretrain losses', 'pretrain_test_losses'])
-                df_pretrain.to_csv('pretrain_results.csv')
+            pretrain_losses[i] = state.value
+            pretrain_test_losses[i] = curr_pretrain_test_loss
+            data = np.vstack([pretrain_losses, pretrain_test_losses])
+            data = data.T
+            df_pretrain = pd.DataFrame(
+                        data, columns=['pretrain losses', 'pretrain_test_losses'])
+            df_pretrain.to_csv('pretrain_results.csv')
+
+        # final_pretrain_test_loss = pretrain_loss(
+        #         params, self.test_inputs, test_targets)
+
+        # pretrain_losses = np.array([init_pretrain_loss, state.value])
+        # pretrain_test_losses = np.array([init_pretrain_test_loss, final_pretrain_test_loss])
+        # data = np.vstack([pretrain_losses, pretrain_test_losses])
+        # data = data.T
+        # df_pretrain = pd.DataFrame(
+        #             data, columns=['pretrain losses', 'pretrain_test_losses'])
+        # df_pretrain.to_csv('pretrain_results.csv')
+
+        # for _ in range(num_iters):
+        #     out = optimizer_pretrain.update(params=params,
+        #                                     state=state,
+        #                                     inputs=self.train_inputs,
+        #                                     targets=train_targets)
+
+        #     params, state = out
+
+        #     pretrain_losses[_] = state.value
+
+        #     pretrain_test_losses[_] = pretrain_loss(
+        #         params, self.test_inputs, test_targets)
+        #     if _ % 10 == 0:
+        #         print(
+        #             f"[Step {state.iter_num}] train loss: {state.value:.6f}")
+        #         print(
+        #             f"[Step {state.iter_num}] test loss: {pretrain_test_losses[_]:.6f}")
+        #     if df_pretrain is not None:
+        #         data = np.vstack([pretrain_losses, pretrain_test_losses])
+        #         data = data.T
+        #         df_pretrain = pd.DataFrame(
+        #             data, columns=['pretrain losses', 'pretrain_test_losses'])
+        #         df_pretrain.to_csv('pretrain_results.csv')
 
         self.params = params
         self.state = state
@@ -249,7 +286,7 @@ class L2WSmodel(object):
             f"[Step {self.state.iter_num}] train loss: {self.state.value:.6f}")
 
         if self.static_flag:
-            test_loss, test_out, time_per = self.evaluate(self.train_unrolls,
+            test_loss, test_out, time_per_prob = self.evaluate(self.train_unrolls,
                                                           self.test_inputs,
                                                           self.q_mat_test,
                                                           self.w_stars_test)
@@ -259,8 +296,10 @@ class L2WSmodel(object):
                                          self.matrix_invs_test,
                                          self.M_tensor_test,
                                          self.q_mat_test)
-            test_loss, test_out, time_per = eval_out
-        # test_loss = 0
+            test_loss, test_out, time_per_prob = eval_out
+
+        time_per_iter = time_per_prob / self.train_unrolls
+
         row = np.array([self.state.value, test_loss])
         self.train_data.append(pd.Series(row))
         self.tr_losses_batch.append(self.state.value)
@@ -272,7 +311,8 @@ class L2WSmodel(object):
                 'iter': self.state.iter_num,
                 'train_loss': self.state.value,
                 'moving_avg_train': moving_avg_train,
-                'test_loss': test_loss
+                'test_loss': test_loss,
+                'time_per_iter': time_per_iter
             })
             logf.flush()
 
