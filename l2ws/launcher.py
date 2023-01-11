@@ -300,19 +300,54 @@ class Workspace:
     def evaluate_iters(self, num, col, train=False, plot=True, plot_pretrain=False):
         fixed_ws = col == 'fixed_ws'
         if train:
+            if fixed_ws:
+                '''
+                find closest train point
+                neural network input
+                '''
+
+                # compute distances to train inputs
+                distances = distance_matrix(
+                    np.array(self.l2ws_model.train_inputs[:num, :]), np.array(self.l2ws_model.train_inputs))
+                print('distances', distances)
+                indices = np.argmin(distances, axis=1)
+                print('indices', indices)
+                best_val = np.min(distances, axis=1)
+                print('best val', best_val)
+                plt.plot(indices)
+                plt.savefig(f"indices_plot.pdf", bbox_inches='tight')
+                plt.clf()
+
+                inputs = self.l2ws_model.w_stars_train[indices, :]
+
+            elif col == 'no_train':
+                # random init with neural network
+                # _, predict_size = self.l2ws_model.w_stars_test.shape
+                # random_start = .05*np.random.normal(size=(num, predict_size))
+                # inputs = jnp.array(random_start)
+                # fixed_ws = True
+
+                inputs = self.l2ws_model.train_inputs[:num, :]
+                fixed_ws = False
+            else:
+                inputs = self.l2ws_model.train_inputs[:num, :]
             if self.l2ws_model.static_flag:
                 eval_out = self.l2ws_model.evaluate(self.eval_unrolls,
-                                                    self.l2ws_model.train_inputs[:num, :],
+                                                    # self.l2ws_model.train_inputs[:num, :],
+                                                    inputs,
                                                     self.l2ws_model.q_mat_train[:num, :],
                                                     self.l2ws_model.w_stars_train[:num, :],
-                                                    tag='train')
+                                                    tag='train',
+                                                    fixed_ws=fixed_ws)
             else:
                 eval_out = self.l2ws_model.dynamic_eval(self.eval_unrolls,
-                                                        self.l2ws_model.train_inputs[:num, :],
+                                                        # self.l2ws_model.train_inputs[:num, :],
+                                                        inputs,
                                                         self.l2ws_model.matrix_invs_train[:num, :],
                                                         self.l2ws_model.M_tensor_train[:num, :],
                                                         self.l2ws_model.q_mat_train[:num, :],
-                                                        tag='train')
+                                                        tag='train',
+                                                        fixed_ws=fixed_ws)
         else:
             if fixed_ws:
                 '''
@@ -446,32 +481,47 @@ class Workspace:
         num_angles = len(self.angle_anchors)
         for i in range(5):
             fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+            # fig2, ax2 = plt.subplots(subplot_kw={'projection': 'polar'})
             for j in range(num_angles):
                 angle = self.angle_anchors[j]
-                # r = out_train[2][i, angle-1:-1]
-                # print('out_train[2]', out_train[2].shape)
-                # print('angles', angles.shape)
-                # r = out_train[2][i, angle-1:-1]
                 r = out_train[2][i, angle:-1]
                 theta = np.zeros(r.size)
-                # theta[1:] = angles[i, 1:]
-                # print('r', r.shape)
-                # print('angles[i, j, angle-1+1:]', angles[i, j, angle+1:].shape)
-                # print('angle', angle)
                 theta[1:] = angles[i, j, angle+1:]
-
-                # ax.plot(np.cumsum(theta), r)
-                ax.plot(theta[3:], r[3:], label=f"anchor={angle}") # ignore first point
-                # ax.plot(theta, r, label=f"anchor={angle}")
+                # ax.plot(theta[3:], r[3:], label=f"ref={angle}") # ignore first point
+                ax.plot(theta, r, label=f"anchor={angle}")
                 ax.plot(theta[self.train_unrolls-angle], r[self.train_unrolls-angle], 'r+')
-                # ax.set_rmax(2)
-                # ax.set_rticks([0.5, 1, 1.5, 2])  # Less radial ticks
-                # ax.set_rlabel_position(-22.5)  # Move radial labels away from plotted line
-                ax.grid(True)
-                ax.set_rscale('symlog')
-                ax.set_title("A line plot on a polar axis", va='bottom')
+
+                # r2 is just iters -- to remove magnitude for visibility
+                # r2 = theta.size - np.arange(theta.size)
+                # ax2.plot(theta, r2, label=f"anchor={angle}")
+                # ax2.plot(theta[self.train_unrolls-angle], r2[self.train_unrolls-angle], 'r+')
+            ax.grid(True)
+            ax.set_rscale('symlog')
+            ax.set_title("Magnitude", va='bottom')
             plt.legend()
-            plt.savefig(f"polar/{col}/prob_{i}.pdf")
+            plt.savefig(f"polar/{col}/prob_{i}_mag.pdf")
+            plt.clf()
+
+        for i in range(5):
+            fig2, ax2 = plt.subplots(subplot_kw={'projection': 'polar'})
+            for j in range(num_angles):
+                angle = self.angle_anchors[j]
+                r = out_train[2][i, angle:-1]
+                theta = np.zeros(r.size)
+                theta[1:] = angles[i, j, angle+1:]
+                # ax.plot(theta[3:], r[3:], label=f"ref={angle}") # ignore first point
+                # ax.plot(theta, r, label=f"anchor={angle}")
+                # ax.plot(theta[self.train_unrolls-angle], r[self.train_unrolls-angle], 'r+')
+
+                # r2 is just iters -- to remove magnitude for visibility
+                r2 = theta.size - np.arange(theta.size)
+                ax2.plot(theta, r2, label=f"anchor={angle}")
+                ax2.plot(theta[self.train_unrolls-angle], r2[self.train_unrolls-angle], 'r+')
+            ax2.grid(True)
+            ax2.set_rscale('symlog')
+            ax2.set_title("Iterations", va='bottom')
+            plt.legend()
+            plt.savefig(f"polar/{col}/prob_{i}_iters.pdf")
             plt.clf()
 
         return out_train
@@ -510,7 +560,8 @@ class Workspace:
                 columns=['pretrain_loss', 'pretrain_test_loss'])
             train_pretrain_losses, test_pretrain_losses = self.l2ws_model.pretrain(self.pretrain_cfg.pretrain_iters,
                                                                                    stepsize=self.pretrain_cfg.pretrain_stepsize,
-                                                                                   df_pretrain=self.df_pretrain)
+                                                                                   df_pretrain=self.df_pretrain,
+                                                                                   batches=self.pretrain_cfg.pretrain_batches)
             out_train_fixed_ws = self.evaluate_iters(
                 self.num_samples, 'pretrain', train=True, plot_pretrain=pretrain_on)
             plt.plot(train_pretrain_losses, label='train')
@@ -523,7 +574,7 @@ class Workspace:
             plt.clf()
 
         self.logf = open('train_results.csv', 'a')
-        fieldnames = ['iter', 'train_loss', 'moving_avg_train', 'test_loss']
+        fieldnames = ['iter', 'train_loss', 'moving_avg_train', 'test_loss', 'time_per_iter']
         self.writer = csv.DictWriter(self.logf, fieldnames=fieldnames)
         if os.stat('train_results.csv').st_size == 0:
             self.writer.writeheader()

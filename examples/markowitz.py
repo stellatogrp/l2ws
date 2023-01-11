@@ -3,7 +3,7 @@ import cvxpy as cp
 from jax import linear_transpose, vmap
 import pandas as pd
 from pandas import read_csv
-from l2ws.scs_problem import SCSinstance, scs_jax
+from l2ws.scs_problem import SCSinstance, scs_jax, ruiz_equilibrate
 import numpy as np
 import pdb
 from l2ws.launcher import Workspace
@@ -192,11 +192,14 @@ def setup_probs(setup_cfg):
         solve_times[i] = scs_instance.solve_time
 
         # input into our_scs
-        # P_jax, A_jax = jnp.array(P_sparse.todense()), jnp.array(A_sparse.todense())
-        # b_jax, c_jax = jnp.array(b), jnp.array(c)
-        # data = dict(P=P_jax, A=A_jax, b=b_jax, c=c_jax, cones=cones_dict)
-        # scs_jax(data, iters=1000)
+        P_jax, A_jax = jnp.array(P_sparse.todense()), jnp.array(A_sparse.todense())
+        b_jax, c_jax = jnp.array(b), jnp.array(c)
+        data = dict(P=P_jax, A=A_jax, b=b_jax, c=c_jax, cones=cones_dict)
+        scs_jax(data, iters=1000)
         # pdb.set_trace()
+
+        M, E, D = ruiz_equilibrate(M)
+        pdb.set_trace()
     
     # resave the data??
     # print('saving final data...', flush=True)
