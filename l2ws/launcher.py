@@ -514,11 +514,12 @@ class Workspace:
                 # ax.plot(theta[self.train_unrolls-angle], r[self.train_unrolls-angle], 'r+')
 
                 # r2 is just iters -- to remove magnitude for visibility
-                r2 = theta.size - np.arange(theta.size)
-                ax2.plot(theta, r2, label=f"anchor={angle}")
+                # r2 = theta.size - np.arange(theta.size)
+                r2 = 100 - np.arange(100)
+                ax2.plot(theta[:100], r2, label=f"anchor={angle}")
                 ax2.plot(theta[self.train_unrolls-angle], r2[self.train_unrolls-angle], 'r+')
             ax2.grid(True)
-            ax2.set_rscale('symlog')
+            # ax2.set_rscale('symlog')
             ax2.set_title("Iterations", va='bottom')
             plt.legend()
             plt.savefig(f"polar/{col}/prob_{i}_iters.pdf")

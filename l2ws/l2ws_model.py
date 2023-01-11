@@ -434,7 +434,7 @@ def create_loss_fn(input_dict):
             out = jax.lax.fori_loop(0, iters, _fp, val)
             z, iter_losses = out
         else:
-            def _fp(i, val):
+            def _fp_(i, val):
                 MM = M
                 z, z_prev, loss_vec, all_z, primal_residuals, dual_residuals = val
                 z_next, u, v = fixed_point(z, factor, q)
@@ -452,11 +452,11 @@ def create_loss_fn(input_dict):
                 # angle = jnp.arccos(cos)
                 # angles = angles.at[i].set(angle)
 
-                all_z = all_z.at[i].set(z)
+                all_z = all_z.at[i, :].set(z)
                 return z_next, z_prev, loss_vec, all_z, primal_residuals, dual_residuals
                 # return z_next, z, loss_vec, angles, primal_residuals, dual_residuals
             val = z, z, iter_losses, all_z, primal_residuals, dual_residuals
-            out = jax.lax.fori_loop(0, iters, _fp, val)
+            out = jax.lax.fori_loop(0, iters, _fp_, val)
             z, z_prev, iter_losses, all_z, primal_residuals, dual_residuals = out
 
             # do angles
