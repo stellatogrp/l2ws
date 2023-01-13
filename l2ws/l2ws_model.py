@@ -87,9 +87,11 @@ class L2WSmodel(object):
             self.nn_cfg['intermediate_layer_sizes'] + [output_size]
 
         self.nn_params = init_network_params(layer_sizes, random.PRNGKey(0))
+        key = 0
         if self.psd and self.tx + self.ty > 0:
-            self.X_list = init_matrix_params(self.tx, self.psd_size, random.PRNGKey(0))
-            self.Y_list = init_matrix_params(self.ty, self.psd_size, random.PRNGKey(0))
+            self.X_list = init_matrix_params(self.tx, self.psd_size, random.PRNGKey(key))
+            key += self.tx
+            self.Y_list = init_matrix_params(self.ty, self.psd_size, random.PRNGKey(key))
             self.params = self.nn_params + self.X_list + self.Y_list
         else:
             self.params = self.nn_params
@@ -399,6 +401,8 @@ def create_loss_fn(input_dict):
                 nn_output = predict_y(nn_params, input)
                 X_list = params[num_nn_params:num_nn_params + tx]
                 Y_list = params[num_nn_params + tx:]
+                # print('X_list', X_list)
+                # print('Y_list', Y_list)
                 # pdb.set_trace()
                 uu = low_2_high_dim(nn_output, X_list, Y_list)
 

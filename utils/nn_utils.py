@@ -150,7 +150,7 @@ def init_network_params(sizes, key):
 def init_matrix_params(t, n, key):
     X_list = []
     for i in range(t):
-        U = random.normal(key, (n, n))
+        U = random.normal(key + i, (n, n))
         X = U @ U.T
         norm_X = X / X.max()
         X_list.append(norm_X)

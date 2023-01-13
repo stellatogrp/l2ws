@@ -366,6 +366,8 @@ def low_2_high_dim_prediction(nn_output, X_list, Y_list, n_x_low, n_y_low,
     y_low_dim = nn_output[n_x_low:n_x_low + n_y_low]
     alpha_x = nn_output[n_x_low + n_y_low:n_x_low + n_y_low + tx]
     alpha_y = nn_output[n_x_low + n_y_low + tx:]
+    print('alpha_x', alpha_x)
+    print('alpha_y', alpha_y)
 
     x_non_psd = x_low_dim[:n_x_non_psd]
     x_psd = x_low_dim[n_x_non_psd:]
@@ -395,7 +397,10 @@ def low_2_high_dim_prediction(nn_output, X_list, Y_list, n_x_low, n_y_low,
     Y_psd = sum_vvT + sum_alpha_Y
     X_vec = vec_symm(X_psd)
     Y_vec = vec_symm(Y_psd)
-    x = jnp.concatenate([x_non_psd, X_vec])
+    print('X_vec', X_vec)
+    print('Y_vec', Y_vec)
+    # x = jnp.concatenate([x_non_psd, X_vec])
+    x = jnp.concatenate([X_vec, x_non_psd])
     y = jnp.concatenate([y_non_psd, Y_vec])
 
     return jnp.concatenate([x, y])

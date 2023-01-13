@@ -238,7 +238,12 @@ class Workspace:
         test_inputs = inputs[N_train:N, :]
         for i in range(4):
             plt.plot(x_stars_train[i, :])
-        plt.savefig('sample_problems.pdf')
+        plt.savefig('sample_x_stars.pdf')
+        plt.clf()
+
+        for i in range(4):
+            plt.plot(y_stars_train[i, :])
+        plt.savefig('sample_y_stars.pdf')
         plt.clf()
 
         # check
