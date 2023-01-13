@@ -74,6 +74,7 @@ class Workspace:
         self.itr = 0
         self.eval_unrolls = cfg.eval_unrolls
         self.eval_every_x_epochs = cfg.eval_every_x_epochs
+        self.save_every_x_epochs = cfg.save_every_x_epochs
         self.num_samples = cfg.num_samples
         self.pretrain_cfg = cfg.pretrain
         self.prediction_variable = cfg.prediction_variable
@@ -612,6 +613,14 @@ class Workspace:
                     batch_indices, decay_lr_flag=decay_lr_flag,
                     writer=self.writer, logf=self.logf)
 
+                # self.writer.writerow({
+                #     'iter': self.state.iter_num,
+                #     'train_loss': self.state.value,
+                #     'moving_avg_train': moving_avg_train,
+                #     'test_loss': test_loss,
+                #     'time_per_iter': time_per_iter
+                # })
+
                 curr_iter += 1
             if epoch % self.eval_every_x_epochs == 0:
                 out_train = self.evaluate_iters(
@@ -620,25 +629,26 @@ class Workspace:
             self.l2ws_model.epoch += 1
 
             # plot the train / test loss so far
-            batch_losses = np.array(self.l2ws_model.tr_losses_batch)
-            te_losses = np.array(self.l2ws_model.te_losses)
-            num_data_points = batch_losses.size
-            epoch_axis = np.arange(num_data_points) / \
-                self.l2ws_model.num_batches
-            plt.plot(epoch_axis, batch_losses, label='train')
-            plt.plot(epoch_axis, te_losses, label='test')
-            plt.yscale('log')
-            plt.xlabel('epochs')
-            plt.ylabel('fixed point residual average')
-            plt.legend()
-            plt.savefig('losses_over_training.pdf', bbox_inches='tight')
-            plt.clf()
+            if epoch % self.save_every_x_epochs == 0:
+                batch_losses = np.array(self.l2ws_model.tr_losses_batch)
+                te_losses = np.array(self.l2ws_model.te_losses)
+                num_data_points = batch_losses.size
+                epoch_axis = np.arange(num_data_points) / \
+                    self.l2ws_model.num_batches
+                plt.plot(epoch_axis, batch_losses, label='train')
+                plt.plot(epoch_axis, te_losses, label='test')
+                plt.yscale('log')
+                plt.xlabel('epochs')
+                plt.ylabel('fixed point residual average')
+                plt.legend()
+                plt.savefig('losses_over_training.pdf', bbox_inches='tight')
+                plt.clf()
 
-            plt.plot(epoch_axis, batch_losses, label='train')
-            # plt.plot(epoch_axis, te_losses, label='test')
-            plt.yscale('log')
-            plt.xlabel('epochs')
-            plt.ylabel('fixed point residual average')
-            plt.legend()
-            plt.savefig('train_losses_over_training.pdf', bbox_inches='tight')
-            plt.clf()
+                plt.plot(epoch_axis, batch_losses, label='train')
+                # plt.plot(epoch_axis, te_losses, label='test')
+                plt.yscale('log')
+                plt.xlabel('epochs')
+                plt.ylabel('fixed point residual average')
+                plt.legend()
+                plt.savefig('train_losses_over_training.pdf', bbox_inches='tight')
+                plt.clf()

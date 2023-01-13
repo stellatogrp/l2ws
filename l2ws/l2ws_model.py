@@ -45,6 +45,8 @@ class L2WSmodel(object):
         self.x_stars_test = dict['x_stars_test']
         self.w_stars_train = dict['w_stars_train']
         self.w_stars_test = dict['w_stars_test']
+        self.u_stars_train = jnp.hstack([self.x_stars_train, self.y_stars_train])
+        self.u_stars_test = jnp.hstack([self.x_stars_test, self.y_stars_test])
 
         self.q_mat_train = dict['q_mat_train']
         self.q_mat_test = dict['q_mat_test']
@@ -56,7 +58,7 @@ class L2WSmodel(object):
         self.psd, self.tx, self.ty = dict.get('psd'), dict.get('tx', 0), dict.get('ty', 0)
         self.dx, self.dy = dict.get('dx', 0), dict.get('dy', 0)
         self.psd_size = dict.get('psd_size')
-        low_2_high_dim = dict.get('low_2_high_dim')
+        self.low_2_high_dim = dict.get('low_2_high_dim')
 
         if self.static_flag:
             self.static_M = dict['static_M']
@@ -115,7 +117,7 @@ class L2WSmodel(object):
                            'num_nn_params': len(self.nn_params),
                            'tx': self.tx,
                            'ty': self.ty,
-                           'low_2_high_dim': low_2_high_dim
+                           'low_2_high_dim': self.low_2_high_dim
                            }
         eval_loss_dict = {'static_flag': self.static_flag,
                           'lin_sys_solve': lin_sys_solve,
@@ -132,7 +134,7 @@ class L2WSmodel(object):
                           'num_nn_params': len(self.nn_params),
                           'tx': self.tx,
                           'ty': self.ty,
-                          'low_2_high_dim': low_2_high_dim
+                          'low_2_high_dim': self.low_2_high_dim
                           }
         fixed_ws_dict = {'static_flag': self.static_flag,
                          'lin_sys_solve': lin_sys_solve,
@@ -149,7 +151,7 @@ class L2WSmodel(object):
                          'num_nn_params': len(self.nn_params),
                          'tx': self.tx,
                          'ty': self.ty,
-                         'low_2_high_dim': low_2_high_dim
+                         'low_2_high_dim': self.low_2_high_dim
                          }
         self.loss_fn_train = create_loss_fn(train_loss_dict)
         self.loss_fn_eval = create_loss_fn(eval_loss_dict)
@@ -186,8 +188,28 @@ class L2WSmodel(object):
     def pretrain(self, num_iters, stepsize=.001, method='adam', df_pretrain=None, batches=1):
         # create pretrain function
         def pretrain_loss(params, inputs, targets):
-            y_dual = self.batched_predict_y(params, inputs)
-            pretrain_loss = jnp.mean(jnp.sum((y_dual - targets)**2, axis=1))
+            # y_dual = self.batched_predict_y(params, inputs)
+            # pretrain_loss = jnp.mean(jnp.sum((y_dual - targets)**2, axis=1))
+            # return pretrain_loss
+
+            if self.tx + self.ty == 0:
+                nn_output = self.batched_predict_y(params, inputs)
+                uu = nn_output
+            else:
+                num_nn_params = len(self.nn_params)
+                def predict(params_, inputs_):
+                    nn_params = params_[:num_nn_params]
+                    nn_output = predict_y(nn_params, inputs_)
+                    X_list = params_[num_nn_params:num_nn_params + self.tx]
+                    Y_list = params_[num_nn_params + self.tx:]
+                    uu = self.low_2_high_dim(nn_output, X_list, Y_list)
+                    return uu
+                batch_predict = vmap(predict, in_axes=(None, 0), out_axes=(0))
+                uu = batch_predict(params, inputs)
+
+            # z = M @ uu + uu + q
+            # pretrain_loss = jnp.mean(jnp.sum((z - targets)**2, axis=1))
+            pretrain_loss = jnp.mean(jnp.sum((uu - targets)**2, axis=1))
             return pretrain_loss
 
         maxiters = int(num_iters / batches)
@@ -199,13 +221,15 @@ class L2WSmodel(object):
             optimizer_pretrain = OptaxSolver(
                 opt=optax.sgd(stepsize), fun=pretrain_loss, jit=True, maxiter=maxiters)
         state = optimizer_pretrain.init_state(self.params)
-        params = self.nn_params
+        params = self.params #self.nn_params
         pretrain_losses = np.zeros(batches)
         pretrain_test_losses = np.zeros(batches)
 
         if self.prediction_variable == 'w':
-            train_targets = self.w_stars_train
-            test_targets = self.w_stars_test
+            train_targets = self.u_stars_train
+            test_targets = self.u_stars_test
+            # train_targets = self.w_stars_train
+            # test_targets = self.w_stars_test
         elif self.prediction_variable == 'x':
             train_targets = self.x_stars_train
             test_targets = self.x_stars_test
@@ -236,34 +260,40 @@ class L2WSmodel(object):
         batch_z_stars = self.w_stars_train[batch_indices, :]
 
         # check if we need to update lr
-        if decay_lr_flag:
-            if self.min_lr <= self.lr * self.decay_lr and self.decay_lr < 1.0:
-                # re-initialize the optimizer
-                self.lr = self.lr * self.decay_lr
-                print(f"lr decayed to {self.lr}")
-                self.optimizer = OptaxSolver(opt=optax.adam(
-                    self.lr), fun=self.loss_fn_train, has_aux=True)
-                self.state = self.optimizer.init_state(self.params)
+        # if decay_lr_flag:
+        #     if self.min_lr <= self.lr * self.decay_lr and self.decay_lr < 1.0:
+        #         # re-initialize the optimizer
+        #         self.lr = self.lr * self.decay_lr
+        #         print(f"lr decayed to {self.lr}")
+        #         self.optimizer = OptaxSolver(opt=optax.adam(
+        #             self.lr), fun=self.loss_fn_train, has_aux=True)
+        #         self.state = self.optimizer.init_state(self.params)
 
         t0 = time.time()
-
-        if self.static_flag:
-            results = self.optimizer.update(params=self.params,
+        results = self.optimizer.update(params=self.params,
                                             state=self.state,
                                             inputs=batch_inputs,
                                             q=batch_q_data,
                                             iters=self.train_unrolls,
                                             z_stars=batch_z_stars)
-        else:
-            batch_inv_data = self.matrix_invs_train[batch_indices, :, :]
-            batch_M_data = self.M_tensor_train[batch_indices, :, :]
-            results = self.optimizer.update(params=self.params,
-                                            state=self.state,
-                                            inputs=batch_inputs,
-                                            factor=batch_inv_data,
-                                            M=batch_M_data,
-                                            q=batch_q_data,
-                                            iters=self.train_unrolls)
+
+        # if self.static_flag:
+        #     results = self.optimizer.update(params=self.params,
+        #                                     state=self.state,
+        #                                     inputs=batch_inputs,
+        #                                     q=batch_q_data,
+        #                                     iters=self.train_unrolls,
+        #                                     z_stars=batch_z_stars)
+        # else:
+        #     batch_inv_data = self.matrix_invs_train[batch_indices, :, :]
+        #     batch_M_data = self.M_tensor_train[batch_indices, :, :]
+        #     results = self.optimizer.update(params=self.params,
+        #                                     state=self.state,
+        #                                     inputs=batch_inputs,
+        #                                     factor=batch_inv_data,
+        #                                     M=batch_M_data,
+        #                                     q=batch_q_data,
+        #                                     iters=self.train_unrolls)
         self.params, self.state = results
 
         t1 = time.time()
