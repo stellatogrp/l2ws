@@ -147,6 +147,16 @@ def init_network_params(sizes, key):
     return [random_layer_params(m, n, k) for m, n, k in zip(sizes[:-1], sizes[1:], keys)]
 
 
+def init_matrix_params(t, n, key):
+    X_list = []
+    for i in range(t):
+        U = random.normal(key, (n, n))
+        X = U @ U.T
+        norm_X = X / X.max()
+        X_list.append(norm_X)
+    return X_list
+
+
 def relu(x):
     return jnp.maximum(0, x)
 

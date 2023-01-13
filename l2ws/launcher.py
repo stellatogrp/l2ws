@@ -65,7 +65,7 @@ def soc_projection(y, s):
 
 
 class Workspace:
-    def __init__(self, cfg, static_flag, static_dict, example, get_M_q):
+    def __init__(self, cfg, static_flag, static_dict, example, get_M_q, low_2_high_dim=None):
         '''
         cfg is the run_cfg
         static_dict holds the data that doesn't change from problem to problem
@@ -79,6 +79,11 @@ class Workspace:
         self.prediction_variable = cfg.prediction_variable
         self.angle_anchors = cfg.angle_anchors
         self.supervised = cfg.supervised
+        self.tx = cfg.tx
+        self.ty = cfg.ty
+        self.dx = cfg.dx
+        self.dy = cfg.dy
+        
 
         '''
         from the run cfg retrieve the following via the data cfg
@@ -164,15 +169,10 @@ class Workspace:
 
         self.M = static_M
 
-        zero_cone, nonneg_cone = cones['z'], cones['l']  # , cones['q']
-        # soc, sdp = False, False
-        # if 's' in cones.keys():
-        #     sdp = True
-        # if 'q' in cones.keys():
-        #     soc = True
+        zero_cone, nonneg_cone = cones['z'], cones['l']
+
         soc = 'q' in cones.keys() and len(cones['q']) > 0
         sdp_ = 's' in cones.keys() and len(cones['s']) > 0
-        # pdb.set_trace()
 
         self.train_unrolls = cfg.train_unrolls
         eval_unrolls = cfg.train_unrolls
@@ -215,12 +215,6 @@ class Workspace:
                 sdp = jnp.ravel(sdp_out_reshaped)
                 projection = jnp.concatenate([projection, sdp])
             return projection
-            # else:
-            #     socp = jnp.array([])
-            # projection = jnp.append()
-            #     return jnp.concatenate([input[:n+zero_cone_int], nonneg, socp])
-            # else:
-            #     return jnp.concatenate([input[:n+zero_cone_int], nonneg])
 
         self.proj = proj
 
@@ -258,6 +252,9 @@ class Workspace:
         # pdb.set_trace()
         # end check
 
+        cones = static_dict['cones_dict']
+        self.psd_size = cones['s'][0] # TOFIX in general
+
         input_dict = {'nn_cfg': self.nn_cfg,
                       'proj': proj,
                       'train_inputs': train_inputs,
@@ -285,7 +282,14 @@ class Workspace:
                       'matrix_invs_test': matrix_invs_test,
                       #   'dynamic_algo_factors': matrix_invs,
                       'angle_anchors': self.angle_anchors,
-                      'supervised': self.supervised
+                      'supervised': self.supervised,
+                      'psd': sdp_,
+                      'tx': self.tx,
+                      'ty': self.ty,
+                      'dx': self.dx,
+                      'dy': self.dy,
+                      'psd_size': self.psd_size,
+                      'low_2_high_dim': low_2_high_dim
                       }
 
         self.l2ws_model = L2WSmodel(input_dict)

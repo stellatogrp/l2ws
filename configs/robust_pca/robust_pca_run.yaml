@@ -1,5 +1,5 @@
 nn_cfg:
-  lr: 1e-4
+  lr: 1e-3
   method: adam
   intermediate_layer_sizes: [500, 500]
   batch_size: 50
@@ -11,7 +11,7 @@ nn_cfg:
 pretrain:
   pretrain_method: adam
   pretrain_stepsize: .001
-  pretrain_iters: 500
+  pretrain_iters: 0
 
 data:
   datetime: ''
@@ -23,4 +23,9 @@ N_train: 10
 N_test: 20
 num_samples: 20
 prediction_variable: w
+supervised: False
 angle_anchors: [0]
+dx: 5
+dy: 6
+tx: 8
+ty: 9

@@ -16,6 +16,7 @@ import scs
 import logging
 import yaml
 from jax import vmap
+from utils.generic_utils import vec_symm, unvec_symm
 
 
 plt.rcParams.update(
@@ -84,7 +85,36 @@ def run(run_cfg):
     we only need to factor once
     """
     static_flag = True
-    workspace = Workspace(run_cfg, static_flag, static_dict, example, get_q)
+
+    '''
+    low_2_high_dim
+    '''
+    cones = static_dict['cones_dict']
+    x_psd_size = cones['s'][0] # TOFIX in general
+    y_psd_size = x_psd_size
+    n_x_non_psd = n - int(x_psd_size * (x_psd_size + 1) / 2)
+    n_y_non_psd = m - int(y_psd_size * (y_psd_size + 1) / 2)
+    n_x_low = n_x_non_psd + run_cfg.dx * x_psd_size
+    n_y_low = n_y_non_psd + run_cfg.dy * y_psd_size
+
+    low_2_high_dim = functools.partial(low_2_high_dim_prediction,
+                                       n_x_low=n_x_low,
+                                       n_y_low=n_y_low,
+                                       n_x_non_psd=n_x_non_psd,
+                                       n_y_non_psd=n_y_non_psd,
+                                       dx=run_cfg.dx,
+                                       dy=run_cfg.dy,
+                                       x_psd_size=x_psd_size,
+                                       y_psd_size=y_psd_size,
+                                       tx=run_cfg.tx,
+                                       ty=run_cfg.ty
+                                       )
+    # in_axes_x = [None for i in range(run_cfg.tx)]
+    # in_axes_y = [None for i in range(run_cfg.ty)]
+    # low_2_high_dim_batch = vmap(low_2_high_dim, in_axes=(0, in_axes_x, in_axes_y), out_axes=0)
+
+    workspace = Workspace(run_cfg, static_flag, static_dict, example,
+                          get_q, low_2_high_dim=low_2_high_dim)
 
     """
     run the workspace
@@ -129,14 +159,13 @@ def setup_probs(setup_cfg):
         thetas_np[i, :] = sample_theta(p, q, cfg.sparse_frac, cfg.low_rank)
     thetas = jnp.array(thetas_np)
 
-
     """
     - canonicalize according to whether we have states or not
     - extract information dependent on the setup
     """
     log.info("creating static canonicalization...")
     t0 = time.time()
-    
+
     out_dict = static_canon(p, q)
 
     t1 = time.time()
@@ -183,7 +212,7 @@ def setup_probs(setup_cfg):
     """
     sample theta and get y for each problem
     """
-    
+
     batch_q = vmap(single_q, in_axes=(0, None, None, None, None), out_axes=(0))
 
     m, n = A_sparse.shape
@@ -311,6 +340,65 @@ def static_canon(p, q):
     # soln = scs.solve(data_scs, cones, verbose=True)
     # pdb.set_trace()
     return out_dict
+
+
+def low_2_high_dim_prediction(nn_output, X_list, Y_list, n_x_low, n_y_low,
+                              n_x_non_psd, n_y_non_psd, dx, dy, x_psd_size, y_psd_size,
+                              tx, ty):
+    '''
+    theta -> [NN] -> nn_output
+
+    nn_output = concat(x_low_dim, y_low_dim, alpha)
+
+    x_low_dim = concat(x_non_psd, u_1, ..., u_d)
+    y_low_dim = concat(x_non_psd, v_1, ..., v_d)
+
+    X_psd = sum_{i=1}^d u_i u_i^T + sum_{i=1}^t alpha_i X_list[i]
+    Y_psd = sum_{i=1}^d v_i v_i^T + sum_{i=1}^t alpha_i Y_list[i]
+
+    x = concat(x_non_psd, vec_symm(X_psd))
+    y = concat(y_non_psd, vec_symm(Y_psd))
+
+    return concat([x, y])
+    '''
+    # pdb.set_trace()
+    x_low_dim = nn_output[:n_x_low]
+    y_low_dim = nn_output[n_x_low:n_x_low + n_y_low]
+    alpha_x = nn_output[n_x_low + n_y_low:n_x_low + n_y_low + tx]
+    alpha_y = nn_output[n_x_low + n_y_low + tx:]
+
+    x_non_psd = x_low_dim[:n_x_non_psd]
+    x_psd = x_low_dim[n_x_non_psd:]
+    U = jnp.reshape(x_psd, (dx, x_psd_size))
+    y_non_psd = y_low_dim[:n_y_non_psd]
+    y_psd = y_low_dim[n_y_non_psd:]
+    # pdb.set_trace()
+    V = jnp.reshape(y_psd, (dy, y_psd_size))
+
+    sum_uuT = jnp.zeros((x_psd_size, x_psd_size))
+    for i in range(dx):
+        sum_uuT = sum_uuT + jnp.outer(U[i, :], U[i, :])
+    sum_vvT = jnp.zeros((y_psd_size, y_psd_size))
+    for i in range(dy):
+        sum_vvT = sum_vvT + jnp.outer(V[i, :], V[i, :])
+    sum_alpha_X = jnp.zeros((x_psd_size, x_psd_size))
+    for i in range(tx):
+        sum_alpha_X = sum_alpha_X + alpha_x[i] * X_list[i]
+    sum_alpha_Y = jnp.zeros((y_psd_size, y_psd_size))
+    for i in range(ty):
+        sum_alpha_Y = sum_alpha_Y + alpha_y[i] * Y_list[i]
+    # sum_uuT = jnp.sum([jnp.outer(U[i, :], U[i, :]) for i in range(dx)])
+    # sum_vvT = jnp.sum([jnp.outer(V[i, :], V[i, :]) for i in range(dy)])
+    # sum_alpha_X = jnp.sum([alpha_x * X_list[i] for i in range(tx)])
+    # sum_alpha_Y = jnp.sum([alpha_y * Y_list[i] for i in range(ty)])
+    X_psd = sum_uuT + sum_alpha_X
+    Y_psd = sum_vvT + sum_alpha_Y
+    X_vec = vec_symm(X_psd)
+    Y_vec = vec_symm(Y_psd)
+    x = jnp.concatenate([x_non_psd, X_vec])
+    y = jnp.concatenate([y_non_psd, Y_vec])
+
+    return jnp.concatenate([x, y])
 
 
 def single_q(thetas, m, n, p, q):
