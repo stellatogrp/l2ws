@@ -92,10 +92,18 @@ def run(run_cfg):
     cones = static_dict['cones_dict']
     x_psd_size = cones['s'][0] # TOFIX in general
     y_psd_size = x_psd_size
-    n_x_non_psd = n - int(x_psd_size * (x_psd_size + 1) / 2)
+    full_psd_size = int(x_psd_size * (x_psd_size + 1) / 2)
+    n_x_non_psd = n - full_psd_size
     n_y_non_psd = m - int(y_psd_size * (y_psd_size + 1) / 2)
     n_x_low = n_x_non_psd + run_cfg.dx * x_psd_size
     n_y_low = n_y_non_psd + run_cfg.dy * y_psd_size
+
+    # extract the right part of x_psd
+    A_dense = A_sparse.todense()
+    A_psd = A_dense[-full_psd_size:, :]
+    where_out = np.where(A_psd < 0)
+    x_psd_indices = where_out[1]
+    pdb.set_trace()
 
     low_2_high_dim = functools.partial(low_2_high_dim_prediction,
                                        n_x_low=n_x_low,
@@ -107,7 +115,8 @@ def run(run_cfg):
                                        x_psd_size=x_psd_size,
                                        y_psd_size=y_psd_size,
                                        tx=run_cfg.tx,
-                                       ty=run_cfg.ty
+                                       ty=run_cfg.ty,
+                                       x_psd_indices=x_psd_indices
                                        )
     # in_axes_x = [None for i in range(run_cfg.tx)]
     # in_axes_y = [None for i in range(run_cfg.ty)]
@@ -243,6 +252,7 @@ def setup_probs(setup_cfg):
         s_stars = s_stars.at[i, :].set(scs_instance.s_star)
         q_mat = q_mat.at[i, :].set(scs_instance.q)
         solve_times[i] = scs_instance.solve_time
+        # pdb.set_trace()
 
         # check with our jax implementation
         # P_jax = jnp.array(P_sparse.todense())
@@ -345,7 +355,7 @@ def static_canon(p, q):
 
 def low_2_high_dim_prediction(nn_output, X_list, Y_list, n_x_low, n_y_low,
                               n_x_non_psd, n_y_non_psd, dx, dy, x_psd_size, y_psd_size,
-                              tx, ty):
+                              tx, ty, x_psd_indices):
     '''
     theta -> [NN] -> nn_output
 
@@ -400,8 +410,15 @@ def low_2_high_dim_prediction(nn_output, X_list, Y_list, n_x_low, n_y_low,
     Y_vec = vec_symm(Y_psd)
     print('X_vec', X_vec)
     print('Y_vec', Y_vec)
-    # x = jnp.concatenate([x_non_psd, X_vec])
-    x = jnp.concatenate([X_vec, x_non_psd])
+
+    # x = jnp.concatenate([X_vec, x_non_psd])
+    n = X_vec.size + x_non_psd.size
+    x = jnp.zeros(n)
+
+    x = x.at[x_psd_indices].set(X_vec)
+    x_non_psd_indices = jnp.arange(n)
+    x_non_psd_indices = jnp.delete(x_non_psd_indices, x_psd_indices)
+    x = x.at[x_non_psd_indices].set(x_non_psd)
     y = jnp.concatenate([y_non_psd, Y_vec])
 
     return jnp.concatenate([x, y])
