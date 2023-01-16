@@ -222,8 +222,8 @@ class L2WSmodel(object):
                 opt=optax.sgd(stepsize), fun=pretrain_loss, jit=True, maxiter=maxiters)
         state = optimizer_pretrain.init_state(self.params)
         params = self.params #self.nn_params
-        pretrain_losses = np.zeros(batches)
-        pretrain_test_losses = np.zeros(batches)
+        pretrain_losses = np.zeros(batches + 1)
+        pretrain_test_losses = np.zeros(batches + 1)
 
         if self.prediction_variable == 'w':
             train_targets = self.u_stars_train
@@ -234,6 +234,13 @@ class L2WSmodel(object):
             train_targets = self.x_stars_train
             test_targets = self.x_stars_test
 
+        curr_pretrain_loss = pretrain_loss(
+            params, self.train_inputs, train_targets)
+        curr_pretrain_test_loss = pretrain_loss(
+            params, self.test_inputs, test_targets)
+        pretrain_losses[0] = curr_pretrain_loss
+        pretrain_test_losses[0] = curr_pretrain_test_loss
+
         for i in range(batches):
             out = optimizer_pretrain.run(init_params=params,
                                          inputs=self.train_inputs,
@@ -242,8 +249,8 @@ class L2WSmodel(object):
             state = out.state
             curr_pretrain_test_loss = pretrain_loss(
                 params, self.test_inputs, test_targets)
-            pretrain_losses[i] = state.value
-            pretrain_test_losses[i] = curr_pretrain_test_loss
+            pretrain_losses[i + 1] = state.value
+            pretrain_test_losses[i + 1] = curr_pretrain_test_loss
             data = np.vstack([pretrain_losses, pretrain_test_losses])
             data = data.T
             df_pretrain = pd.DataFrame(

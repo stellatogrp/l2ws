@@ -201,8 +201,9 @@ def setup_probs(setup_cfg):
     """
 
     data = dict(P=P_sparse, A=A_sparse, b=b, c=c)
-    tol = cfg.solve_acc
-    solver = scs.SCS(data, cones_dict, eps_abs=tol, eps_rel=tol)
+    tol_abs = cfg.solve_acc_abs
+    tol_rel = cfg.solve_acc_rel
+    solver = scs.SCS(data, cones_dict, eps_abs=tol_abs, eps_rel=tol_rel)
     solve_times = np.zeros(N)
     x_stars = jnp.zeros((N, n))
     y_stars = jnp.zeros((N, m))

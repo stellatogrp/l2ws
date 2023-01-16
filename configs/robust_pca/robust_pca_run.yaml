@@ -1,5 +1,5 @@
 nn_cfg:
-  lr: 1e-3
+  lr: 1e-4
   method: adam
   intermediate_layer_sizes: [500, 500]
   batch_size: 100
@@ -10,7 +10,7 @@ nn_cfg:
 
 pretrain:
   pretrain_method: adam
-  pretrain_stepsize: 1e-3
+  pretrain_stepsize: 1e-4
   pretrain_iters: 3000
   pretrain_batches: 10
 
@@ -19,16 +19,16 @@ data:
 
 train_unrolls: 30
 eval_unrolls: 500
-eval_every_x_epochs: 30
+eval_every_x_epochs: 10
 save_every_x_epochs: 2
 write_csv_every_x_batches: 10
-N_train: 100
+N_train: 200
 N_test: 20
 num_samples: 20
 prediction_variable: w
 supervised: False
 angle_anchors: [0]
-dx: 20
-dy: 20
-tx: 20
-ty: 20
+dx: 34
+dy: 34
+tx: 10
+ty: 10
