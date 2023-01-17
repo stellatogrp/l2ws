@@ -2,8 +2,8 @@ p: 30
 q: 4
 sparse_frac: 0.1
 low_rank: 2
-N_train: 1000
-N_test: 200
+N_train: 100
+N_test: 20
 A_star_seed: 0
 B_star_seed: None
 solve_acc_abs: 1e-4

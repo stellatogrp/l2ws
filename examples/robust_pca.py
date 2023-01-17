@@ -103,7 +103,7 @@ def run(run_cfg):
     A_psd = A_dense[-full_psd_size:, :]
     where_out = np.where(A_psd < 0)
     x_psd_indices = where_out[1]
-    pdb.set_trace()
+
 
     low_2_high_dim = functools.partial(low_2_high_dim_prediction,
                                        n_x_low=n_x_low,
@@ -164,8 +164,13 @@ def setup_probs(setup_cfg):
     sample theta
     '''
     thetas_np = np.zeros((N, 1 + p * q))
+    if cfg.A_star_seed is not None:
+        np.random.seed(cfg.A_star_seed)
+        A_star = np.random.normal(size=(p, cfg.low_rank))
+    else:
+        A_star = None
     for i in range(N):
-        thetas_np[i, :] = sample_theta(p, q, cfg.sparse_frac, cfg.low_rank)
+        thetas_np[i, :] = sample_theta(p, q, cfg.sparse_frac, cfg.low_rank, A_star=A_star)
     thetas = jnp.array(thetas_np)
 
     """
@@ -404,6 +409,8 @@ def low_2_high_dim_prediction(nn_output, X_list, Y_list, n_x_low, n_y_low,
     # sum_vvT = jnp.sum([jnp.outer(V[i, :], V[i, :]) for i in range(dy)])
     # sum_alpha_X = jnp.sum([alpha_x * X_list[i] for i in range(tx)])
     # sum_alpha_Y = jnp.sum([alpha_y * Y_list[i] for i in range(ty)])
+    print('sum_alpha_X', sum_alpha_X)
+    print('sum_alpha_Y', sum_alpha_Y)
     X_psd = sum_uuT + sum_alpha_X
     Y_psd = sum_vvT + sum_alpha_Y
     X_vec = vec_symm(X_psd)
@@ -453,7 +460,7 @@ def single_q(thetas, m, n, p, q):
     qvec = jnp.zeros(m + n)
     qvec = qvec.at[:n].set(c)
     qvec = qvec.at[n:].set(b)
-    # pdb.set_trace()
+
     return qvec
 
 
