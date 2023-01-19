@@ -36,6 +36,11 @@ def vehicle_plot_eval_iters(cfg):
     example = 'vehicle'
     plot_eval_iters(example, cfg)
 
+@hydra.main(config_path='configs/robust_pca', config_name='robust_pca_plot.yaml')
+def robust_pca_plot_eval_iters(cfg):
+    example = 'robust_pca'
+    plot_eval_iters(example, cfg)
+
 
 @hydra.main(config_path='configs/all', config_name='plot.yaml')
 def plot_l4dc(cfg):
@@ -175,7 +180,8 @@ def plot_eval_iters(example, cfg):
     naive_ws_path = f"{orig_cwd}/outputs/{example}/train_outputs/{naive_ws_datetime}/iters_compared.csv"
     naive_ws_df = read_csv(naive_ws_path)
     last_column = naive_ws_df['fixed_ws']
-    plt.plot(last_column[:eval_iters], 'm-.', label='naive warm start')
+    # plt.plot(last_column[:eval_iters], 'm-.', label='naive warm start')
+    plt.plot(last_column[:eval_iters], 'm-.', label='nearest neighbor')
     second_derivs_naive_ws = second_derivative_fn(np.log(last_column[:eval_iters]))
     df_acc = update_acc(df_acc, accs, 'naive_ws', last_column[:eval_iters])
 
@@ -349,6 +355,10 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'vehicle/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         vehicle_plot_eval_iters()
+    elif sys.argv[1] == 'robust_pca':
+        sys.argv[1] = base + 'robust_pca/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        robust_pca_plot_eval_iters()
     elif sys.argv[1] == 'all':
         sys.argv[1] = base + 'all/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]

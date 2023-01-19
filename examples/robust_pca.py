@@ -411,8 +411,8 @@ def low_2_high_dim_prediction(nn_output, X_list, Y_list, n_x_low, n_y_low,
     # sum_alpha_Y = jnp.sum([alpha_y * Y_list[i] for i in range(ty)])
     print('sum_alpha_X', sum_alpha_X)
     print('sum_alpha_Y', sum_alpha_Y)
-    X_psd = sum_uuT + sum_alpha_X
-    Y_psd = sum_vvT + sum_alpha_Y
+    X_psd = sum_uuT + sum_alpha_X + 10 * jnp.eye(x_psd_size)
+    Y_psd = sum_vvT + sum_alpha_Y + 10 * jnp.eye(x_psd_size)
     X_vec = vec_symm(X_psd)
     Y_vec = vec_symm(Y_psd)
     print('X_vec', X_vec)

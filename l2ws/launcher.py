@@ -36,6 +36,8 @@ def sdp_proj_single(x, dim):
     X = unvec_symm(x, dim)
     evals, evecs = jnp.linalg.eigh(X)
     evals_plus = jnp.clip(evals, 0, jnp.inf)
+    num_proj = evals_plus - evals > 0
+    print('evals diff', num_proj.sum())
     X_proj = evecs @ jnp.diag(evals_plus) @ evecs.T
     x_proj = vec_symm(X_proj)
     return x_proj
