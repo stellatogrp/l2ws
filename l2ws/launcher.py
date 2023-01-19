@@ -86,6 +86,8 @@ class Workspace:
         self.ty = cfg.ty
         self.dx = cfg.dx
         self.dy = cfg.dy
+        self.learn_XY = cfg.learn_XY
+        self.num_clusters = cfg.num_clusters
         
 
         '''
@@ -239,12 +241,14 @@ class Workspace:
         inputs = jnp.array(inputs_normalized)
         train_inputs = inputs[:N_train, :]
         test_inputs = inputs[N_train:N, :]
-        for i in range(4):
+
+        num_plot = np.min([N_train, 4])
+        for i in range(num_plot):
             plt.plot(x_stars_train[i, :])
         plt.savefig('sample_x_stars.pdf')
         plt.clf()
 
-        for i in range(4):
+        for i in range(num_plot):
             plt.plot(y_stars_train[i, :])
         plt.savefig('sample_y_stars.pdf')
         plt.clf()
@@ -297,7 +301,9 @@ class Workspace:
                       'dx': self.dx,
                       'dy': self.dy,
                       'psd_size': self.psd_size,
-                      'low_2_high_dim': low_2_high_dim
+                      'low_2_high_dim': low_2_high_dim,
+                      'learn_XY': self.learn_XY,
+                      'num_clusters': self.num_clusters
                       }
 
         self.l2ws_model = L2WSmodel(input_dict)
@@ -527,8 +533,10 @@ class Workspace:
 
                 # r2 is just iters -- to remove magnitude for visibility
                 # r2 = theta.size - np.arange(theta.size)
-                r2 = 100 - np.arange(100)
-                ax2.plot(theta[:100], r2, label=f"anchor={angle}")
+                num_iters = np.max([100, self.train_unrolls + 5])
+                # r2 = 100 - np.arange(100)
+                r2 = num_iters - np.arange(num_iters)
+                ax2.plot(theta[:num_iters], r2, label=f"anchor={angle}")
                 ax2.plot(theta[self.train_unrolls-angle], r2[self.train_unrolls-angle], 'r+')
             ax2.grid(True)
             # ax2.set_rscale('symlog')

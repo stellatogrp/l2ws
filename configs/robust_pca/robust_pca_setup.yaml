@@ -6,5 +6,5 @@ N_train: 100
 N_test: 20
 A_star_seed: 0
 B_star_seed: None
-solve_acc_abs: 1e-4
+solve_acc_abs: 1e-3
 solve_acc_rel: 0

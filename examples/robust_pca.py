@@ -16,6 +16,7 @@ import scs
 import logging
 import yaml
 from jax import vmap
+import pandas as pd
 from utils.generic_utils import vec_symm, unvec_symm
 
 
@@ -217,7 +218,16 @@ def setup_probs(setup_cfg):
     data = dict(P=P_sparse, A=A_sparse, b=b, c=c)
     tol_abs = cfg.solve_acc_abs
     tol_rel = cfg.solve_acc_rel
-    solver = scs.SCS(data, cones_dict, eps_abs=tol_abs, eps_rel=tol_rel)
+    # solver = scs.SCS(data, cones_dict, eps_abs=tol_abs, eps_rel=tol_rel)
+    solver = scs.SCS(data, cones_dict, eps_abs=tol_abs, eps_rel=tol_rel, 
+                verbose=True,
+                normalize=False,
+                max_iters=int(1e5),
+                scale=0.1,
+                adaptive_scale=False,
+                alpha=1.0,
+                rho_x=1e-6,
+                acceleration_lookback=0)
     solve_times = np.zeros(N)
     x_stars = jnp.zeros((N, n))
     y_stars = jnp.zeros((N, m))
@@ -281,6 +291,11 @@ def setup_probs(setup_cfg):
         x_stars=x_stars,
         y_stars=y_stars,
     )
+
+    # save solve times
+    df_solve_times = pd.DataFrame(solve_times, columns=['solve_times'])
+    df_solve_times.to_csv('solve_times.csv')
+
     # print(f"finished saving final data... took {save_time-t0}'", flush=True)
     save_time = time.time()
     log.info(f"finished saving final data... took {save_time-t0}'")
@@ -411,8 +426,8 @@ def low_2_high_dim_prediction(nn_output, X_list, Y_list, n_x_low, n_y_low,
     # sum_alpha_Y = jnp.sum([alpha_y * Y_list[i] for i in range(ty)])
     print('sum_alpha_X', sum_alpha_X)
     print('sum_alpha_Y', sum_alpha_Y)
-    X_psd = sum_uuT + sum_alpha_X #+ 10 * jnp.eye(x_psd_size)
-    Y_psd = sum_vvT + sum_alpha_Y #+ 10 * jnp.eye(x_psd_size)
+    X_psd = sum_uuT #+ sum_alpha_X #+ 10 * jnp.eye(x_psd_size)
+    Y_psd = sum_vvT #+ sum_alpha_Y #+ 10 * jnp.eye(x_psd_size)
     X_vec = vec_symm(X_psd)
     Y_vec = vec_symm(Y_psd)
     print('X_vec', X_vec)
