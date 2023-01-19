@@ -105,6 +105,7 @@ def run(run_cfg):
     where_out = np.where(A_psd < 0)
     x_psd_indices = where_out[1]
 
+    y_psd_indices = n_y_non_psd + jnp.arange(int(y_psd_size * (y_psd_size + 1) / 2))     
 
     low_2_high_dim = functools.partial(low_2_high_dim_prediction,
                                        n_x_low=n_x_low,
@@ -124,7 +125,8 @@ def run(run_cfg):
     # low_2_high_dim_batch = vmap(low_2_high_dim, in_axes=(0, in_axes_x, in_axes_y), out_axes=0)
 
     workspace = Workspace(run_cfg, static_flag, static_dict, example,
-                          get_q, low_2_high_dim=low_2_high_dim)
+                          get_q, low_2_high_dim=low_2_high_dim,
+                          x_psd_indices=x_psd_indices, y_psd_indices=y_psd_indices)
 
     """
     run the workspace
@@ -426,8 +428,8 @@ def low_2_high_dim_prediction(nn_output, X_list, Y_list, n_x_low, n_y_low,
     # sum_alpha_Y = jnp.sum([alpha_y * Y_list[i] for i in range(ty)])
     print('sum_alpha_X', sum_alpha_X)
     print('sum_alpha_Y', sum_alpha_Y)
-    X_psd = sum_uuT #+ sum_alpha_X #+ 10 * jnp.eye(x_psd_size)
-    Y_psd = sum_vvT #+ sum_alpha_Y #+ 10 * jnp.eye(x_psd_size)
+    X_psd = sum_uuT + sum_alpha_X  #+ 10 * jnp.eye(x_psd_size)
+    Y_psd = sum_vvT + sum_alpha_Y  #+ 10 * jnp.eye(x_psd_size)
     X_vec = vec_symm(X_psd)
     Y_vec = vec_symm(Y_psd)
     print('X_vec', X_vec)

@@ -67,7 +67,10 @@ def soc_projection(y, s):
 
 
 class Workspace:
-    def __init__(self, cfg, static_flag, static_dict, example, get_M_q, low_2_high_dim=None):
+    def __init__(self, cfg, static_flag, static_dict, example, get_M_q,
+                 low_2_high_dim=None,
+                 x_psd_indices=None,
+                 y_psd_indices=None):
         '''
         cfg is the run_cfg
         static_dict holds the data that doesn't change from problem to problem
@@ -88,7 +91,6 @@ class Workspace:
         self.dy = cfg.dy
         self.learn_XY = cfg.learn_XY
         self.num_clusters = cfg.num_clusters
-        
 
         '''
         from the run cfg retrieve the following via the data cfg
@@ -265,7 +267,7 @@ class Workspace:
         # end check
 
         cones = static_dict['cones_dict']
-        self.psd_size = cones['s'][0] # TOFIX in general
+        self.psd_size = cones['s'][0]  # TOFIX in general
 
         input_dict = {'nn_cfg': self.nn_cfg,
                       'proj': proj,
@@ -303,7 +305,9 @@ class Workspace:
                       'psd_size': self.psd_size,
                       'low_2_high_dim': low_2_high_dim,
                       'learn_XY': self.learn_XY,
-                      'num_clusters': self.num_clusters
+                      'num_clusters': self.num_clusters,
+                      'x_psd_indices': x_psd_indices,
+                      'y_psd_indices': y_psd_indices,
                       }
 
         self.l2ws_model = L2WSmodel(input_dict)

@@ -61,8 +61,10 @@ class L2WSmodel(object):
         self.dx, self.dy = dict.get('dx', 0), dict.get('dy', 0)
         self.psd_size = dict.get('psd_size')
         self.low_2_high_dim = dict.get('low_2_high_dim')
-        self.learn_xy = dict.get('learn_XY')
+        self.learn_XY = dict.get('learn_XY')
         self.num_clusters = dict.get('num_clusters')
+        self.x_psd_indices = dict.get('x_psd_indices')
+        self.y_psd_indices = dict.get('y_psd_indices')
 
         if self.static_flag:
             self.static_M = dict['static_M']
@@ -77,6 +79,7 @@ class L2WSmodel(object):
         self.nn_cfg = dict['nn_cfg']
         input_size = self.train_inputs.shape[1]
         self.prediction_variable = dict['prediction_variable']
+        self.batched_predict_y = vmap(predict_y, in_axes=(None, 0))
         if self.prediction_variable == 'w':
             if self.psd:
                 n_x_non_psd = self.n - int(self.psd_size * (self.psd_size + 1) / 2)
@@ -101,16 +104,18 @@ class L2WSmodel(object):
                 self.Y_list = init_matrix_params(self.ty, self.psd_size, random.PRNGKey(key))
                 self.params = self.nn_params + self.X_list + self.Y_list
             else:
-                self.X_list, self.Y_list = self.cluster_init_XY_list()
+                out = self.cluster_init_XY_list()
+                self.X_list, self.Y_list = out[0], out[1]
+                self.train_cluster_indices, self.test_cluster_indices = out[2], out[3]
                 # self.Y_list = cluster_init_Y_list()
                 self.params = self.nn_params
-                self.pretrain_alphas()
+                self.pretrain_alphas(1000, n_x_low + n_y_low)
         else:
             self.params = self.nn_params
         self.state = None
 
         self.epoch = 0
-        self.batched_predict_y = vmap(predict_y, in_axes=(None, 0))
+        
 
         train_loss_dict = {'static_flag': self.static_flag,
                            'lin_sys_solve': lin_sys_solve,
@@ -129,7 +134,8 @@ class L2WSmodel(object):
                            'ty': self.ty,
                            'low_2_high_dim': self.low_2_high_dim,
                            'X_list_fixed': self.X_list,
-                           'Y_list_fixed': self.Y_list
+                           'Y_list_fixed': self.Y_list,
+                           'learn_XY': self.learn_XY
                            }
         eval_loss_dict = {'static_flag': self.static_flag,
                           'lin_sys_solve': lin_sys_solve,
@@ -148,7 +154,8 @@ class L2WSmodel(object):
                           'ty': self.ty,
                           'low_2_high_dim': self.low_2_high_dim,
                           'X_list_fixed': self.X_list,
-                          'Y_list_fixed': self.Y_list
+                          'Y_list_fixed': self.Y_list,
+                          'learn_XY': self.learn_XY
                           }
         fixed_ws_dict = {'static_flag': self.static_flag,
                          'lin_sys_solve': lin_sys_solve,
@@ -167,7 +174,8 @@ class L2WSmodel(object):
                          'ty': self.ty,
                          'low_2_high_dim': self.low_2_high_dim,
                          'X_list_fixed': self.X_list,
-                         'Y_list_fixed': self.Y_list
+                         'Y_list_fixed': self.Y_list,
+                         'learn_XY': self.learn_XY
                          }
         self.loss_fn_train = create_loss_fn(train_loss_dict)
         self.loss_fn_eval = create_loss_fn(eval_loss_dict)
@@ -212,7 +220,7 @@ class L2WSmodel(object):
         for i in range(self.num_clusters):
             x_psd = self.x_stars_train[i, self.x_psd_indices]
             y_psd = self.y_stars_train[i, self.y_psd_indices]
-            X, Y = vec_symm(x_psd), vec_symm(y_psd)
+            X, Y = unvec_symm(x_psd, self.psd_size), unvec_symm(y_psd, self.psd_size)
             X_list.append(X)
             Y_list.append(Y)
 
@@ -227,6 +235,7 @@ class L2WSmodel(object):
             plt.plot(indices)
             plt.savefig(f"{flag}_indices_psd_plot.pdf", bbox_inches='tight')
             plt.clf()
+            return indices
         train_cluster_indices = get_indices(self.u_stars_train, 'train') #jnp.array(train_indices)
         test_cluster_indices = get_indices(self.u_stars_test, 'test')
         
@@ -284,8 +293,13 @@ class L2WSmodel(object):
         '''
         do a 1-hot encoding - assume given vector of indices
         '''
-        train_targets = jax.nn.one_hot(self.train_cluster_indices, self.num_clusters)
-        test_targets = jax.nn.one_hot(self.test_cluster_indices, self.num_clusters)
+        train_targets_x = jax.nn.one_hot(self.train_cluster_indices, self.tx)
+        train_targets_y = jax.nn.one_hot(self.train_cluster_indices, self.ty)
+        test_targets_x = jax.nn.one_hot(self.test_cluster_indices, self.tx)
+        test_targets_y = jax.nn.one_hot(self.test_cluster_indices, self.ty)
+        train_targets = jnp.hstack([train_targets_x, train_targets_y])
+        test_targets = jnp.hstack([test_targets_x, test_targets_y])
+        pdb.set_trace()
 
         curr_pretrain_loss = pretrain_loss(
             params, self.train_inputs, train_targets)
@@ -308,7 +322,7 @@ class L2WSmodel(object):
             data = data.T
             df_pretrain = pd.DataFrame(
                 data, columns=['pretrain losses', 'pretrain_test_losses'])
-            df_pretrain.to_csv('pretrain_results.csv')
+            df_pretrain.to_csv('pretrain_alpha_results.csv')
 
         self.params = params
         self.state = state
@@ -540,7 +554,7 @@ def create_loss_fn(input_dict):
     tx, ty = input_dict['tx'], input_dict['ty']
     low_2_high_dim = input_dict['low_2_high_dim']
     learn_XY = input_dict['learn_XY']
-    X_list_fixed, Y_list_fixed = input_dict['X_list'], input_dict['Y_list']
+    X_list_fixed, Y_list_fixed = input_dict['X_list_fixed'], input_dict['Y_list_fixed']
 
     # if dynamic, the next 2 set to None
     M_static, factor_static = input_dict['M_static'], input_dict['factor_static']
@@ -602,7 +616,7 @@ def create_loss_fn(input_dict):
             def _fp_(i, val):
                 z, z_prev, loss_vec, all_z, primal_residuals, dual_residuals = val
                 z_next, u, v = fixed_point(z, factor, q)
-                diff = jnp.linalg.norm(z_next - z)
+                diff = jnp.linalg.norm(z_next - z) 
                 loss_vec = loss_vec.at[i].set(diff)
 
                 pr = jnp.linalg.norm(A @ u[:n] + v[n:] - b)
@@ -641,7 +655,7 @@ def create_loss_fn(input_dict):
         else:
             # loss = jnp.linalg.norm(z_next - z)
             # loss = iter_losses.sum()
-            weights = 1+jnp.arange(iter_losses.size)
+            weights = (1+jnp.arange(iter_losses.size)) ** 2
             loss = iter_losses @ weights
         out = x_primal, z_next, u, all_x_primals
 
