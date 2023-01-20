@@ -1,0 +1,8 @@
+eval_iters: 500
+# datetimes: ''
+datetimes: ['2023-01-19/23-07-45', '2023-01-19/21-26-18']
+labels: ['new lab', 'second lab']
+add_k: True
+y_low: 1e-4
+y_high: 1e2
+gif_length: 100
