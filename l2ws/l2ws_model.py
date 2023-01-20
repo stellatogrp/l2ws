@@ -299,7 +299,7 @@ class L2WSmodel(object):
         test_targets_y = jax.nn.one_hot(self.test_cluster_indices, self.ty)
         train_targets = jnp.hstack([train_targets_x, train_targets_y])
         test_targets = jnp.hstack([test_targets_x, test_targets_y])
-        pdb.set_trace()
+
 
         curr_pretrain_loss = pretrain_loss(
             params, self.train_inputs, train_targets)
@@ -653,10 +653,10 @@ def create_loss_fn(input_dict):
         if supervised:
             loss = jnp.linalg.norm(z_next - z_star)
         else:
-            # loss = jnp.linalg.norm(z_next - z)
+            loss = jnp.linalg.norm(z_next - z)
             # loss = iter_losses.sum()
-            weights = (1+jnp.arange(iter_losses.size)) ** 2
-            loss = iter_losses @ weights
+            # weights = (1+jnp.arange(iter_losses.size))
+            # loss = iter_losses @ weights
         out = x_primal, z_next, u, all_x_primals
 
         if diff_required:

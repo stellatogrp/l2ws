@@ -225,7 +225,7 @@ class Workspace:
 
         self.proj = proj
 
-        # pdb.set_trace()
+
         # @jit
         # def lin_sys_solve(rhs):
         #     return jsp.linalg.lu_solve(algo_factor, rhs)
@@ -243,6 +243,8 @@ class Workspace:
         inputs = jnp.array(inputs_normalized)
         train_inputs = inputs[:N_train, :]
         test_inputs = inputs[N_train:N, :]
+        # train_inputs = thetas[:N_train, :]
+        # test_inputs = thetas[N_train:N, :]
 
         num_plot = np.min([N_train, 4])
         for i in range(num_plot):
