@@ -16,11 +16,9 @@ echo "My SLURM_ARRAY_JOB_ID is $SLURM_ARRAY_JOB_ID."
 echo "My SLURM_ARRAY_TASK_ID is $SLURM_ARRAY_TASK_ID"
 echo "Executing on the machine:" $(hostname)
 
-# python utils/portfolio_utils.py
-# python plot_script.py robust_pca cluster
+
 python l2ws_train_script.py robust_pca cluster
-# python l2ws_setup_script.py robust_pca cluster
 # python aggregate_slurm_runs_script.py robust_pca cluster
-#python scs_c_speed.py markowitz
+
 
 # gpu command: #SBATCH --gres=gpu:1 
