@@ -575,6 +575,26 @@ class Workspace:
             plt.savefig(f"polar/{col}/prob_{i}_subseq_iters.pdf")
             plt.clf()
 
+        '''
+        save the angle data (or the cos(angle) data) for subseq.
+        - new csv file for each
+        - put
+        '''
+
+        # if not os.path.exists(f"polar/angle_data/{col}"):
+        #     os.mkdir(f"polar/angle_data/{col}")
+        subsequent_angles = angles[:, -1, 1:]
+        angles_df = pd.DataFrame(subsequent_angles)
+        angles_df.to_csv(f"polar/{col}/angle_data.csv")
+
+        # also plot the angles for the first 5 problems
+        for i in range(5):
+            plt.plot(angles[i, -1, 2:])
+            plt.ylabel('angle$(z^{k+1} - z^k, z^k - z^{k-1})$')
+            plt.xlabel('eval iters')
+            plt.hlines(0, 0, angles[i, -1, 2:].size)
+            plt.savefig(f"polar/{col}/prob_{i}_angles.pdf")
+            plt.clf()
 
         return out_train
 
