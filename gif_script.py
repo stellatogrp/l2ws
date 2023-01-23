@@ -16,7 +16,7 @@ from utils.data_utils import copy_data_file, recover_last_datetime
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
-    "font.size": 24,
+    "font.size": 16,
 })
 
 
@@ -60,6 +60,17 @@ def get_k(orig_cwd, example, datetime):
     return k
 
 
+def get_epochs_per_eval(orig_cwd, example, datetime):
+    train_yaml_filename = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/.hydra/config.yaml"
+    with open(train_yaml_filename, "r") as stream:
+        try:
+            out_dict = yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+    eval_every_x_epochs = int(out_dict['eval_every_x_epochs'])
+    return eval_every_x_epochs
+
+
 def eval_iters_gif(example, cfg):
     '''
     first plot 
@@ -82,20 +93,19 @@ def eval_iters_gif(example, cfg):
     if labels == '':
         labels = ['default' for i in range(len(datetimes))]
 
+    
     data = np.zeros((len(datetimes), cfg.gif_length, cfg.eval_iters))
     for i in range(len(datetimes)):
         datetime = datetimes[i]
         df = get_data(example, datetime, cfg.eval_iters)
 
-        exclude = ['final', 'iterations', 'Unnamed: 0', 'no_train']
+        exclude = ['final', 'iterations', 'Unnamed: 0', 'no_train', 'fixed_ws']
         no_learn = df['no_train']
         k = get_k(orig_cwd, example, datetime)
         if labels[i] == 'default':
             label = f"learned: k={k}"
         else:
-            if cfg.add_k:
-                label = f"{labels[i]}: {k}"
-            label == labels[i]
+            
 
         count = 0
         for col in df:
@@ -104,12 +114,19 @@ def eval_iters_gif(example, cfg):
                     print('col', col)
                     data[i, count, :] = df[col]
                     count += 1
-
+            # if count == 1:
+            #     second_epochs_per_eval = int(col[11:])
+    # assume that the evals_per_epoch is the same for all examples
+    epochs_per_eval = get_epochs_per_eval(orig_cwd, example, datetimes[0])
     filenames = []
 
     for j in range(cfg.gif_length):
         for i in range(len(datetimes)):
-            plt.plot(data[i, j, :], label=labels[i])
+            if cfg.add_k:
+                label = f"{labels[i]}: {k}"
+            else:
+                label == labels[i]
+            plt.plot(data[i, j, :], label=label)
 
         # assume no_learn comes from the first one
         plt.plot(no_learn, 'black', label='no learning')
@@ -118,6 +135,8 @@ def eval_iters_gif(example, cfg):
         filename = f"plot_{j}.png"
         filenames.append(filename)
         plt.yscale('log')
+        epoch = epochs_per_eval * j
+        plt.title(f"Epoch {epoch}")
         plt.savefig(filename, bbox_inches='tight')
         plt.clf()
 

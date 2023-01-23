@@ -91,6 +91,7 @@ class Workspace:
         self.dy = cfg.dy
         self.learn_XY = cfg.learn_XY
         self.num_clusters = cfg.num_clusters
+        self.loss_method = cfg.loss_method
 
         '''
         from the run cfg retrieve the following via the data cfg
@@ -310,6 +311,7 @@ class Workspace:
                       'num_clusters': self.num_clusters,
                       'x_psd_indices': x_psd_indices,
                       'y_psd_indices': y_psd_indices,
+                      'loss_method': self.loss_method
                       }
 
         self.l2ws_model = L2WSmodel(input_dict)
@@ -511,14 +513,8 @@ class Workspace:
                 r = out_train[2][i, angle:-1]
                 theta = np.zeros(r.size)
                 theta[1:] = angles[i, j, angle+1:]
-                # ax.plot(theta[3:], r[3:], label=f"ref={angle}") # ignore first point
                 ax.plot(theta, r, label=f"anchor={angle}")
                 ax.plot(theta[self.train_unrolls-angle], r[self.train_unrolls-angle], 'r+')
-
-                # r2 is just iters -- to remove magnitude for visibility
-                # r2 = theta.size - np.arange(theta.size)
-                # ax2.plot(theta, r2, label=f"anchor={angle}")
-                # ax2.plot(theta[self.train_unrolls-angle], r2[self.train_unrolls-angle], 'r+')
             ax.grid(True)
             ax.set_rscale('symlog')
             ax.set_title("Magnitude", va='bottom')
@@ -533,14 +529,7 @@ class Workspace:
                 r = out_train[2][i, angle:-1]
                 theta = np.zeros(r.size)
                 theta[1:] = angles[i, j, angle+1:]
-                # ax.plot(theta[3:], r[3:], label=f"ref={angle}") # ignore first point
-                # ax.plot(theta, r, label=f"anchor={angle}")
-                # ax.plot(theta[self.train_unrolls-angle], r[self.train_unrolls-angle], 'r+')
-
-                # r2 is just iters -- to remove magnitude for visibility
-                # r2 = theta.size - np.arange(theta.size)
                 num_iters = np.max([100, self.train_unrolls + 5])
-                # r2 = 100 - np.arange(100)
                 r2 = num_iters - np.arange(num_iters)
                 ax2.plot(theta[:num_iters], r2, label=f"anchor={angle}")
                 ax2.plot(theta[self.train_unrolls-angle], r2[self.train_unrolls-angle], 'r+')
@@ -548,8 +537,44 @@ class Workspace:
             # ax2.set_rscale('symlog')
             ax2.set_title("Iterations", va='bottom')
             plt.legend()
+            plt.savefig(f"polar/{col}/prob_{i}_subseq_iters.pdf")
+            plt.clf()
+
+
+        '''
+        plotting subsequent vectors in polar form
+        '''
+        num_angles = len(self.angle_anchors)
+        for i in range(5):
+            fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+            r = out_train[2][i, 0:-1]
+            theta = np.zeros(r.size)
+            theta[1:] = angles[i, j, 1:]
+            ax.plot(theta, r, label=f"anchor={angle}")
+            ax.plot(theta[self.train_unrolls-angle], r[self.train_unrolls-angle], 'r+')
+            ax.grid(True)
+            ax.set_rscale('symlog')
+            ax.set_title("Magnitude", va='bottom')
+            plt.legend()
+            plt.savefig(f"polar/{col}/prob_{i}_subseq_mag.pdf")
+            plt.clf()
+
+        for i in range(5):
+            fig2, ax2 = plt.subplots(subplot_kw={'projection': 'polar'})
+            for j in range(num_angles):
+                r = out_train[2][i, 0:-1]
+                theta = np.zeros(r.size)
+                theta[1:] = angles[i, j, 1:]
+                num_iters = np.max([100, self.train_unrolls + 5])
+                r2 = num_iters - np.arange(num_iters)
+                ax2.plot(theta[:num_iters], r2, label=f"anchor={angle}")
+                ax2.plot(theta[self.train_unrolls], r2[self.train_unrolls], 'r+')
+            ax2.grid(True)
+            ax2.set_title("Iterations", va='bottom')
+            plt.legend()
             plt.savefig(f"polar/{col}/prob_{i}_iters.pdf")
             plt.clf()
+
 
         return out_train
 

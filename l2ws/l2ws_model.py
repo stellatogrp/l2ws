@@ -65,6 +65,7 @@ class L2WSmodel(object):
         self.num_clusters = dict.get('num_clusters')
         self.x_psd_indices = dict.get('x_psd_indices')
         self.y_psd_indices = dict.get('y_psd_indices')
+        self.loss_method = dict.get('loss_method')
 
         if self.static_flag:
             self.static_M = dict['static_M']
@@ -135,7 +136,8 @@ class L2WSmodel(object):
                            'low_2_high_dim': self.low_2_high_dim,
                            'X_list_fixed': self.X_list,
                            'Y_list_fixed': self.Y_list,
-                           'learn_XY': self.learn_XY
+                           'learn_XY': self.learn_XY,
+                           'loss_method': self.loss_method
                            }
         eval_loss_dict = {'static_flag': self.static_flag,
                           'lin_sys_solve': lin_sys_solve,
@@ -155,7 +157,8 @@ class L2WSmodel(object):
                           'low_2_high_dim': self.low_2_high_dim,
                           'X_list_fixed': self.X_list,
                           'Y_list_fixed': self.Y_list,
-                          'learn_XY': self.learn_XY
+                          'learn_XY': self.learn_XY,
+                          'loss_method': self.loss_method
                           }
         fixed_ws_dict = {'static_flag': self.static_flag,
                          'lin_sys_solve': lin_sys_solve,
@@ -175,7 +178,8 @@ class L2WSmodel(object):
                          'low_2_high_dim': self.low_2_high_dim,
                          'X_list_fixed': self.X_list,
                          'Y_list_fixed': self.Y_list,
-                         'learn_XY': self.learn_XY
+                         'learn_XY': self.learn_XY,
+                         'loss_method': self.loss_method
                          }
         self.loss_fn_train = create_loss_fn(train_loss_dict)
         self.loss_fn_eval = create_loss_fn(eval_loss_dict)
@@ -555,6 +559,7 @@ def create_loss_fn(input_dict):
     low_2_high_dim = input_dict['low_2_high_dim']
     learn_XY = input_dict['learn_XY']
     X_list_fixed, Y_list_fixed = input_dict['X_list_fixed'], input_dict['Y_list_fixed']
+    loss_method = input_dict['loss_method']
 
     # if dynamic, the next 2 set to None
     M_static, factor_static = input_dict['M_static'], input_dict['factor_static']
@@ -598,7 +603,8 @@ def create_loss_fn(input_dict):
         iter_losses = jnp.zeros(iters)
         primal_residuals = jnp.zeros(iters)
         dual_residuals = jnp.zeros(iters)
-        angles = jnp.zeros((len(angle_anchors), iters-1))
+        # angles = jnp.zeros((len(angle_anchors), iters-1))
+        angles = jnp.zeros((len(angle_anchors) + 1, iters-1))
         all_x_primals = jnp.zeros((iters, n))
         all_z = jnp.zeros((iters, z.size))
 
@@ -644,6 +650,18 @@ def create_loss_fn(input_dict):
                 curr_angles = batch_angle(diffs)
                 angles = angles.at[j, :].set(curr_angles)
 
+            # do the angle(z^{k+1} - z^k, z^k - z^{k-1})
+            diffs = jnp.diff(all_z, axis=0)
+
+                def compute_angle(d1, d2):
+                    cos = d1 @ d2 / (jnp.linalg.norm(d1) * jnp.linalg.norm(d2))
+                    angle = jnp.arccos(cos)
+                    return angle
+                batch_angle = vmap(compute_angle, in_axes=(0), out_axes=(0))
+                curr_angles = batch_angle(diffs[:-2], diffs[1:])
+
+            angles = angles.at[j, :].set(curr_angles)
+
         # unroll 1 more time for the loss
         u_tilde = lin_sys_solve(factor, z - q)
         u_temp = 2*u_tilde - z
@@ -653,7 +671,14 @@ def create_loss_fn(input_dict):
         if supervised:
             loss = jnp.linalg.norm(z_next - z_star)
         else:
-            loss = jnp.linalg.norm(z_next - z)
+            if loss_method == 'increasing_sum':
+                weights = (1+jnp.arange(iter_losses.size))
+                loss = iter_losses @ weights
+            elif loss_method == 'constant_sum':
+                loss = iter_losses.sum()
+            elif loss_method == 'fixed_k':
+                loss = jnp.linalg.norm(z_next - z)
+            
             # loss = iter_losses.sum()
             # weights = (1+jnp.arange(iter_losses.size))
             # loss = iter_losses @ weights
