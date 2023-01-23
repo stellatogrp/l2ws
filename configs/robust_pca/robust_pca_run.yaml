@@ -34,5 +34,5 @@ tx: 20
 ty: 20
 learn_XY: False
 num_clusters: 20
-loss_method: increasing_sum
-#increasing_sum # or fixed_k
+loss_method: fixed_k
+#increasing_sum or constant_sum or fixed_k 

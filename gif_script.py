@@ -95,18 +95,17 @@ def eval_iters_gif(example, cfg):
 
     
     data = np.zeros((len(datetimes), cfg.gif_length, cfg.eval_iters))
+    ks = []
     for i in range(len(datetimes)):
         datetime = datetimes[i]
         df = get_data(example, datetime, cfg.eval_iters)
 
         exclude = ['final', 'iterations', 'Unnamed: 0', 'no_train', 'fixed_ws']
         no_learn = df['no_train']
-        k = get_k(orig_cwd, example, datetime)
-        if labels[i] == 'default':
-            label = f"learned: k={k}"
-        else:
-            
 
+        k = get_k(orig_cwd, example, datetime)
+        ks.append(k)
+        
         count = 0
         for col in df:
             if col not in exclude:
@@ -122,10 +121,15 @@ def eval_iters_gif(example, cfg):
 
     for j in range(cfg.gif_length):
         for i in range(len(datetimes)):
-            if cfg.add_k:
-                label = f"{labels[i]}: {k}"
+            datetime = datetimes[i]
+            
+            if labels[i] == 'default':
+                label = f"learned: k={ks[i]}"
             else:
-                label == labels[i]
+                if cfg.add_k:
+                    label = f"{labels[i]}: {ks[i]}"
+                else:
+                    label == labels[i]
             plt.plot(data[i, j, :], label=label)
 
         # assume no_learn comes from the first one

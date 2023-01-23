@@ -1,9 +1,9 @@
 eval_iters: 500
 # datetimes: ''
 # datetimes: ['2023-01-19/23-07-45', '2023-01-19/21-26-18']
-datetimes: ['2023-01-20/23-08-01', '2023-01-20/19-13-45']
+datetimes: ['2023-01-20/23-08-01', '2023-01-22/22-42-59', '2023-01-20/19-13-45']
 #['2023-01-19/22-45-22', '2023-01-20/09-14-51']
-labels: ['loss sum up to k', 'loss only at k']
+labels: ['incr. loss sum to k', 'const. loss sum to k', 'loss only at k']
 add_k: True
 y_low: 3e-5
 y_high: 5e1
