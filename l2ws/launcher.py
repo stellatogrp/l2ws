@@ -537,7 +537,7 @@ class Workspace:
             # ax2.set_rscale('symlog')
             ax2.set_title("Iterations", va='bottom')
             plt.legend()
-            plt.savefig(f"polar/{col}/prob_{i}_subseq_iters.pdf")
+            plt.savefig(f"polar/{col}/prob_{i}_iters.pdf")
             plt.clf()
 
 
@@ -549,7 +549,7 @@ class Workspace:
             fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
             r = out_train[2][i, 0:-1]
             theta = np.zeros(r.size)
-            theta[1:] = angles[i, j, 1:]
+            theta[1:] = angles[i, -1, 1:]
             ax.plot(theta, r, label=f"anchor={angle}")
             ax.plot(theta[self.train_unrolls-angle], r[self.train_unrolls-angle], 'r+')
             ax.grid(True)
@@ -564,7 +564,7 @@ class Workspace:
             for j in range(num_angles):
                 r = out_train[2][i, 0:-1]
                 theta = np.zeros(r.size)
-                theta[1:] = angles[i, j, 1:]
+                theta[1:] = angles[i, -1, 1:]
                 num_iters = np.max([100, self.train_unrolls + 5])
                 r2 = num_iters - np.arange(num_iters)
                 ax2.plot(theta[:num_iters], r2, label=f"anchor={angle}")
@@ -572,7 +572,7 @@ class Workspace:
             ax2.grid(True)
             ax2.set_title("Iterations", va='bottom')
             plt.legend()
-            plt.savefig(f"polar/{col}/prob_{i}_iters.pdf")
+            plt.savefig(f"polar/{col}/prob_{i}_subseq_iters.pdf")
             plt.clf()
 
 

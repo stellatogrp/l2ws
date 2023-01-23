@@ -653,14 +653,14 @@ def create_loss_fn(input_dict):
             # do the angle(z^{k+1} - z^k, z^k - z^{k-1})
             diffs = jnp.diff(all_z, axis=0)
 
-                def compute_angle(d1, d2):
-                    cos = d1 @ d2 / (jnp.linalg.norm(d1) * jnp.linalg.norm(d2))
-                    angle = jnp.arccos(cos)
-                    return angle
-                batch_angle = vmap(compute_angle, in_axes=(0), out_axes=(0))
-                curr_angles = batch_angle(diffs[:-2], diffs[1:])
+            def compute_angle(d1, d2):
+                cos = d1 @ d2 / (jnp.linalg.norm(d1) * jnp.linalg.norm(d2))
+                angle = jnp.arccos(cos)
+                return angle
+            batch_angle = vmap(compute_angle, in_axes=(0, 0), out_axes=(0))
+            curr_angles = batch_angle(diffs[:-1], diffs[1:])
 
-            angles = angles.at[j, :].set(curr_angles)
+            angles = angles.at[-1, :-1].set(curr_angles)
 
         # unroll 1 more time for the loss
         u_tilde = lin_sys_solve(factor, z - q)
