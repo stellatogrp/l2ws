@@ -112,6 +112,7 @@ class L2WSmodel(object):
                 self.params = self.nn_params
                 self.pretrain_alphas(1000, n_x_low + n_y_low)
         else:
+            self.X_list, self.Y_list = [], []
             self.params = self.nn_params
         self.state = None
 

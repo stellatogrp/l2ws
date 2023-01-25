@@ -28,11 +28,11 @@ num_samples: 20
 prediction_variable: w
 supervised: False
 angle_anchors: [0]
-dx: 0
-dy: 0
-tx: 20
-ty: 20
+dx: 20
+dy: 20
+tx: 0
+ty: 0
 learn_XY: False
-num_clusters: 20
+num_clusters: 0
 loss_method: fixed_k
 #increasing_sum or constant_sum or fixed_k 

@@ -592,7 +592,7 @@ class Workspace:
             plt.plot(angles[i, -1, 2:])
             plt.ylabel('angle$(z^{k+1} - z^k, z^k - z^{k-1})$')
             plt.xlabel('eval iters')
-            plt.hlines(0, 0, angles[i, -1, 2:].size)
+            plt.hlines(0, 0, angles[i, -1, 2:].size, 'r')
             plt.savefig(f"polar/{col}/prob_{i}_angles.pdf")
             plt.clf()
 
