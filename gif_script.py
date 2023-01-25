@@ -94,19 +94,22 @@ def angles_gif(example, cfg, prob_num):
     if labels == '':
         labels = ['default' for i in range(len(datetimes))]
 
-    
-    data = np.zeros((len(datetimes), cfg.gif_length, cfg.eval_iters))
+    data = np.zeros((len(datetimes), cfg.gif_length, cfg.eval_iters - 3))
     ks = []
     for i in range(len(datetimes)):
         datetime = datetimes[i]
         df = get_data(example, datetime, cfg.eval_iters)
 
         exclude = ['final', 'iterations', 'Unnamed: 0', 'no_train', 'fixed_ws']
-        no_learn = df['no_train']
+        # no_learn = df['no_train']
+
+        path_no_learn = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/polar/no_train/angle_data.csv"
+        angle_df_no_learn = read_csv(path_no_learn)
+        no_learn = np.array(angle_df_no_learn.iloc[prob_num, 1:-1])
 
         k = get_k(orig_cwd, example, datetime)
         ks.append(k)
-        
+
         count = 0
         for col in df:
             if col not in exclude:
@@ -114,21 +117,27 @@ def angles_gif(example, cfg, prob_num):
                 don't use that df for eval_iters
                 use the df from polar/{col}/angle_data.csv
                 '''
-                orig_cwd = hydra.utils.get_original_cwd()
-                path = f"{orig_cwd}/outputs/{example}/train_outputs/polar/{col}/angle_data.csv"
+
+                path = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/polar/{col}/angle_data.csv"
                 angle_df = read_csv(path)
-                
+
                 if count < cfg.gif_length:
                     print('col', col)
-                    data[i, count, :] = angle_df.iloc[prob_num, :]
+                    data[i, count, :] = np.array(angle_df.iloc[prob_num, 1:-1])
                     count += 1
 
     # assume that the evals_per_epoch is the same for all examples
     epochs_per_eval = get_epochs_per_eval(orig_cwd, example, datetimes[0])
     filenames = []
 
+    y_low = data.min()
+    y_high = data.max()
+    print('y_low', y_low)
+    print('y_high', y_high)
+    # pdb.set_trace()
     for j in range(cfg.gif_length):
         for i in range(len(datetimes)):
+            print('j', j)
             datetime = datetimes[i]
             
             if labels[i] == 'default':
@@ -142,18 +151,20 @@ def angles_gif(example, cfg, prob_num):
 
         # assume no_learn comes from the first one
         plt.plot(no_learn, 'black', label='no learning')
-        plt.ylim((cfg.y_low, cfg.y_high))
+        plt.ylim((y_low, y_high))
         plt.legend()
         filename = f"plot_{j}.png"
         filenames.append(filename)
-        plt.yscale('log')
+        # plt.yscale('log')
         epoch = epochs_per_eval * j
         plt.title(f"Problem {prob_num} angles: Epoch {epoch}")
+        plt.ylabel('angle')
+        plt.xlabel('evaluation steps')
         plt.savefig(filename, bbox_inches='tight')
         plt.clf()
 
     # Build GIF
-    with imageio.get_writer("angles_gif_{prob_num}.gif", mode='I') as writer:
+    with imageio.get_writer(f"angles_gif_{prob_num}.gif", mode='I') as writer:
         for filename in filenames:
             image = imageio.imread(filename)
             writer.append_data(image)
