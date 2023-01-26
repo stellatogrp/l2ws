@@ -4,13 +4,23 @@ eval_iters: 500
 
 # below is the best run for meeting jan 25
 # datetimes: ['2023-01-20/23-08-01', '2023-01-22/22-42-59', '2023-01-20/19-13-45']
-datetimes: '' #['2023-01-19/22-45-22', '2023-01-20/09-14-51']
-labels: ['custom title'] #['incr. loss sum to k', 'const. loss sum to k', 'loss only at k']
+# labels: ['incr. loss sum to k', 'const. loss sum to k', 'loss only at k']
+
+# below includes angles
+# datetimes: ['2023-01-24/20-21-46', '2023-01-23/12-16-06', '2023-01-23/12-11-45']
+# labels: ['t=10 fixed k', 't=20 fixed k', 't=20 sum k']
+
+# change d
+datetimes: ['2023-01-24/23-51-49', '2023-01-25/07-58-25', '2023-01-25/07-58-41', '2023-01-24/23-45-44']
+labels: ['d=3', 'd=10', 'd=20', 'd=34 (full rank)']
+
+# datetimes: '' #['2023-01-19/22-45-22', '2023-01-20/09-14-51']
+
 add_k: True
-# y_low: 3e-5
-# y_high: 5e1
-gif_length: 3
-gradient: True
+y_low: 3e-5
+y_high: 5e1
+gif_length: 30
+gradient: False
 # y_grad_low: 8e-4
 # y_grad_high: 3e1
-angle_prob_nums: [0, 1]
+angle_prob_nums: [0, 1, 2]
