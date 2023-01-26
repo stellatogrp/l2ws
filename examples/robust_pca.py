@@ -418,10 +418,10 @@ def low_2_high_dim_prediction(nn_output, X_list, Y_list, n_x_low, n_y_low,
         sum_vvT = sum_vvT + jnp.outer(V[i, :], V[i, :])
     sum_alpha_X = jnp.zeros((x_psd_size, x_psd_size))
     for i in range(tx):
-        sum_alpha_X = sum_alpha_X + alpha_x[i] * X_list[i]
+        sum_alpha_X = sum_alpha_X + alpha_x[i] * X_list[i] / alpha_x.sum()
     sum_alpha_Y = jnp.zeros((y_psd_size, y_psd_size))
     for i in range(ty):
-        sum_alpha_Y = sum_alpha_Y + alpha_y[i] * Y_list[i]
+        sum_alpha_Y = sum_alpha_Y + alpha_y[i] * Y_list[i] / alpha_y.sum()
     # sum_uuT = jnp.sum([jnp.outer(U[i, :], U[i, :]) for i in range(dx)])
     # sum_vvT = jnp.sum([jnp.outer(V[i, :], V[i, :]) for i in range(dy)])
     # sum_alpha_X = jnp.sum([alpha_x * X_list[i] for i in range(tx)])

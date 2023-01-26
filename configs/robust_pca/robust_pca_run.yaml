@@ -2,7 +2,7 @@ nn_cfg:
   lr: 1e-4
   method: adam
   intermediate_layer_sizes: [500, 500]
-  batch_size: 200
+  batch_size: 100
   epochs: 100000
   decay_lr: .6
   min_lr: 1e-7
@@ -36,3 +36,5 @@ learn_XY: False
 num_clusters: 20
 loss_method: constant_sum
 #increasing_sum or constant_sum or fixed_k 
+plot_iterates: [10]
+share_all: True

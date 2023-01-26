@@ -92,6 +92,8 @@ class Workspace:
         self.learn_XY = cfg.learn_XY
         self.num_clusters = cfg.num_clusters
         self.loss_method = cfg.loss_method
+        self.plot_iterates = cfg.plot_iterates
+        self.share_all = cfg.share_all
 
         '''
         from the run cfg retrieve the following via the data cfg
@@ -311,7 +313,8 @@ class Workspace:
                       'num_clusters': self.num_clusters,
                       'x_psd_indices': x_psd_indices,
                       'y_psd_indices': y_psd_indices,
-                      'loss_method': self.loss_method
+                      'loss_method': self.loss_method,
+                      'share_all': self.share_all
                       }
 
         self.l2ws_model = L2WSmodel(input_dict)
@@ -348,13 +351,13 @@ class Workspace:
 
             elif col == 'no_train':
                 # random init with neural network
-                # _, predict_size = self.l2ws_model.w_stars_test.shape
-                # random_start = .05*np.random.normal(size=(num, predict_size))
-                # inputs = jnp.array(random_start)
-                # fixed_ws = True
+                _, predict_size = self.l2ws_model.w_stars_test.shape
+                random_start = 0*np.random.normal(size=(num, predict_size))
+                inputs = jnp.array(random_start)
+                fixed_ws = True
 
-                inputs = self.l2ws_model.train_inputs[:num, :]
-                fixed_ws = False
+                # inputs = self.l2ws_model.train_inputs[:num, :]
+                # fixed_ws = False
             else:
                 inputs = self.l2ws_model.train_inputs[:num, :]
             if self.l2ws_model.static_flag:
@@ -590,10 +593,63 @@ class Workspace:
         # also plot the angles for the first 5 problems
         for i in range(5):
             plt.plot(angles[i, -1, 2:])
-            plt.ylabel('angle$(z^{k+1} - z^k, z^k - z^{k-1})$')
+            plt.ylabel('angle')
             plt.xlabel('eval iters')
             plt.hlines(0, 0, angles[i, -1, 2:].size, 'r')
             plt.savefig(f"polar/{col}/prob_{i}_angles.pdf")
+            plt.clf()
+
+        '''
+        plot the warm-start predictions
+        '''
+        u_ws = out_train[0][0]
+        u_all = out_train[0][3]
+
+        if not os.path.exists('warm-starts'):
+            os.mkdir('warm-starts')
+        if not os.path.exists(f"warm-starts/{col}"):
+            os.mkdir(f"warm-starts/{col}")
+        for i in range(5):
+            '''
+            plot for x
+            '''
+            if train:
+                plt.plot(self.x_stars_train[i, :], label='optimal')
+            else:
+                plt.plot(self.x_stars_test[i, :], label='optimal')
+            for j in self.plot_iterates:
+                plt.plot(u_all[i, j, :self.l2ws_model.n], label=f"prediction_{j}")
+            plt.legend()
+            plt.savefig(f"warm-starts/{col}/prob_{i}_x_ws.pdf")
+            plt.clf()
+
+            for j in self.plot_iterates:
+                plt.plot(u_all[i, j, :self.l2ws_model.n] - self.x_stars_train[i, :], label=f"prediction_{j}")
+            plt.legend()
+            plt.title('diffs to optimal')
+            plt.savefig(f"warm-starts/{col}/prob_{i}_diffs_x.pdf")
+            plt.clf()
+
+
+            '''
+            plot for y
+            '''
+            if train:
+                plt.plot(self.y_stars_train[i, :], label='optimal')
+            else:
+                plt.plot(self.y_stars_test[i, :], label='optimal')
+
+            for j in self.plot_iterates:
+                plt.plot(u_all[i, j, self.l2ws_model.n:], label=f"prediction_{j}")
+            plt.legend()
+            plt.savefig(f"warm-starts/{col}/prob_{i}_y_ws.pdf")
+            plt.clf()
+
+            for j in self.plot_iterates:
+                plt.plot(u_all[i, j, self.l2ws_model.n:] - self.y_stars_train[i, :], label=f"prediction_{j}")
+            plt.legend()
+            plt.title('diffs to optimal')
+            plt.savefig(f"warm-starts/{col}/prob_{i}_diffs_y.pdf")
             plt.clf()
 
         return out_train
