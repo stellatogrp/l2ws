@@ -93,6 +93,7 @@ class Workspace:
         self.num_clusters = cfg.num_clusters
         self.loss_method = cfg.loss_method
         self.plot_iterates = cfg.plot_iterates
+        self.share_all = cfg.share_all
 
         '''
         from the run cfg retrieve the following via the data cfg
@@ -312,7 +313,8 @@ class Workspace:
                       'num_clusters': self.num_clusters,
                       'x_psd_indices': x_psd_indices,
                       'y_psd_indices': y_psd_indices,
-                      'loss_method': self.loss_method
+                      'loss_method': self.loss_method,
+                      'share_all': self.share_all
                       }
 
         self.l2ws_model = L2WSmodel(input_dict)

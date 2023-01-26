@@ -66,6 +66,7 @@ class L2WSmodel(object):
         self.x_psd_indices = dict.get('x_psd_indices')
         self.y_psd_indices = dict.get('y_psd_indices')
         self.loss_method = dict.get('loss_method')
+        self.share_all = dict.get('share_all')
 
         if self.static_flag:
             self.static_M = dict['static_M']
@@ -81,43 +82,55 @@ class L2WSmodel(object):
         input_size = self.train_inputs.shape[1]
         self.prediction_variable = dict['prediction_variable']
         self.batched_predict_y = vmap(predict_y, in_axes=(None, 0))
-        if self.prediction_variable == 'w':
-            if self.psd:
-                n_x_non_psd = self.n - int(self.psd_size * (self.psd_size + 1) / 2)
-                n_y_non_psd = self.m - int(self.psd_size * (self.psd_size + 1) / 2)
-                n_x_low = n_x_non_psd + self.dx * self.psd_size
-                n_y_low = n_y_non_psd + self.dy * self.psd_size
-                
-                output_size = n_x_low + n_y_low + self.tx + self.ty
-            else:
-                output_size = self.n + self.m
-        elif self.prediction_variable == 'x':
-            output_size = self.n
+
+        if self.share_all:
+            output_size = self.num_clusters
+        else:
+            if self.prediction_variable == 'w':
+                if self.psd:
+                    n_x_non_psd = self.n - int(self.psd_size * (self.psd_size + 1) / 2)
+                    n_y_non_psd = self.m - int(self.psd_size * (self.psd_size + 1) / 2)
+                    n_x_low = n_x_non_psd + self.dx * self.psd_size
+                    n_y_low = n_y_non_psd + self.dy * self.psd_size
+                    
+                    output_size = n_x_low + n_y_low + self.tx + self.ty
+                else:
+                    output_size = self.n + self.m
+            elif self.prediction_variable == 'x':
+                output_size = self.n
         layer_sizes = [input_size] + \
             self.nn_cfg['intermediate_layer_sizes'] + [output_size]
 
         self.nn_params = init_network_params(layer_sizes, random.PRNGKey(0))
         key = 0
-        if self.psd and self.tx + self.ty > 0:
-            if self.learn_XY:
-                self.X_list = init_matrix_params(self.tx, self.psd_size, random.PRNGKey(key))
-                key += self.tx
-                self.Y_list = init_matrix_params(self.ty, self.psd_size, random.PRNGKey(key))
-                self.params = self.nn_params + self.X_list + self.Y_list
-            else:
-                out = self.cluster_init_XY_list()
-                self.X_list, self.Y_list = out[0], out[1]
-                self.train_cluster_indices, self.test_cluster_indices = out[2], out[3]
-                # self.Y_list = cluster_init_Y_list()
-                self.params = self.nn_params
-                self.pretrain_alphas(1000, n_x_low + n_y_low)
-        else:
+        if self.share_all:
+            out = self.cluster_z()
+            Z_shared = out[0]
+            self.train_cluster_indices, self.test_cluster_indices = out[1], out[2]
             self.X_list, self.Y_list = [], []
             self.params = self.nn_params
+            self.pretrain_alphas(1000, None, share_all=True)
+
+        else:
+            if self.psd and self.tx + self.ty > 0:
+                if self.learn_XY:
+                    self.X_list = init_matrix_params(self.tx, self.psd_size, random.PRNGKey(key))
+                    key += self.tx
+                    self.Y_list = init_matrix_params(self.ty, self.psd_size, random.PRNGKey(key))
+                    self.params = self.nn_params + self.X_list + self.Y_list
+                else:
+                    out = self.cluster_init_XY_list()
+                    self.X_list, self.Y_list = out[0], out[1]
+                    self.train_cluster_indices, self.test_cluster_indices = out[2], out[3]
+                    # self.Y_list = cluster_init_Y_list()
+                    self.params = self.nn_params
+                    self.pretrain_alphas(1000, n_x_low + n_y_low)
+            else:
+                self.X_list, self.Y_list = [], []
+                self.params = self.nn_params
         self.state = None
 
         self.epoch = 0
-        
 
         train_loss_dict = {'static_flag': self.static_flag,
                            'lin_sys_solve': lin_sys_solve,
@@ -138,7 +151,9 @@ class L2WSmodel(object):
                            'X_list_fixed': self.X_list,
                            'Y_list_fixed': self.Y_list,
                            'learn_XY': self.learn_XY,
-                           'loss_method': self.loss_method
+                           'loss_method': self.loss_method,
+                           'share_all': self.share_all,
+                           'Z_shared': Z_shared
                            }
         eval_loss_dict = {'static_flag': self.static_flag,
                           'lin_sys_solve': lin_sys_solve,
@@ -159,7 +174,9 @@ class L2WSmodel(object):
                           'X_list_fixed': self.X_list,
                           'Y_list_fixed': self.Y_list,
                           'learn_XY': self.learn_XY,
-                          'loss_method': self.loss_method
+                          'loss_method': self.loss_method,
+                          'share_all': self.share_all,
+                          'Z_shared': Z_shared
                           }
         fixed_ws_dict = {'static_flag': self.static_flag,
                          'lin_sys_solve': lin_sys_solve,
@@ -180,7 +197,9 @@ class L2WSmodel(object):
                          'X_list_fixed': self.X_list,
                          'Y_list_fixed': self.Y_list,
                          'learn_XY': self.learn_XY,
-                         'loss_method': self.loss_method
+                         'loss_method': self.loss_method,
+                         'share_all': self.share_all,
+                         'Z_shared': Z_shared
                          }
         self.loss_fn_train = create_loss_fn(train_loss_dict)
         self.loss_fn_eval = create_loss_fn(eval_loss_dict)
@@ -214,11 +233,29 @@ class L2WSmodel(object):
         self.tr_losses_batch = []
         self.te_losses = []
 
+    def cluster_z(self):
+        N_train = self.x_stars_train.shape[0]
+        sample_indices = np.random.choice(N_train, self.num_clusters, replace=False)
+        Z_shared = self.w_stars_train[sample_indices, :].T
+
+        # compute distance matrix
+        def get_indices(input, flag):
+            distances = distance_matrix(np.array(input), np.array(Z_shared.T))
+            print('distances psd', distances)
+            indices = np.argmin(distances, axis=1)
+            print('indices psd', indices)
+            best_val = np.min(distances, axis=1)
+            print('best val', best_val)
+            plt.plot(indices)
+            plt.savefig(f"{flag}_indices_psd_plot.pdf", bbox_inches='tight')
+            plt.clf()
+            return indices
+        train_cluster_indices = get_indices(self.w_stars_train, 'train')
+        test_cluster_indices = get_indices(self.w_stars_test, 'test')
+
+        return Z_shared, train_cluster_indices, test_cluster_indices
+
     def cluster_init_XY_list(self):
-        # self.u_stars_train # available
-
-        
-
         # put into matrix form -- use vec_symm
         X_list, Y_list = [], []
 
@@ -248,36 +285,18 @@ class L2WSmodel(object):
             plt.savefig(f"{flag}_indices_psd_plot.pdf", bbox_inches='tight')
             plt.clf()
             return indices
-        train_cluster_indices = get_indices(self.u_stars_train, 'train') #jnp.array(train_indices)
+        train_cluster_indices = get_indices(self.u_stars_train, 'train')
         test_cluster_indices = get_indices(self.u_stars_test, 'test')
-        
         return X_list, Y_list, train_cluster_indices, test_cluster_indices
-    
 
-    def pretrain_alphas(self, num_iters, n_xy_low, stepsize=.001, method='adam', batches=10):
-        # create pretrain function
+    def pretrain_alphas(self, num_iters, n_xy_low, share_all=True, stepsize=.001, method='adam', batches=10):
         def pretrain_loss(params, inputs, targets):
-            # if self.tx + self.ty == -1:
-            #     nn_output = self.batched_predict_y(params, inputs)
-            #     uu = nn_output
-            # else:
-            #     num_nn_params = len(self.nn_params)
-            #     def predict(params_, inputs_):
-            #         nn_params = params_[:num_nn_params]
-            #         nn_output = predict_y(nn_params, inputs_)
-            #         X_list = params_[num_nn_params:num_nn_params + self.tx]
-            #         Y_list = params_[num_nn_params + self.tx:]
-            #         uu = self.low_2_high_dim(nn_output, X_list, Y_list)
-            #         return uu
-            #     batch_predict = vmap(predict, in_axes=(None, 0), out_axes=(0))
-            #     uu = batch_predict(params, inputs)
-
-            # z = M @ uu + uu + q
-            # pretrain_loss = jnp.mean(jnp.sum((z - targets)**2, axis=1))
             nn_output = self.batched_predict_y(params, inputs)
-            alpha_hat = nn_output[:, n_xy_low:]
+            if share_all:
+                alpha_hat = nn_output
+            else:
+                alpha_hat = nn_output[:, n_xy_low:]
             pretrain_loss = jnp.mean(jnp.sum((alpha_hat - targets)**2, axis=1))
-            # pretrain_loss = jnp.mean(jnp.sum((uu - targets)**2, axis=1))
             return pretrain_loss
 
         maxiters = int(num_iters / batches)
@@ -289,29 +308,24 @@ class L2WSmodel(object):
             optimizer_pretrain = OptaxSolver(
                 opt=optax.sgd(stepsize), fun=pretrain_loss, jit=True, maxiter=maxiters)
         state = optimizer_pretrain.init_state(self.params)
-        params = self.params #self.nn_params
+        params = self.params
         pretrain_losses = np.zeros(batches + 1)
         pretrain_test_losses = np.zeros(batches + 1)
-
-        # if self.prediction_variable == 'w':
-        #     train_targets = self.u_stars_train
-        #     test_targets = self.u_stars_test
-        #     # train_targets = self.w_stars_train
-        #     # test_targets = self.w_stars_test
-        # elif self.prediction_variable == 'x':
-        #     train_targets = self.x_stars_train
-        #     test_targets = self.x_stars_test
 
         '''
         do a 1-hot encoding - assume given vector of indices
         '''
-        train_targets_x = jax.nn.one_hot(self.train_cluster_indices, self.tx)
-        train_targets_y = jax.nn.one_hot(self.train_cluster_indices, self.ty)
-        test_targets_x = jax.nn.one_hot(self.test_cluster_indices, self.tx)
-        test_targets_y = jax.nn.one_hot(self.test_cluster_indices, self.ty)
-        train_targets = jnp.hstack([train_targets_x, train_targets_y])
-        test_targets = jnp.hstack([test_targets_x, test_targets_y])
-
+        if share_all:
+            train_targets = jax.nn.one_hot(self.train_cluster_indices, self.num_clusters)
+            test_targets = jax.nn.one_hot(self.test_cluster_indices, self.num_clusters)
+        else:
+            train_targets_x = jax.nn.one_hot(self.train_cluster_indices, self.tx)
+            train_targets_y = jax.nn.one_hot(self.train_cluster_indices, self.ty)
+            test_targets_x = jax.nn.one_hot(self.test_cluster_indices, self.tx)
+            test_targets_y = jax.nn.one_hot(self.test_cluster_indices, self.ty)
+            train_targets = jnp.hstack([train_targets_x, train_targets_y])
+            test_targets = jnp.hstack([test_targets_x, test_targets_y])
+        # pdb.set_trace()
 
         curr_pretrain_loss = pretrain_loss(
             params, self.train_inputs, train_targets)
@@ -568,6 +582,8 @@ def create_loss_fn(input_dict):
     learn_XY = input_dict['learn_XY']
     X_list_fixed, Y_list_fixed = input_dict['X_list_fixed'], input_dict['Y_list_fixed']
     loss_method = input_dict['loss_method']
+    share_all = input_dict['share_all']
+    Z_shared = input_dict['Z_shared']
 
     # if dynamic, the next 2 set to None
     M_static, factor_static = input_dict['M_static'], input_dict['factor_static']
@@ -585,28 +601,31 @@ def create_loss_fn(input_dict):
         b, c = q[n:], q[:n]
 
         if prediction_variable == 'w':
-            if tx + ty == -1:
-                nn_output = predict_y(params, input)
-                u_ws = nn_output
+            if share_all:
+                alpha = predict_y(params, input)
+                alpha = alpha / alpha.sum()
+                z = Z_shared @ alpha
+                u_ws = z
             else:
-                nn_params = params[:num_nn_params]
-                nn_output = predict_y(nn_params, input)
-                if learn_XY:
-                    X_list = params[num_nn_params:num_nn_params + tx]
-                    Y_list = params[num_nn_params + tx:]
+                if tx + ty == -1:
+                    nn_output = predict_y(params, input)
+                    u_ws = nn_output
                 else:
-                    X_list = X_list_fixed
-                    Y_list = Y_list_fixed
-                u_ws = low_2_high_dim(nn_output, X_list, Y_list)
+                    nn_params = params[:num_nn_params]
+                    nn_output = predict_y(nn_params, input)
+                    if learn_XY:
+                        X_list = params[num_nn_params:num_nn_params + tx]
+                        Y_list = params[num_nn_params + tx:]
+                    else:
+                        X_list = X_list_fixed
+                        Y_list = Y_list_fixed
+                    u_ws = low_2_high_dim(nn_output, X_list, Y_list)
 
-            w0 = M @ u_ws + u_ws + q
-            # x_primal = w0
+                z = M @ u_ws + u_ws + q
         elif prediction_variable == 'x':
-            w0 = input
-            # x_primal = w0
+            z = input
             u_ws = input
 
-        z = w0
         iter_losses = jnp.zeros(iters)
         primal_residuals = jnp.zeros(iters)
         dual_residuals = jnp.zeros(iters)
