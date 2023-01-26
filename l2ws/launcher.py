@@ -652,6 +652,15 @@ class Workspace:
             plt.savefig(f"warm-starts/{col}/prob_{i}_diffs_y.pdf")
             plt.clf()
 
+        alpha = out_train[0][2]
+        if alpha is not None:
+            if not os.path.exists('alphas'):
+                os.mkdir('alphas')
+            for i in range(10):
+                plt.plot(alpha[i, :])
+            plt.savefig(f"alphas/{col}.pdf")
+            plt.clf()
+
         return out_train
 
     def run(self):
@@ -714,6 +723,9 @@ class Workspace:
         '''
         curr_iter = 0
         for epoch in range(self.l2ws_model.epochs):
+            if epoch % self.eval_every_x_epochs == 0:
+                out_train = self.evaluate_iters(
+                    self.num_samples, f"train_iter_{curr_iter}", train=True, plot_pretrain=pretrain_on)
 
             key = random.PRNGKey(epoch)
             permutation = jax.random.permutation(key, self.l2ws_model.N_train)
@@ -739,10 +751,10 @@ class Workspace:
                 # })
 
                 curr_iter += 1
-            if epoch % self.eval_every_x_epochs == 0:
-                out_train = self.evaluate_iters(
-                    self.num_samples, f"train_iter_{curr_iter}", train=True, plot_pretrain=pretrain_on)
-                # out_trains.append(out_train)
+            # if epoch % self.eval_every_x_epochs == 0:
+            #     out_train = self.evaluate_iters(
+            #         self.num_samples, f"train_iter_{curr_iter}", train=True, plot_pretrain=pretrain_on)
+
             self.l2ws_model.epoch += 1
 
             # plot the train / test loss so far

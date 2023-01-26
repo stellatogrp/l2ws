@@ -128,7 +128,7 @@ class L2WSmodel(object):
             else:
                 self.X_list, self.Y_list = [], []
                 self.params = self.nn_params
-        self.state = None
+        # self.state = None
 
         self.epoch = 0
 
@@ -303,7 +303,7 @@ class L2WSmodel(object):
 
         if method == 'adam':
             optimizer_pretrain = OptaxSolver(
-                opt=optax.adam(stepsize), fun=pretrain_loss, jit=True, maxiter=maxiters)
+                opt=optax.adam(stepsize), fun=pretrain_loss, jit=False, maxiter=maxiters)
         elif method == 'sgd':
             optimizer_pretrain = OptaxSolver(
                 opt=optax.sgd(stepsize), fun=pretrain_loss, jit=True, maxiter=maxiters)
@@ -325,7 +325,6 @@ class L2WSmodel(object):
             test_targets_y = jax.nn.one_hot(self.test_cluster_indices, self.ty)
             train_targets = jnp.hstack([train_targets_x, train_targets_y])
             test_targets = jnp.hstack([test_targets_x, test_targets_y])
-        # pdb.set_trace()
 
         curr_pretrain_loss = pretrain_loss(
             params, self.train_inputs, train_targets)
@@ -599,11 +598,11 @@ def create_loss_fn(input_dict):
     def predict(params, input, q, iters, z_star, factor, M):
         P, A = M[:n, :n], -M[n:, :n]
         b, c = q[n:], q[:n]
-
+        alpha = None
         if prediction_variable == 'w':
             if share_all:
                 alpha = predict_y(params, input)
-                alpha = alpha / alpha.sum()
+                # alpha = alpha / alpha.sum()
                 z = Z_shared @ alpha
                 u_ws = z
             else:
@@ -707,7 +706,7 @@ def create_loss_fn(input_dict):
                 loss = jnp.linalg.norm(z_next - z)
 
         # out = x_primal, z_next, u, all_x_primals
-        out = u_ws, z_next, u, all_u
+        out = u_ws, z_next, alpha, all_u
 
         if diff_required:
             return loss, iter_losses, angles, out
