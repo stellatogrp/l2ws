@@ -217,17 +217,24 @@ class L2WSmodel(object):
     def cluster_init_XY_list(self):
         # self.u_stars_train # available
 
-        # do clustering -- for now just take first self.num_clusters
-        clusters = self.u_stars_train[:self.num_clusters, :]
+        
 
         # put into matrix form -- use vec_symm
         X_list, Y_list = [], []
+
+        N_train = self.x_stars_train.shape[0]
+        sample_indices = np.random.choice(N_train, self.num_clusters, replace=False)
         for i in range(self.num_clusters):
-            x_psd = self.x_stars_train[i, self.x_psd_indices]
-            y_psd = self.y_stars_train[i, self.y_psd_indices]
+            index = sample_indices[i]
+            x_psd = self.x_stars_train[index, self.x_psd_indices]
+            y_psd = self.y_stars_train[index, self.y_psd_indices]
             X, Y = unvec_symm(x_psd, self.psd_size), unvec_symm(y_psd, self.psd_size)
             X_list.append(X)
             Y_list.append(Y)
+
+        # do clustering -- for now just take first self.num_clusters
+        # clusters = self.u_stars_train[:self.num_clusters, :] 
+        clusters = self.u_stars_train[sample_indices, :]
 
         # compute distance matrix
         def get_indices(input, flag):
@@ -580,7 +587,7 @@ def create_loss_fn(input_dict):
         if prediction_variable == 'w':
             if tx + ty == -1:
                 nn_output = predict_y(params, input)
-                uu = nn_output
+                u_ws = nn_output
             else:
                 nn_params = params[:num_nn_params]
                 nn_output = predict_y(nn_params, input)
@@ -590,15 +597,14 @@ def create_loss_fn(input_dict):
                 else:
                     X_list = X_list_fixed
                     Y_list = Y_list_fixed
-                uu = low_2_high_dim(nn_output, X_list, Y_list)
+                u_ws = low_2_high_dim(nn_output, X_list, Y_list)
 
-            w0 = M @ uu + uu + q
-            # w0 = uu
-            x_primal = w0
+            w0 = M @ u_ws + u_ws + q
+            # x_primal = w0
         elif prediction_variable == 'x':
-            # w0, x_primal = get_w0(params, input, q)
             w0 = input
-            x_primal = w0
+            # x_primal = w0
+            u_ws = input
 
         z = w0
         iter_losses = jnp.zeros(iters)
@@ -606,7 +612,7 @@ def create_loss_fn(input_dict):
         dual_residuals = jnp.zeros(iters)
         # angles = jnp.zeros((len(angle_anchors), iters-1))
         angles = jnp.zeros((len(angle_anchors) + 1, iters-1))
-        all_x_primals = jnp.zeros((iters, n))
+        all_u = jnp.zeros((iters, z.size))
         all_z = jnp.zeros((iters, z.size))
 
         if diff_required:
@@ -621,7 +627,7 @@ def create_loss_fn(input_dict):
             z, iter_losses = out
         else:
             def _fp_(i, val):
-                z, z_prev, loss_vec, all_z, primal_residuals, dual_residuals = val
+                z, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals = val
                 z_next, u, v = fixed_point(z, factor, q)
                 diff = jnp.linalg.norm(z_next - z) 
                 loss_vec = loss_vec.at[i].set(diff)
@@ -632,10 +638,11 @@ def create_loss_fn(input_dict):
                 dual_residuals = dual_residuals.at[i].set(dr)
 
                 all_z = all_z.at[i, :].set(z)
-                return z_next, z_prev, loss_vec, all_z, primal_residuals, dual_residuals
-            val = z, z, iter_losses, all_z, primal_residuals, dual_residuals
+                all_u = all_u.at[i, :].set(u)
+                return z_next, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals
+            val = z, z, iter_losses, all_z, all_u, primal_residuals, dual_residuals
             out = jax.lax.fori_loop(0, iters, _fp_, val)
-            z, z_prev, iter_losses, all_z, primal_residuals, dual_residuals = out
+            z, z_prev, iter_losses, all_z, all_u, primal_residuals, dual_residuals = out
 
             # do angles
             diffs = jnp.diff(all_z, axis=0)
@@ -679,11 +686,9 @@ def create_loss_fn(input_dict):
                 loss = iter_losses.sum()
             elif loss_method == 'fixed_k':
                 loss = jnp.linalg.norm(z_next - z)
-            
-            # loss = iter_losses.sum()
-            # weights = (1+jnp.arange(iter_losses.size))
-            # loss = iter_losses @ weights
-        out = x_primal, z_next, u, all_x_primals
+
+        # out = x_primal, z_next, u, all_x_primals
+        out = u_ws, z_next, u, all_u
 
         if diff_required:
             return loss, iter_losses, angles, out

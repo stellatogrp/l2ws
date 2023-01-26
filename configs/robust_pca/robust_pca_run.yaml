@@ -2,7 +2,7 @@ nn_cfg:
   lr: 1e-3
   method: adam
   intermediate_layer_sizes: [500, 500]
-  batch_size: 200
+  batch_size: 10
   epochs: 100000
   decay_lr: .6
   min_lr: 1e-7
@@ -24,15 +24,16 @@ save_every_x_epochs: 1
 write_csv_every_x_batches: 1
 N_train: 100
 N_test: 20
-num_samples: 20
+num_samples: 100
 prediction_variable: w
 supervised: False
 angle_anchors: [0]
-dx: 20
-dy: 20
-tx: 0
-ty: 0
+dx: 0
+dy: 0
+tx: 20
+ty: 20
 learn_XY: False
-num_clusters: 0
-loss_method: fixed_k
+num_clusters: 20
+loss_method: constant_sum
 #increasing_sum or constant_sum or fixed_k 
+plot_iterates: [0, 10]
