@@ -36,5 +36,5 @@ learn_XY: False
 num_clusters: 20
 loss_method: constant_sum
 #increasing_sum or constant_sum or fixed_k 
-plot_iterates: [10]
+plot_iterates: [0, 10]
 share_all: True

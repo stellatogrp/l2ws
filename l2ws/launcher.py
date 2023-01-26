@@ -613,12 +613,13 @@ class Workspace:
             '''
             plot for x
             '''
+            
+            for j in self.plot_iterates:
+                plt.plot(u_all[i, j, :self.l2ws_model.n], label=f"prediction_{j}")
             if train:
                 plt.plot(self.x_stars_train[i, :], label='optimal')
             else:
                 plt.plot(self.x_stars_test[i, :], label='optimal')
-            for j in self.plot_iterates:
-                plt.plot(u_all[i, j, :self.l2ws_model.n], label=f"prediction_{j}")
             plt.legend()
             plt.savefig(f"warm-starts/{col}/prob_{i}_x_ws.pdf")
             plt.clf()
@@ -634,13 +635,14 @@ class Workspace:
             '''
             plot for y
             '''
+            
+
+            for j in self.plot_iterates:
+                plt.plot(u_all[i, j, self.l2ws_model.n:], label=f"prediction_{j}")
             if train:
                 plt.plot(self.y_stars_train[i, :], label='optimal')
             else:
                 plt.plot(self.y_stars_test[i, :], label='optimal')
-
-            for j in self.plot_iterates:
-                plt.plot(u_all[i, j, self.l2ws_model.n:], label=f"prediction_{j}")
             plt.legend()
             plt.savefig(f"warm-starts/{col}/prob_{i}_y_ws.pdf")
             plt.clf()
