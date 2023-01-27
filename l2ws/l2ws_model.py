@@ -112,6 +112,7 @@ class L2WSmodel(object):
             self.pretrain_alphas(1000, None, share_all=True)
 
         else:
+            Z_shared = None
             if self.psd and self.tx + self.ty > 0:
                 if self.learn_XY:
                     self.X_list = init_matrix_params(self.tx, self.psd_size, random.PRNGKey(key))
@@ -289,7 +290,7 @@ class L2WSmodel(object):
         test_cluster_indices = get_indices(self.u_stars_test, 'test')
         return X_list, Y_list, train_cluster_indices, test_cluster_indices
 
-    def pretrain_alphas(self, num_iters, n_xy_low, share_all=True, stepsize=.001, method='adam', batches=10):
+    def pretrain_alphas(self, num_iters, n_xy_low, share_all=False, stepsize=.001, method='adam', batches=10):
         def pretrain_loss(params, inputs, targets):
             nn_output = self.batched_predict_y(params, inputs)
             if share_all:

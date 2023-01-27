@@ -22,19 +22,19 @@ eval_unrolls: 500
 eval_every_x_epochs: 10
 save_every_x_epochs: 1
 write_csv_every_x_batches: 1
-N_train: 1000
+N_train: 100
 N_test: 20
 num_samples: 100
 prediction_variable: w
 supervised: False
 angle_anchors: [0]
-dx: 0
-dy: 0
-tx: 20
-ty: 20
+dx: 10
+dy: 10
+tx: 0
+ty: 0
 learn_XY: False
-num_clusters: 50
+num_clusters: 0
 loss_method: constant_sum
 #increasing_sum or constant_sum or fixed_k 
 plot_iterates: [0, 10, 20]
-share_all: True
+share_all: False

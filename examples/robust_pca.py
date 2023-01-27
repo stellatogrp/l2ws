@@ -143,7 +143,7 @@ def sample_theta(p, q, sparse_frac, low_rank, A_star=None, B_star=None):
     if B_star is None:
         B_star = np.random.normal(size=(q, low_rank))
     else:
-        B_star = B_star + 0*np.random.rand(q, low_rank)
+        B_star = B_star + .1 * np.random.rand(q, low_rank)
     L_star = A_star @ B_star.T
 
     # generate random, sparse S_star
@@ -309,8 +309,14 @@ def setup_probs(setup_cfg):
     # save plot of first 5 solutions
     for i in range(5):
         plt.plot(x_stars[i, :])
-    plt.savefig("opt_solutions.pdf")
+    plt.savefig("x_stars.pdf")
     plt.clf()
+
+    for i in range(5):
+        plt.plot(y_stars[i, :])
+    plt.savefig("y_stars.pdf")
+    plt.clf()
+
 
     # save plot of first 5 parameters
     for i in range(5):
