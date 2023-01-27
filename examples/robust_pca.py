@@ -18,6 +18,7 @@ import yaml
 from jax import vmap
 import pandas as pd
 from utils.generic_utils import vec_symm, unvec_symm
+from scipy.spatial import distance_matrix
 
 
 plt.rcParams.update(
@@ -141,6 +142,8 @@ def sample_theta(p, q, sparse_frac, low_rank, A_star=None, B_star=None):
         A_star = np.random.normal(size=(p, low_rank))
     if B_star is None:
         B_star = np.random.normal(size=(q, low_rank))
+    else:
+        B_star = B_star + 0*np.random.rand(q, low_rank)
     L_star = A_star @ B_star.T
 
     # generate random, sparse S_star
@@ -172,8 +175,9 @@ def setup_probs(setup_cfg):
         A_star = np.random.normal(size=(p, cfg.low_rank))
     else:
         A_star = None
+    B_star = np.random.rand(q, cfg.low_rank)
     for i in range(N):
-        thetas_np[i, :] = sample_theta(p, q, cfg.sparse_frac, cfg.low_rank, A_star=A_star)
+        thetas_np[i, :] = sample_theta(p, q, cfg.sparse_frac, cfg.low_rank, A_star=A_star, B_star=B_star)
     thetas = jnp.array(thetas_np)
 
     """
@@ -312,6 +316,9 @@ def setup_probs(setup_cfg):
     for i in range(5):
         plt.plot(thetas[i, :])
     plt.savefig("thetas.pdf")
+
+    x_dist = distance_matrix(x_stars, x_stars)
+    y_dist = distance_matrix(y_stars, y_stars)
     pdb.set_trace()
 
 

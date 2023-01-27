@@ -632,6 +632,9 @@ def create_loss_fn(input_dict):
         angles = jnp.zeros((len(angle_anchors) + 1, iters-1))
         all_u = jnp.zeros((iters, z.size))
         all_z = jnp.zeros((iters, z.size))
+        all_z_ = jnp.zeros((iters, z.size))
+        all_z_ = all_z_.at[0, :].set(z)
+
 
         if diff_required:
             def _fp(i, val):
@@ -706,7 +709,8 @@ def create_loss_fn(input_dict):
                 loss = jnp.linalg.norm(z_next - z)
 
         # out = x_primal, z_next, u, all_x_primals
-        out = all_z, z_next, alpha, all_u
+        all_z_ = all_z_.at[1:, :].set(all_z[:-1, :])
+        out = all_z_, z_next, alpha, all_u
 
         if diff_required:
             return loss, iter_losses, angles, out
