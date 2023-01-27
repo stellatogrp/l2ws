@@ -624,7 +624,7 @@ def create_loss_fn(input_dict):
         elif prediction_variable == 'x':
             z = input
             u_ws = input
-
+        z0 = z
         iter_losses = jnp.zeros(iters)
         primal_residuals = jnp.zeros(iters)
         dual_residuals = jnp.zeros(iters)
@@ -707,6 +707,8 @@ def create_loss_fn(input_dict):
                 loss = iter_losses.sum()
             elif loss_method == 'fixed_k':
                 loss = jnp.linalg.norm(z_next - z)
+            elif loss_method == 'first_2_last':
+                loss = jnp.linalg.norm(z_next-z0)
 
         # out = x_primal, z_next, u, all_x_primals
         all_z_ = all_z_.at[1:, :].set(all_z[:-1, :])

@@ -260,6 +260,11 @@ class Workspace:
         plt.savefig('sample_y_stars.pdf')
         plt.clf()
 
+        for i in range(num_plot):
+            plt.plot(w_stars_train[i, :])
+        plt.savefig('sample_z_stars.pdf')
+        plt.clf()
+
         # check
         # P_jax = static_M[:n,:n]
         # A_jax = -static_M[n:,:n]
@@ -711,7 +716,7 @@ class Workspace:
         fixed ws evaluation
         '''
         out_train_fixed_ws = self.evaluate_iters(
-            self.num_samples, 'fixed_ws', train=False, plot_pretrain=False)
+            self.num_samples, 'fixed_ws', train=True, plot_pretrain=False)
 
         if pretrain_on:
             print("Pretraining...")
