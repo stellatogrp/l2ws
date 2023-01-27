@@ -602,8 +602,9 @@ class Workspace:
         '''
         plot the warm-start predictions
         '''
-        u_ws = out_train[0][0]
+        # u_ws = out_train[0][0]
         u_all = out_train[0][3]
+        z_all = out_train[0][0]
 
         if not os.path.exists('warm-starts'):
             os.mkdir('warm-starts')
@@ -635,8 +636,6 @@ class Workspace:
             '''
             plot for y
             '''
-            
-
             for j in self.plot_iterates:
                 plt.plot(u_all[i, j, self.l2ws_model.n:], label=f"prediction_{j}")
             if train:
@@ -653,6 +652,27 @@ class Workspace:
             plt.title('diffs to optimal')
             plt.savefig(f"warm-starts/{col}/prob_{i}_diffs_y.pdf")
             plt.clf()
+
+            '''
+            plot for z
+            '''
+            for j in self.plot_iterates:
+                plt.plot(z_all[i, j, self.l2ws_model.n:], label=f"prediction_{j}")
+            if train:
+                plt.plot(self.l2ws_model.w_stars_train[i, :], label='optimal')
+            else:
+                plt.plot(self.l2ws_model.w_stars_test[i, :], label='optimal')
+            plt.legend()
+            plt.savefig(f"warm-starts/{col}/prob_{i}_z_ws.pdf")
+            plt.clf()
+
+            for j in self.plot_iterates:
+                plt.plot(z_all[i, j, :] - self.l2ws_model.w_stars_train[i, :], label=f"prediction_{j}")
+            plt.legend()
+            plt.title('diffs to optimal')
+            plt.savefig(f"warm-starts/{col}/prob_{i}_diffs_z.pdf")
+            plt.clf()
+
 
         alpha = out_train[0][2]
         if alpha is not None:
@@ -691,7 +711,7 @@ class Workspace:
         fixed ws evaluation
         '''
         out_train_fixed_ws = self.evaluate_iters(
-            self.num_samples, 'fixed_ws', train=True, plot_pretrain=False)
+            self.num_samples, 'fixed_ws', train=False, plot_pretrain=False)
 
         if pretrain_on:
             print("Pretraining...")

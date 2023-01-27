@@ -706,7 +706,7 @@ def create_loss_fn(input_dict):
                 loss = jnp.linalg.norm(z_next - z)
 
         # out = x_primal, z_next, u, all_x_primals
-        out = u_ws, z_next, alpha, all_u
+        out = all_z, z_next, alpha, all_u
 
         if diff_required:
             return loss, iter_losses, angles, out
