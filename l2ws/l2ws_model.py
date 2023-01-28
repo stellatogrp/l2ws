@@ -607,7 +607,8 @@ def create_loss_fn(input_dict):
                 z = Z_shared @ alpha
                 u_ws = z
             else:
-                if tx + ty == -1:
+                # if tx + ty == -1:
+                if tx is None or ty is None:
                     nn_output = predict_y(params, input)
                     u_ws = nn_output
                 else:

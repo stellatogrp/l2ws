@@ -85,15 +85,15 @@ class Workspace:
         self.prediction_variable = cfg.prediction_variable
         self.angle_anchors = cfg.angle_anchors
         self.supervised = cfg.supervised
-        self.tx = cfg.tx
-        self.ty = cfg.ty
-        self.dx = cfg.dx
-        self.dy = cfg.dy
-        self.learn_XY = cfg.learn_XY
-        self.num_clusters = cfg.num_clusters
+        self.tx = cfg.get('tx') #cfg.tx
+        self.ty = cfg.get('ty') #cfg.ty
+        self.dx = cfg.get('dx') #cfg.dx
+        self.dy = cfg.get('dy') #cfg.dy
+        self.learn_XY = cfg.get('learn_XY') #cfg.learn_XY
+        self.num_clusters = cfg.get('num_clusters') #cfg.num_clusters
         self.loss_method = cfg.loss_method
         self.plot_iterates = cfg.plot_iterates
-        self.share_all = cfg.share_all
+        self.share_all = cfg.get('share_all') #cfg.share_all
 
         '''
         from the run cfg retrieve the following via the data cfg
@@ -204,6 +204,9 @@ class Workspace:
             sdp_size = int(sdp_cones_array[0] * (sdp_cones_array[0]+1) / 2)
             sdp_proj_single_dim = partial(sdp_proj_single, dim=sdp_cones_array[0])
             sdp_proj_single_batch = vmap(sdp_proj_single_dim, in_axes=(0), out_axes=(0))
+            self.psd_size = sdp_size
+        else:
+            self.psd_size = 0
 
         @jit
         def proj(input):
@@ -276,8 +279,11 @@ class Workspace:
         # pdb.set_trace()
         # end check
 
-        cones = static_dict['cones_dict']
-        self.psd_size = cones['s'][0]  # TOFIX in general
+        # cones = static_dict['cones_dict']
+        # psd_cones = cones.get('s')
+        # if psd_cones is None:
+        # else:
+        #     self.psd_size = cones['s'][0]  # TOFIX in general
 
         input_dict = {'nn_cfg': self.nn_cfg,
                       'proj': proj,
@@ -748,8 +754,9 @@ class Workspace:
         '''
         NEW WAY - train_batch - better for saving
         '''
+        
         curr_iter = 0
-        for epoch in range(self.l2ws_model.epochs):
+        for epoch in range(int(self.l2ws_model.epochs)):
             if epoch % self.eval_every_x_epochs == 0:
                 out_train = self.evaluate_iters(
                     self.num_samples, f"train_iter_{curr_iter}", train=True, plot_pretrain=pretrain_on)
