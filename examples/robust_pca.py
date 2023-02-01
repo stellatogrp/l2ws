@@ -384,7 +384,7 @@ def static_canon(p, q):
     #     'c': data['c'],
     # }
     # soln = scs.solve(data_scs, cones, verbose=True)
-    # pdb.set_trace()
+    pdb.set_trace()
     return out_dict
 
 
