@@ -94,6 +94,7 @@ class Workspace:
         self.loss_method = cfg.loss_method
         self.plot_iterates = cfg.plot_iterates
         self.share_all = cfg.get('share_all') #cfg.share_all
+        self.pretrain_alpha = cfg.get('pretrain_alpha')
 
         '''
         from the run cfg retrieve the following via the data cfg
@@ -325,7 +326,8 @@ class Workspace:
                       'x_psd_indices': x_psd_indices,
                       'y_psd_indices': y_psd_indices,
                       'loss_method': self.loss_method,
-                      'share_all': self.share_all
+                      'share_all': self.share_all,
+                      'pretrain_alpha': self.pretrain_alpha
                       }
 
         self.l2ws_model = L2WSmodel(input_dict)
