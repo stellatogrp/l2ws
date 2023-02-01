@@ -67,6 +67,7 @@ class L2WSmodel(object):
         self.y_psd_indices = dict.get('y_psd_indices')
         self.loss_method = dict.get('loss_method')
         self.share_all = dict.get('share_all')
+        self.pretrain_alpha = dict.get('pretrain_alpha')
 
         if self.static_flag:
             self.static_M = dict['static_M']
@@ -109,7 +110,8 @@ class L2WSmodel(object):
             self.train_cluster_indices, self.test_cluster_indices = out[1], out[2]
             self.X_list, self.Y_list = [], []
             self.params = self.nn_params
-            self.pretrain_alphas(1000, None, share_all=True)
+            if self.pretrain_alpha:
+                self.pretrain_alphas(1000, None, share_all=True)
 
         else:
             Z_shared = None
@@ -125,7 +127,8 @@ class L2WSmodel(object):
                     self.train_cluster_indices, self.test_cluster_indices = out[2], out[3]
                     # self.Y_list = cluster_init_Y_list()
                     self.params = self.nn_params
-                    self.pretrain_alphas(1000, n_x_low + n_y_low)
+                    if self.pretrain_alpha:
+                        self.pretrain_alphas(1000, n_x_low + n_y_low)
             else:
                 self.X_list, self.Y_list = [], []
                 self.params = self.nn_params
@@ -358,7 +361,8 @@ class L2WSmodel(object):
     def pretrain(self, num_iters, stepsize=.001, method='adam', df_pretrain=None, batches=1):
         # create pretrain function
         def pretrain_loss(params, inputs, targets):
-            if self.tx + self.ty == -1:
+            # if self.tx + self.ty == -1:
+            if self.tx is None or self.ty is None:
                 nn_output = self.batched_predict_y(params, inputs)
                 uu = nn_output
             else:
