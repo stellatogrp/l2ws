@@ -55,12 +55,12 @@ def simulate(T, gamma, dt, sigma, p):
     return y, x_true, w_true, v
 
 
-def sample_theta(T, sigma, p, gamma, dt):
+def sample_theta(N, T, sigma, p, gamma, dt):
     # A, B, C = robust_kalman_setup(gamma, dt)
 
     # generate random input and noise vectors
-    w = np.random.randn(2, T)
-    v = np.random.randn(2, T)
+    w = np.random.randn(N, 2, T)
+    v = np.random.randn(N, 2, T)
 
     # x = np.zeros((4, T + 1))
     # x[:, 0] = [0, 0, 0, 0]
@@ -68,26 +68,42 @@ def sample_theta(T, sigma, p, gamma, dt):
 
     # add outliers to v
     # np.random.seed(0)
-    inds = np.random.rand(T) <= p
-    v[:, inds] = sigma * np.random.randn(2, T)[:, inds]
 
-    w_flat = np.ravel(w)
-    v_flat = np.ravel(v)
+    for j in range(N):
+        inds = np.random.rand(T) <= p
+        outlier_v = sigma * np.random.randn(2, T)[:, inds]
+        # pdb.set_trace()
+
+        # weird indexing to avoid transpose
+        v[j:j+1, :, inds] = outlier_v
+
+    # w_flat = np.ravel(w)
+    # v_flat = np.ravel(v)
     # theta = np.concatenate([w_flat, v_flat])
-    y_mat = simulate_fwd(w, v, T, gamma, dt)
-    theta = y_mat.T.ravel()
+    simulate_fwd_batch = vmap(simulate_fwd, in_axes=(0, 0, None, None, None), out_axes=(0, 0))
 
-    return theta
+    # y_mat = simulate_fwd(w, v, T, gamma, dt)
+    y_mat, x_trues = simulate_fwd_batch(w, v, T, gamma, dt)
+
+    thetas = jnp.zeros((N, 2*T))
+    for i in range(N):
+        theta = jnp.ravel(y_mat[i, :, :].T)
+        thetas = thetas.at[i, :].set(theta)
+
+    w_trues = w
+    # thetas = y_mat.T.ravel()
+
+    return thetas, x_trues, w_trues
 
 
 def test_kalman():
     nx, no, nu = 4, 2, 2
     single_length = nx + no + nu + 3
-    
+
     T = 30
     nvars = single_length * T
     gamma = 0.05
-    dt = 0.5 #0.05
+    dt = 0.5  # 0.05
     p = .2
     sigma = 20
     mu = 1
@@ -96,7 +112,7 @@ def test_kalman():
 
     # sample to get (w, v) -- returns flat theta vector theta = (flat(w), flat(v))
     # theta_np = sample_theta(T, sigma, p)
-    theta_np = sample_theta(T, sigma, p, gamma, dt)
+    theta_np, x_trues, w_trues = sample_theta(T, sigma, p, gamma, dt)
     theta = jnp.array(theta_np)
 
     # get (x_true, w_true)
@@ -139,9 +155,9 @@ def test_kalman():
     solver = scs.SCS(data, cones_dict, eps_abs=tol, eps_rel=tol)
     sol = solver.solve()
     x = sol["x"]
-   
+
     x3 = x[: T * nx]
-    w3 = x[T * nx : T * (nx + nu)]
+    w3 = x[T * nx: T * (nx + nu)]
     s3 = x[T * (nx + nu): T * (nx + nu + 1)]
     v3 = x[T * (nx + nu + 1):-2*T]
     u3 = x[-T*2:-T]
@@ -161,17 +177,15 @@ def test_kalman():
 
     xp, yd, sp = scs_jax(data, iters=1000)
     x4 = xp[: T * nx]
-    w4 = xp[T * nx : T * (nx + nu)]
+    w4 = xp[T * nx: T * (nx + nu)]
     s4 = xp[T * (nx + nu): T * (nx + nu + 1)]
     v4 = xp[T * (nx + nu + 1):-2*T]
     u4 = xp[-T*2:-T]
     z4 = xp[-T:]
     pdb.set_trace()
 
-    
 
-
-def plot_state(t, actual, estimated=None):
+def plot_state(t, actual, estimated=None, filename=None):
     '''
     plot position, speed, and acceleration in the x and y coordinates for
     the actual data, and optionally for the estimated data
@@ -180,47 +194,52 @@ def plot_state(t, actual, estimated=None):
     if estimated is not None:
         trajectories.append(estimated)
 
-    fig, ax = plt.subplots(3, 2, sharex='col', sharey='row', figsize=(8,8))
+    fig, ax = plt.subplots(3, 2, sharex='col', sharey='row', figsize=(8, 8))
     for x, w in trajectories:
-        ax[0,0].plot(t,x[0,:-1])
-        ax[0,1].plot(t,x[1,:-1])
-        ax[1,0].plot(t,x[2,:-1])
-        ax[1,1].plot(t,x[3,:-1])
-        ax[2,0].plot(t,w[0,:])
-        ax[2,1].plot(t,w[1,:])
+        ax[0, 0].plot(t, x[0, :-1])
+        ax[0, 1].plot(t, x[1, :-1])
+        ax[1, 0].plot(t, x[2, :-1])
+        ax[1, 1].plot(t, x[3, :-1])
+        ax[2, 0].plot(t, w[0, :])
+        ax[2, 1].plot(t, w[1, :])
 
-    ax[0,0].set_ylabel('x position')
-    ax[1,0].set_ylabel('x velocity')
-    ax[2,0].set_ylabel('x input')
+    ax[0, 0].set_ylabel('x position')
+    ax[1, 0].set_ylabel('x velocity')
+    ax[2, 0].set_ylabel('x input')
 
-    ax[0,1].set_ylabel('y position')
-    ax[1,1].set_ylabel('y velocity')
-    ax[2,1].set_ylabel('y input')
+    ax[0, 1].set_ylabel('y position')
+    ax[1, 1].set_ylabel('y velocity')
+    ax[2, 1].set_ylabel('y input')
 
-    ax[0,1].yaxis.tick_right()
-    ax[1,1].yaxis.tick_right()
-    ax[2,1].yaxis.tick_right()
+    ax[0, 1].yaxis.tick_right()
+    ax[1, 1].yaxis.tick_right()
+    ax[2, 1].yaxis.tick_right()
 
-    ax[0,1].yaxis.set_label_position("right")
-    ax[1,1].yaxis.set_label_position("right")
-    ax[2,1].yaxis.set_label_position("right")
+    ax[0, 1].yaxis.set_label_position("right")
+    ax[1, 1].yaxis.set_label_position("right")
+    ax[2, 1].yaxis.set_label_position("right")
 
-    ax[2,0].set_xlabel('time')
-    ax[2,1].set_xlabel('time')
+    ax[2, 0].set_xlabel('time')
+    ax[2, 1].set_xlabel('time')
+    if filename:
+        fig.savefig(filename, bbox_inches='tight')
+    else:
+        plt.show()
 
-def plot_positions(traj, labels, axis=None,filename=None):
+
+def plot_positions(traj, labels, axis=None, filename=None):
     '''
     show point clouds for true, observed, and recovered positions
     '''
     # matplotlib.rcParams.update({'font.size': 14})
     n = len(traj)
 
-    fig, ax = plt.subplots(1, n, sharex=True, sharey=True,figsize=(12, 5))
+    fig, ax = plt.subplots(1, n, sharex=True, sharey=True, figsize=(12, 5))
     if n == 1:
         ax = [ax]
 
-    for i,x in enumerate(traj):
-        ax[i].plot(x[0,:], x[1,:], 'ro', alpha=.1)
+    for i, x in enumerate(traj):
+        ax[i].plot(x[0, :], x[1, :], 'ro', alpha=.1)
         ax[i].set_title(labels[i])
         if axis:
             ax[i].axis(axis)
@@ -254,7 +273,7 @@ def cvxpy_huber(T, y, gamma, dt, mu, rho):
     x = np.array(x.value)
     w = np.array(w.value)
     v = np.array(v.value)
-    # pdb.set_trace()
+
     return x, w, v
 
 
@@ -291,7 +310,7 @@ def cvxpy_manual(T, y, gamma, dt, mu, rho):
     return x, w, v
 
 
-# @jit
+@functools.partial(jit, static_argnums=(2, 3, 4))
 def simulate_fwd(w_mat, v_mat, T, gamma, dt):
     # def simulate(T, gamma, dt, sigma, p):
     A, B, C = robust_kalman_setup(gamma, dt)
@@ -318,7 +337,7 @@ def simulate_fwd(w_mat, v_mat, T, gamma, dt):
     # w_true = w_mat.copy()
     # return y, x_true, w_true, v_mat
 
-    return y_mat
+    return y_mat, x
 
 
 def get_x_w_true(theta, T, gamma, dt):
@@ -333,7 +352,7 @@ def get_x_w_true(theta, T, gamma, dt):
 
     # get y
     w = theta[: T * nu]
-    v = theta[T * nu :]
+    v = theta[T * nu:]
     w_mat = jnp.reshape(w, (nu, T))
     v_mat = jnp.reshape(w, (no, T))
     # y_mat = simulate_fwd(w_mat, v_mat, T, gamma, dt)
@@ -374,7 +393,6 @@ def single_q(theta, mu, rho, T, gamma, dt):
     # y_mat = simulate_fwd(w_mat, v_mat, T, gamma, dt)
     # y = jnp.ravel(y_mat.T)
     y = theta
-    
 
     # c
     c = jnp.zeros(single_len * T)
@@ -474,11 +492,11 @@ def run(run_cfg):
     )
 
     get_q_single = functools.partial(single_q,
-                                        mu=setup_cfg['mu'],
-                                        rho=setup_cfg['rho'],
-                                        T=setup_cfg['T'],
-                                        gamma=setup_cfg['gamma'],
-                                        dt=setup_cfg['dt'])
+                                     mu=setup_cfg['mu'],
+                                     rho=setup_cfg['rho'],
+                                     T=setup_cfg['T'],
+                                     gamma=setup_cfg['gamma'],
+                                     dt=setup_cfg['dt'])
 
     get_q = vmap(get_q_single, in_axes=0, out_axes=0)
 
@@ -542,7 +560,6 @@ def setup_probs(setup_cfg):
     m, n = A_sparse.shape
     # cones_dict = dict(z=int(cones_array[0]), l=int(cones_array[1]))
 
-
     """
     save output to output_filename
     """
@@ -573,10 +590,10 @@ def setup_probs(setup_cfg):
     # x_init_mat initialized uniformly between x_init_box*[-1,1]
     # x_init_mat = cfg.x_init_box * (2 * np.random.rand(N, cfg.nx) - 1)
     # thetas_np = np.zeros((N, cfg.T * (nu + no)))
-    thetas_np = np.zeros((N, cfg.T * no))
-    for i in range(N):
-        # thetas_np[i, :] = sample_theta(cfg.T, cfg.sigma, cfg.p)
-        thetas_np[i, :] = sample_theta(cfg.T, cfg.sigma, cfg.p, cfg.gamma, cfg.dt)
+    # thetas_np = np.zeros((N, cfg.T * no))
+    # for i in range(N):
+    #     thetas_np[i, :] = sample_theta(cfg.T, cfg.sigma, cfg.p, cfg.gamma, cfg.dt)
+    thetas_np, x_trues, w_trues = sample_theta(N, cfg.T, cfg.sigma, cfg.p, cfg.gamma, cfg.dt)
     thetas = jnp.array(thetas_np)
 
     batch_q = vmap(single_q, in_axes=(0, None, None, None, None, None), out_axes=(0))
@@ -584,7 +601,6 @@ def setup_probs(setup_cfg):
     q_mat = batch_q(thetas, cfg.mu, cfg.rho, cfg.T, cfg.gamma, cfg.dt)
 
     scs_instances = []
-
 
     '''
     attempt at removing redundant vars
@@ -599,7 +615,6 @@ def setup_probs(setup_cfg):
         # update
         b = np.array(q_mat[i, n:])
         c = np.array(q_mat[i, :n])
-
 
         # manual canon
         manual_canon_dict = {
@@ -618,7 +633,7 @@ def setup_probs(setup_cfg):
         q_mat = q_mat.at[i, :].set(scs_instance.q)
         solve_times[i] = scs_instance.solve_time
 
-        ############ check with our jax implementation
+        # check with our jax implementation
         # P_jax = jnp.array(P_sparse.todense())
         # A_jax = jnp.array(A_sparse.todense())
         # c_jax, b_jax = jnp.array(c), jnp.array(b)
@@ -639,8 +654,6 @@ def setup_probs(setup_cfg):
         x0 = xx[:4]
         x_w = xx[4*cfg.T:6*cfg.T]
         y = thetas[i, :]
-        full_x = get_full_x_(x0, x_w, y)
-        pdb.set_trace()
 
     # resave the data??
     # print('saving final data...', flush=True)
@@ -664,14 +677,39 @@ def setup_probs(setup_cfg):
     # save plot of first 5 solutions
     for i in range(5):
         plt.plot(x_stars[i, :])
-    plt.savefig("opt_solutions.pdf")
+    plt.savefig("x_stars.pdf")
+    plt.clf()
+
+    for i in range(5):
+        plt.plot(y_stars[i, :])
+    plt.savefig("y_stars.pdf")
     plt.clf()
 
     # save plot of first 5 parameters
     for i in range(5):
         plt.plot(thetas[i, :])
     plt.savefig("thetas.pdf")
-    pdb.set_trace()
+    plt.clf()
+
+    time_limit = cfg.dt * cfg.T
+    ts, delt = np.linspace(0, time_limit, cfg.T-1, endpoint=True, retstep=True)
+
+    os.mkdir("states_plots")
+    os.mkdir("positions_plots")
+    for i in range(5):
+        x_state = x_stars[i, :cfg.T * 4]
+        x_control = x_stars[i, cfg.T * 4: cfg.T * 6 - 2]
+        x1_kalman = x_state[0::4]
+        x2_kalman = x_state[1::4]
+        x_kalman = jnp.stack([x1_kalman, x2_kalman])
+
+        x_state_mat = jnp.reshape(x_state, (cfg.T, 4)).T
+        x_control_mat = jnp.reshape(x_control, (cfg.T - 1, 2)).T
+        y_mat = jnp.reshape(thetas[i, :], (cfg.T, 2)).T
+        plot_state(ts, (x_trues[i, :, :-1], w_trues[i, :, :-1]),
+                   (x_state_mat, x_control_mat), filename=f"states_plots/positions_{i}.pdf")
+        plot_positions([x_trues[i, :, :-1], x_kalman, y_mat],
+                       ['True', 'KF recovery', 'Noisy'], filename=f"positions_plots/positions_{i}.pdf")
 
 
 def get_full_x(x0, x_w, y, T, Ad, Bd, rho):
@@ -692,7 +730,7 @@ def get_full_x(x0, x_w, y, T, Ad, Bd, rho):
         curr_y = y[no*i:no*(i+1)]
         x_pos = jnp.array([curr_x[0], curr_x[1]])
         curr_v = curr_y - x_pos
-        
+
         curr_s = jnp.linalg.norm(curr_v)
         curr_z = jnp.min(jnp.array([curr_s, rho]))
         curr_u = curr_s - curr_z
@@ -743,24 +781,24 @@ def static_canon(T, gamma, dt, mu, rho):
 
     # Quadratic objective
     P = np.zeros((single_len, single_len))
-    P[nx : nx + nu, nx : nx + nu] = np.eye(nu)
+    P[nx: nx + nu, nx: nx + nu] = np.eye(nu)
     P[-1, -1] = mu * rho
     # P_sparse = sparse.kron(sparse.eye(T), P)
     P_sparse = 2*sparse.kron(P, sparse.eye(T))
 
     # Linear objective
     c = np.zeros(single_len * T)
-    c[-2 * T : -T] = 2 * mu
+    c[-2 * T: -T] = 2 * mu
 
     # dyn constraints
     # Ax = sparse.kron(sparse.eye(T), -sparse.eye(nx)) + sparse.kron(
     #     sparse.eye(T, k=-1), Ad
     # )
     Ax = sparse.kron(sparse.eye(T), -sparse.eye(nx)) + sparse.kron(
-            sparse.eye(T, k=-1), Ad
-        )
+        sparse.eye(T, k=-1), Ad
+    )
     Ax = Ax[nx:, :]
-    
+
     # Bw = sparse.kron(sparse.eye(T), Bd)
     Bw = sparse.kron(sparse.eye(T), Bd)
     bw = Bw.todense()
@@ -768,19 +806,18 @@ def static_canon(T, gamma, dt, mu, rho):
     # A_dyn = np.zeros((T * nx, nvars))
     A_dyn = np.zeros(((T-1) * nx, nvars))
     A_dyn[:, :w_start] = Ax.todense()
-    
-    A_dyn[:, w_start:s_start] = bw #Bw.todense()
+
+    A_dyn[:, w_start:s_start] = bw  # Bw.todense()
     b_dyn = np.zeros((T-1) * nx)
-    
 
     # obs constraints
     Cx = np.kron(np.eye(T), C)
 
     Iv = np.kron(np.eye(2), np.eye(T))
-    
+
     A_obs = np.zeros((T * no, nvars))
     A_obs[:, :w_start] = Cx
-    
+
     A_obs[:, v_start:u_start] = Iv
     # b_obs will be updated by the parameter stack(y_1, ..., y_T)
     b_obs = np.zeros(T * no)
@@ -798,7 +835,7 @@ def static_canon(T, gamma, dt, mu, rho):
     A_z_ineq = np.zeros((n_z_ineq, nvars))
     A_z_ineq[:, z_start:] = np.eye(n_z_ineq)
     b_z_ineq = rho * np.ones(n_z_ineq)
-    pdb.set_trace()
+    # pdb.set_trace()
 
     # u_ineq constraints
     n_u_ineq = T
@@ -812,7 +849,7 @@ def static_canon(T, gamma, dt, mu, rho):
     for i in range(T):
         A_socp[3 * i, s_start + i] = -1
         A_socp[
-            3 * i + 1 : 3 * i + 3, v_start + 2 * i : v_start + 2 * (i + 1)
+            3 * i + 1: 3 * i + 3, v_start + 2 * i: v_start + 2 * (i + 1)
         ] = -np.eye(2)
 
     b_socp = np.zeros(n_socp)
