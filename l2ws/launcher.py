@@ -95,6 +95,9 @@ class Workspace:
         self.plot_iterates = cfg.plot_iterates
         self.share_all = cfg.get('share_all') #cfg.share_all
         self.pretrain_alpha = cfg.get('pretrain_alpha')
+        self.test_every_x_epochs = cfg.get('test_every_x_epochs')
+        self.normalize_inputs = cfg.get('normalize_inputs')
+        self.normalize_alpha = cfg.get('normalize_alpha')
 
         '''
         from the run cfg retrieve the following via the data cfg
@@ -128,10 +131,7 @@ class Workspace:
         w_stars_test = w_stars[N_train:N, :]
         m = y_stars_train.shape[1]
         n = x_stars_train[0, :].size
-        for i in range(4):
-            plt.plot(thetas[i, :])
-        plt.savefig('sample_thetas.pdf')
-        plt.clf()
+        
 
         if static_flag:
             static_M = static_dict['M']
@@ -245,15 +245,28 @@ class Workspace:
         self.lin_sys_solve = lin_sys_solve
 
         # normalize the inputs
-        col_sums = thetas.mean(axis=0)
-        inputs_normalized = (thetas - col_sums) / thetas.std(axis=0)
-        inputs = jnp.array(inputs_normalized)
+        if self.normalize_inputs:
+            col_sums = thetas.mean(axis=0)
+            inputs_normalized = (thetas - col_sums) / thetas.std(axis=0)
+            inputs = jnp.array(inputs_normalized)
+        else:
+            inputs = thetas
         train_inputs = inputs[:N_train, :]
         test_inputs = inputs[N_train:N, :]
         # train_inputs = thetas[:N_train, :]
         # test_inputs = thetas[N_train:N, :]
 
         num_plot = np.min([N_train, 4])
+        for i in range(num_plot):
+            plt.plot(thetas[i, :])
+        plt.savefig('sample_thetas.pdf')
+        plt.clf()
+
+        for i in range(num_plot):
+            plt.plot(train_inputs[i, :])
+        plt.savefig('sample_inputs.pdf')
+        plt.clf()
+
         for i in range(num_plot):
             plt.plot(x_stars_train[i, :])
         plt.savefig('sample_x_stars.pdf')
@@ -327,7 +340,8 @@ class Workspace:
                       'y_psd_indices': y_psd_indices,
                       'loss_method': self.loss_method,
                       'share_all': self.share_all,
-                      'pretrain_alpha': self.pretrain_alpha
+                      'pretrain_alpha': self.pretrain_alpha,
+                      'normalize_alpha': self.normalize_alpha
                       }
 
         self.l2ws_model = L2WSmodel(input_dict)
@@ -338,6 +352,12 @@ class Workspace:
         self.writer = csv.DictWriter(self.logf, fieldnames=fieldnames)
         if os.stat('log.csv').st_size == 0:
             self.writer.writeheader()
+
+        self.test_logf = open('log_test.csv', 'a')
+        fieldnames = ['iter', 'train_loss', 'test_loss', 'time_per_iter']
+        self.test_writer = csv.DictWriter(self.test_logf, fieldnames=fieldnames)
+        if os.stat('log.csv').st_size == 0:
+            self.test_writer.writeheader()
 
     def evaluate_iters(self, num, col, train=False, plot=True, plot_pretrain=False):
         fixed_ws = col == 'fixed_ws'
@@ -417,8 +437,6 @@ class Workspace:
                 # random_start = .05*np.random.normal(size=(num, predict_size))
                 # inputs = jnp.array(random_start)
                 # fixed_ws = True
-
-                #
                 inputs = self.l2ws_model.test_inputs[:num, :]
                 fixed_ws = False
             else:
@@ -670,7 +688,7 @@ class Workspace:
             plot for z
             '''
             for j in self.plot_iterates:
-                plt.plot(z_all[i, j, self.l2ws_model.n:], label=f"prediction_{j}")
+                plt.plot(z_all[i, j, :], label=f"prediction_{j}")
             if train:
                 plt.plot(self.l2ws_model.w_stars_train[i, :], label='optimal')
             else:
@@ -746,10 +764,17 @@ class Workspace:
             plt.clf()
 
         self.logf = open('train_results.csv', 'a')
-        fieldnames = ['iter', 'train_loss', 'moving_avg_train', 'test_loss', 'time_per_iter']
+        # fieldnames = ['iter', 'train_loss', 'moving_avg_train', 'test_loss', 'time_per_iter']
+        fieldnames = ['iter', 'train_loss', 'moving_avg_train']
         self.writer = csv.DictWriter(self.logf, fieldnames=fieldnames)
         if os.stat('train_results.csv').st_size == 0:
             self.writer.writeheader()
+
+        self.test_logf = open('train_test_results.csv', 'a')
+        fieldnames = ['iter', 'train_loss', 'test_loss', 'time_per_iter']
+        self.test_writer = csv.DictWriter(self.test_logf, fieldnames=fieldnames)
+        if os.stat('train_results.csv').st_size == 0:
+            self.test_writer.writeheader()
 
         out_trains = []
 
@@ -765,6 +790,7 @@ class Workspace:
 
             key = random.PRNGKey(epoch)
             permutation = jax.random.permutation(key, self.l2ws_model.N_train)
+            iter_nums, train_losses, moving_avg_trains = [], [], []
             for batch in range(self.l2ws_model.num_batches):
                 start_index = batch*self.l2ws_model.batch_size
                 end_index = (batch+1)*self.l2ws_model.batch_size
@@ -774,9 +800,13 @@ class Workspace:
                     decay_lr_flag = True
                 else:
                     decay_lr_flag = False
-                self.l2ws_model.train_batch(
+                train_batch_out = self.l2ws_model.train_batch(
                     batch_indices, decay_lr_flag=decay_lr_flag,
                     writer=self.writer, logf=self.logf)
+                iter_num, train_loss, moving_avg = train_batch_out
+                iter_nums.append(iter_num)
+                train_losses.append(train_loss)
+                moving_avg_trains.append(moving_avg)
 
                 # self.writer.writerow({
                 #     'iter': self.state.iter_num,
@@ -787,11 +817,23 @@ class Workspace:
                 # })
 
                 curr_iter += 1
+
             # if epoch % self.eval_every_x_epochs == 0:
             #     out_train = self.evaluate_iters(
             #         self.num_samples, f"train_iter_{curr_iter}", train=True, plot_pretrain=pretrain_on)
+            for batch in range(self.l2ws_model.num_batches):
+                self.writer.writerow({
+                    'iter': iter_nums[batch],
+                    'train_loss': train_losses[batch],
+                    'moving_avg_train': moving_avg_trains[batch],
+                })
+                self.logf.flush()
 
             self.l2ws_model.epoch += 1
+
+            # if epoch % self.test_every_x_epochs == 0:
+            self.l2ws_model.short_test_eval(
+                writer=self.test_writer, logf=self.test_logf)
 
             # plot the train / test loss so far
             if epoch % self.save_every_x_epochs == 0:
@@ -800,8 +842,9 @@ class Workspace:
                 num_data_points = batch_losses.size
                 epoch_axis = np.arange(num_data_points) / \
                     self.l2ws_model.num_batches
+                epoch_test_axis = 1 + np.arange(te_losses.size)
                 plt.plot(epoch_axis, batch_losses, label='train')
-                plt.plot(epoch_axis, te_losses, label='test')
+                plt.plot(epoch_test_axis, te_losses, label='test')
                 plt.yscale('log')
                 plt.xlabel('epochs')
                 plt.ylabel('fixed point residual average')

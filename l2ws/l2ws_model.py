@@ -68,6 +68,7 @@ class L2WSmodel(object):
         self.loss_method = dict.get('loss_method')
         self.share_all = dict.get('share_all')
         self.pretrain_alpha = dict.get('pretrain_alpha')
+        self.normalize_alpha = dict.get('normalize_alpha')
 
         if self.static_flag:
             self.static_M = dict['static_M']
@@ -157,7 +158,8 @@ class L2WSmodel(object):
                            'learn_XY': self.learn_XY,
                            'loss_method': self.loss_method,
                            'share_all': self.share_all,
-                           'Z_shared': Z_shared
+                           'Z_shared': Z_shared,
+                           'normalize_alpha': self.normalize_alpha
                            }
         eval_loss_dict = {'static_flag': self.static_flag,
                           'lin_sys_solve': lin_sys_solve,
@@ -180,7 +182,8 @@ class L2WSmodel(object):
                           'learn_XY': self.learn_XY,
                           'loss_method': self.loss_method,
                           'share_all': self.share_all,
-                          'Z_shared': Z_shared
+                          'Z_shared': Z_shared,
+                          'normalize_alpha': self.normalize_alpha
                           }
         fixed_ws_dict = {'static_flag': self.static_flag,
                          'lin_sys_solve': lin_sys_solve,
@@ -203,7 +206,8 @@ class L2WSmodel(object):
                          'learn_XY': self.learn_XY,
                          'loss_method': self.loss_method,
                          'share_all': self.share_all,
-                         'Z_shared': Z_shared
+                         'Z_shared': Z_shared,
+                         'normalize_alpha': self.normalize_alpha
                          }
         self.loss_fn_train = create_loss_fn(train_loss_dict)
         self.loss_fn_eval = create_loss_fn(eval_loss_dict)
@@ -454,23 +458,6 @@ class L2WSmodel(object):
                                             iters=self.train_unrolls,
                                             z_stars=batch_z_stars)
 
-        # if self.static_flag:
-        #     results = self.optimizer.update(params=self.params,
-        #                                     state=self.state,
-        #                                     inputs=batch_inputs,
-        #                                     q=batch_q_data,
-        #                                     iters=self.train_unrolls,
-        #                                     z_stars=batch_z_stars)
-        # else:
-        #     batch_inv_data = self.matrix_invs_train[batch_indices, :, :]
-        #     batch_M_data = self.M_tensor_train[batch_indices, :, :]
-        #     results = self.optimizer.update(params=self.params,
-        #                                     state=self.state,
-        #                                     inputs=batch_inputs,
-        #                                     factor=batch_inv_data,
-        #                                     M=batch_M_data,
-        #                                     q=batch_q_data,
-        #                                     iters=self.train_unrolls)
         self.params, self.state = results
 
         t1 = time.time()
@@ -481,6 +468,32 @@ class L2WSmodel(object):
         print(
             f"[Step {self.state.iter_num}] train loss: {self.state.value:.6f}")
 
+        # if self.static_flag:
+        #     test_loss, test_out, time_per_prob = self.evaluate(self.train_unrolls,
+        #                                                        self.test_inputs,
+        #                                                        self.q_mat_test,
+        #                                                        self.w_stars_test)
+        # else:
+        #     eval_out = self.dynamic_eval(self.train_unrolls,
+        #                                  self.test_inputs,
+        #                                  self.matrix_invs_test,
+        #                                  self.M_tensor_test,
+        #                                  self.q_mat_test)
+        #     test_loss, test_out, time_per_prob = eval_out
+
+        # time_per_iter = time_per_prob / self.train_unrolls
+
+        # row = np.array([self.state.value, test_loss])
+        row = np.array([self.state.value])
+        self.train_data.append(pd.Series(row))
+        self.tr_losses_batch.append(self.state.value)
+        # self.te_losses.append(test_loss)
+        last10 = np.array(self.tr_losses_batch[-10:])
+        moving_avg_train = last10.mean()
+        return self.state.iter_num, self.state.value, moving_avg_train
+        
+
+    def short_test_eval(self, writer=None, logf=None):
         if self.static_flag:
             test_loss, test_out, time_per_prob = self.evaluate(self.train_unrolls,
                                                                self.test_inputs,
@@ -493,24 +506,20 @@ class L2WSmodel(object):
                                          self.M_tensor_test,
                                          self.q_mat_test)
             test_loss, test_out, time_per_prob = eval_out
+        self.te_losses.append(test_loss)
 
         time_per_iter = time_per_prob / self.train_unrolls
-
-        row = np.array([self.state.value, test_loss])
-        self.train_data.append(pd.Series(row))
-        self.tr_losses_batch.append(self.state.value)
-        self.te_losses.append(test_loss)
-        last10 = np.array(self.tr_losses_batch[-10:])
-        moving_avg_train = last10.mean()
         if writer is not None:
             writer.writerow({
                 'iter': self.state.iter_num,
                 'train_loss': self.state.value,
-                'moving_avg_train': moving_avg_train,
+                # 'moving_avg_train': moving_avg_train,
                 'test_loss': test_loss,
                 'time_per_iter': time_per_iter
             })
             logf.flush()
+
+
 
     # def evaluate(self, k, inputs, q, tag='test', fixed_ws=False):
     def evaluate(self, k, inputs, q, z_stars, tag='test', fixed_ws=False):
@@ -588,6 +597,7 @@ def create_loss_fn(input_dict):
     loss_method = input_dict['loss_method']
     share_all = input_dict['share_all']
     Z_shared = input_dict['Z_shared']
+    normalize_alpha = input_dict['normalize_alpha']
 
     # if dynamic, the next 2 set to None
     M_static, factor_static = input_dict['M_static'], input_dict['factor_static']
@@ -607,7 +617,13 @@ def create_loss_fn(input_dict):
         if prediction_variable == 'w':
             if share_all:
                 alpha = predict_y(params, input)
-                # alpha = alpha / alpha.sum()
+                if normalize_alpha == 'conic':
+                    alpha = jnp.maximum(0, alpha)
+                elif normalize_alpha == 'sum':
+                    alpha = alpha / alpha.sum()
+                elif normalize_alpha == 'convex':
+                    alpha = jnp.maximum(0, alpha)
+                    alpha = alpha / alpha.sum()
                 z = Z_shared @ alpha
                 u_ws = z
             else:
@@ -626,7 +642,8 @@ def create_loss_fn(input_dict):
                         Y_list = Y_list_fixed
                     u_ws = low_2_high_dim(nn_output, X_list, Y_list)
 
-                z = M @ u_ws + u_ws + q
+                # z = M @ u_ws + u_ws + q
+                z = u_ws
         elif prediction_variable == 'x':
             z = input
             u_ws = input
@@ -738,6 +755,7 @@ def create_loss_fn(input_dict):
         batch_predict = vmap(predict_final, in_axes=(
             None, 0, 0, None, 0), out_axes=out_axes)
 
+        @functools.partial(jax.jit, static_argnums=(3,))
         def loss_fn(params, inputs, q, iters, z_stars):
             if diff_required:
                 losses, iter_losses, angles, out = batch_predict(
