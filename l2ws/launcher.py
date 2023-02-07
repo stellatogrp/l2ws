@@ -259,11 +259,15 @@ class Workspace:
         num_plot = np.min([N_train, 4])
         for i in range(num_plot):
             plt.plot(thetas[i, :])
+        plt.ylabel('theta values')
+        plt.xlabel('theta indices')
         plt.savefig('sample_thetas.pdf')
         plt.clf()
 
         for i in range(num_plot):
             plt.plot(train_inputs[i, :])
+        plt.ylabel('input values')
+        plt.xlabel('input indices')
         plt.savefig('sample_inputs.pdf')
         plt.clf()
 
@@ -516,7 +520,8 @@ class Workspace:
         # plot of the fixed point residuals
         plt.plot(iters_df['no_train'], 'k-', label='no learning')
         if col != 'no_train':
-            plt.plot(iters_df['fixed_ws'], 'm-', label='naive warm start')
+            # plt.plot(iters_df['fixed_ws'], 'm-', label='naive warm start')
+            plt.plot(iters_df['fixed_ws'], 'm-', label='nearest neighbor')
         if plot_pretrain:
             plt.plot(iters_df['pretrain'], 'r-', label='pretraining')
         if col != 'no_train' and col != 'pretrain' and col != 'fixed_ws':
@@ -526,8 +531,10 @@ class Workspace:
         plt.ylabel('test fixed point residuals')
         plt.legend()
         if train:
+            plt.title('train problems')
             plt.savefig('eval_iters_train.pdf', bbox_inches='tight')
         else:
+            plt.title('test problems')
             plt.savefig('eval_iters_test.pdf', bbox_inches='tight')
         plt.clf()
 
