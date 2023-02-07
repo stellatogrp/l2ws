@@ -902,7 +902,16 @@ class Workspace:
                 plt.clf()
 
                 plt.plot(epoch_axis, batch_losses, label='train')
-                # plt.plot(epoch_axis, te_losses, label='test')
+
+                # include when learning rate decays
+                if len(self.l2ws_model.epoch_decay_points) > 0:
+                    epoch_decay_points = self.l2ws_model.epoch_decay_points
+                    epoch_decay_points_np = np.array(epoch_decay_points)
+                    batch_decay_points = epoch_decay_points_np * self.l2ws_model.num_batches
+
+                    batch_decay_points_int = batch_decay_points.astype('int')
+                    decay_vals = batch_losses[batch_decay_points_int]
+                    plt.scatter(epoch_decay_points_np, decay_vals, c='r', label='lr decay')
                 plt.yscale('log')
                 plt.xlabel('epochs')
                 plt.ylabel('fixed point residual average')
