@@ -72,6 +72,7 @@ class L2WSmodel(object):
         self.normalize_alpha = dict.get('normalize_alpha')
         self.plateau_decay = dict.get('plateau_decay')
         self.dont_decay_until = 2 * self.plateau_decay.avg_window_size
+        self.epoch_decay_points = []
 
         if self.static_flag:
             self.static_M = dict['static_M']
@@ -476,6 +477,9 @@ class L2WSmodel(object):
                         self.lr), fun=self.loss_fn_train, has_aux=True)
                 self.state = self.optimizer.init_state(self.params)
                 logging.info(f"the decay rate is now {self.lr}")
+
+                # log the current decay epoch
+                self.epoch_decay_points.append(self.epoch)
 
                 # don't decay for another 2 * window number of epochs
                 self.dont_decay_until = self.epoch + 2 * patience * self.plateau_decay.avg_window_size
