@@ -85,19 +85,20 @@ class Workspace:
         self.prediction_variable = cfg.prediction_variable
         self.angle_anchors = cfg.angle_anchors
         self.supervised = cfg.supervised
-        self.tx = cfg.get('tx') #cfg.tx
-        self.ty = cfg.get('ty') #cfg.ty
-        self.dx = cfg.get('dx') #cfg.dx
-        self.dy = cfg.get('dy') #cfg.dy
-        self.learn_XY = cfg.get('learn_XY') #cfg.learn_XY
-        self.num_clusters = cfg.get('num_clusters') #cfg.num_clusters
+        self.tx = cfg.get('tx')  # cfg.tx
+        self.ty = cfg.get('ty')  # cfg.ty
+        self.dx = cfg.get('dx')  # cfg.dx
+        self.dy = cfg.get('dy')  # cfg.dy
+        self.learn_XY = cfg.get('learn_XY')  # cfg.learn_XY
+        self.num_clusters = cfg.get('num_clusters')  # cfg.num_clusters
         self.loss_method = cfg.loss_method
         self.plot_iterates = cfg.plot_iterates
-        self.share_all = cfg.get('share_all') #cfg.share_all
+        self.share_all = cfg.get('share_all')  # cfg.share_all
         self.pretrain_alpha = cfg.get('pretrain_alpha')
         self.test_every_x_epochs = cfg.get('test_every_x_epochs')
         self.normalize_inputs = cfg.get('normalize_inputs')
         self.normalize_alpha = cfg.get('normalize_alpha')
+        self.plateau_decay = cfg.plateau_decay
 
         '''
         from the run cfg retrieve the following via the data cfg
@@ -125,13 +126,13 @@ class Workspace:
 
         self.x_stars_train = x_stars[:N_train, :]
         self.y_stars_train = y_stars[:N_train, :]
+
         w_stars_train = w_stars[:N_train, :]
-        x_stars_test = x_stars[N_train:N, :]
-        y_stars_test = y_stars[N_train:N, :]
+        self.x_stars_test = x_stars[N_train:N, :]
+        self.y_stars_test = y_stars[N_train:N, :]
         w_stars_test = w_stars[N_train:N, :]
         m = y_stars_train.shape[1]
         n = x_stars_train[0, :].size
-        
 
         if static_flag:
             static_M = static_dict['M']
@@ -232,7 +233,6 @@ class Workspace:
 
         self.proj = proj
 
-
         # @jit
         # def lin_sys_solve(rhs):
         #     return jsp.linalg.lu_solve(algo_factor, rhs)
@@ -316,9 +316,9 @@ class Workspace:
                       'n': n,
                       'static_M': static_M,
                       'y_stars_train': y_stars_train,
-                      'y_stars_test': y_stars_test,
+                      'y_stars_test': self.y_stars_test,
                       'x_stars_train': x_stars_train,
-                      'x_stars_test': x_stars_test,
+                      'x_stars_test': self.x_stars_test,
                       'prediction_variable': self.prediction_variable,
                       'static_flag': static_flag,
                       'static_algo_factor': static_algo_factor,
@@ -341,7 +341,8 @@ class Workspace:
                       'loss_method': self.loss_method,
                       'share_all': self.share_all,
                       'pretrain_alpha': self.pretrain_alpha,
-                      'normalize_alpha': self.normalize_alpha
+                      'normalize_alpha': self.normalize_alpha,
+                      'plateau_decay': self.plateau_decay
                       }
 
         self.l2ws_model = L2WSmodel(input_dict)
@@ -445,6 +446,7 @@ class Workspace:
                 eval_out = self.l2ws_model.evaluate(self.eval_unrolls,
                                                     inputs,
                                                     self.l2ws_model.q_mat_test[:num, :],
+                                                    self.l2ws_model.w_stars_test[:num, :],
                                                     tag='test',
                                                     fixed_ws=fixed_ws)
             else:
@@ -472,19 +474,32 @@ class Workspace:
         print('truth z', self.l2ws_model.w_stars_test[0, :])
         print('after iterations z', out_train[0][1][1, :])
         print('truth z', self.l2ws_model.w_stars_test[1, :])
-        # plt.plot(out_train[0][1][0,:], label='after iters')
-        # plt.plot(self.l2ws_model.w_stars_test[0, :], label='truth')
         plt.plot(self.l2ws_model.w_stars_test[0, :] - out_train[0][1][0, :], label='truth')
         plt.savefig('debug.pdf', bbox_inches='tight')
         plt.clf()
 
-        # if not train:
-        self.iters_df[col] = iter_losses_mean
-        self.iters_df.to_csv('iters_compared.csv')
-        self.primal_residuals_df[col] = primal_residuals
-        self.primal_residuals_df.to_csv('primal_residuals.csv')
-        self.dual_residuals_df[col] = dual_residuals
-        self.dual_residuals_df.to_csv('dual_residuals.csv')
+        if train:
+            self.iters_df_train[col] = iter_losses_mean
+            self.iters_df_train.to_csv('iters_compared_train.csv')
+            self.primal_residuals_df_train[col] = primal_residuals
+            self.primal_residuals_df_train.to_csv('primal_residuals_train.csv')
+            self.dual_residuals_df_train[col] = dual_residuals
+            self.dual_residuals_df_train.to_csv('dual_residuals_train.csv')
+
+            iters_df = self.iters_df_train
+            primal_residuals_df = self.primal_residuals_df_train
+            dual_residuals_df = self.dual_residuals_df_train
+        else:
+            self.iters_df_test[col] = iter_losses_mean
+            self.iters_df_test.to_csv('iters_compared_test.csv')
+            self.primal_residuals_df_test[col] = primal_residuals
+            self.primal_residuals_df_test.to_csv('primal_residuals_test.csv')
+            self.dual_residuals_df_test[col] = dual_residuals
+            self.dual_residuals_df_test.to_csv('dual_residuals_test.csv')
+
+            iters_df = self.iters_df_test
+            primal_residuals_df = self.primal_residuals_df_test
+            dual_residuals_df = self.dual_residuals_df_test
 
         '''
         now save the plots so we can monitor
@@ -494,24 +509,27 @@ class Workspace:
         '''
 
         # plot of the fixed point residuals
-        plt.plot(self.iters_df['no_train'], 'k-', label='no learning')
+        plt.plot(iters_df['no_train'], 'k-', label='no learning')
         if col != 'no_train':
-            plt.plot(self.iters_df['fixed_ws'], 'm-', label='naive warm start')
+            plt.plot(iters_df['fixed_ws'], 'm-', label='naive warm start')
         if plot_pretrain:
-            plt.plot(self.iters_df['pretrain'], 'r-', label='pretraining')
+            plt.plot(iters_df['pretrain'], 'r-', label='pretraining')
         if col != 'no_train' and col != 'pretrain' and col != 'fixed_ws':
-            plt.plot(self.iters_df[col], label=f"train k={self.train_unrolls}")
+            plt.plot(iters_df[col], label=f"train k={self.train_unrolls}")
         plt.yscale('log')
         plt.xlabel('evaluation iterations')
         plt.ylabel('test fixed point residuals')
         plt.legend()
-        plt.savefig('eval_iters.pdf', bbox_inches='tight')
+        if train:
+            plt.savefig('eval_iters_train.pdf', bbox_inches='tight')
+        else:
+            plt.savefig('eval_iters_test.pdf', bbox_inches='tight')
         plt.clf()
 
         # plot of the primal and dual residuals
-        plt.plot(self.primal_residuals_df['no_train'],
+        plt.plot(primal_residuals_df['no_train'],
                  'k+', label='no learning primal')
-        plt.plot(self.dual_residuals_df['no_train'],
+        plt.plot(dual_residuals_df['no_train'],
                  'ko', label='no learning dual')
 
         if plot_pretrain:
@@ -521,9 +539,9 @@ class Workspace:
                      'ro', label='pretraining dual')
         if col != 'no_train' and col != 'pretrain' and col != 'fixed_ws':
             plt.plot(
-                self.primal_residuals_df[col], label=f"train k={self.train_unrolls} primal")
+                primal_residuals_df[col], label=f"train k={self.train_unrolls} primal")
             plt.plot(
-                self.dual_residuals_df[col], label=f"train k={self.train_unrolls} dual")
+                dual_residuals_df[col], label=f"train k={self.train_unrolls} dual")
         plt.yscale('log')
         plt.xlabel('evaluation iterations')
         plt.ylabel('test primal-dual residuals')
@@ -573,7 +591,6 @@ class Workspace:
             plt.legend()
             plt.savefig(f"polar/{col}/prob_{i}_iters.pdf")
             plt.clf()
-
 
         '''
         plotting subsequent vectors in polar form
@@ -645,7 +662,7 @@ class Workspace:
             '''
             plot for x
             '''
-            
+
             for j in self.plot_iterates:
                 plt.plot(u_all[i, j, :self.l2ws_model.n], label=f"prediction_{j}")
             if train:
@@ -657,12 +674,12 @@ class Workspace:
             plt.clf()
 
             for j in self.plot_iterates:
-                plt.plot(u_all[i, j, :self.l2ws_model.n] - self.x_stars_train[i, :], label=f"prediction_{j}")
+                plt.plot(u_all[i, j, :self.l2ws_model.n] -
+                         self.x_stars_train[i, :], label=f"prediction_{j}")
             plt.legend()
             plt.title('diffs to optimal')
             plt.savefig(f"warm-starts/{col}/prob_{i}_diffs_x.pdf")
             plt.clf()
-
 
             '''
             plot for y
@@ -678,7 +695,8 @@ class Workspace:
             plt.clf()
 
             for j in self.plot_iterates:
-                plt.plot(u_all[i, j, self.l2ws_model.n:] - self.y_stars_train[i, :], label=f"prediction_{j}")
+                plt.plot(u_all[i, j, self.l2ws_model.n:] -
+                         self.y_stars_train[i, :], label=f"prediction_{j}")
             plt.legend()
             plt.title('diffs to optimal')
             plt.savefig(f"warm-starts/{col}/prob_{i}_diffs_y.pdf")
@@ -698,12 +716,12 @@ class Workspace:
             plt.clf()
 
             for j in self.plot_iterates:
-                plt.plot(z_all[i, j, :] - self.l2ws_model.w_stars_train[i, :], label=f"prediction_{j}")
+                plt.plot(z_all[i, j, :] - self.l2ws_model.w_stars_train[i, :],
+                         label=f"prediction_{j}")
             plt.legend()
             plt.title('diffs to optimal')
             plt.savefig(f"warm-starts/{col}/prob_{i}_diffs_z.pdf")
             plt.clf()
-
 
         alpha = out_train[0][2]
         if alpha is not None:
@@ -719,30 +737,48 @@ class Workspace:
     def run(self):
         self._init_logging()
 
-        self.iters_df = pd.DataFrame(
+        self.iters_df_train = pd.DataFrame(
             columns=['iterations', 'no_train', 'final'])
-        self.iters_df['iterations'] = np.arange(1, self.eval_unrolls+1)
-        self.primal_residuals_df = pd.DataFrame(
+        self.iters_df_train['iterations'] = np.arange(1, self.eval_unrolls+1)
+
+        self.iters_df_test = pd.DataFrame(
+            columns=['iterations', 'no_train', 'final'])
+        self.iters_df_test['iterations'] = np.arange(1, self.eval_unrolls+1)
+
+        self.primal_residuals_df_train = pd.DataFrame(
             columns=['iterations'])
-        self.primal_residuals_df['iterations'] = np.arange(
+        self.primal_residuals_df_train['iterations'] = np.arange(
             1, self.eval_unrolls+1)
-        self.dual_residuals_df = pd.DataFrame(
+        self.dual_residuals_df_train = pd.DataFrame(
             columns=['iterations'])
-        self.dual_residuals_df['iterations'] = np.arange(
+        self.dual_residuals_df_train['iterations'] = np.arange(
+            1, self.eval_unrolls+1)
+
+        self.primal_residuals_df_test = pd.DataFrame(
+            columns=['iterations'])
+        self.primal_residuals_df_test['iterations'] = np.arange(
+            1, self.eval_unrolls+1)
+        self.dual_residuals_df_test = pd.DataFrame(
+            columns=['iterations'])
+        self.dual_residuals_df_test['iterations'] = np.arange(
             1, self.eval_unrolls+1)
 
         '''
         no learning evaluation
         '''
         pretrain_on = self.pretrain_cfg.pretrain_iters > 0
-        out_train_start = self.evaluate_iters(
+        self.evaluate_iters(
             self.num_samples, 'no_train', train=True, plot_pretrain=False)
+        self.evaluate_iters(
+            self.num_samples, 'no_train', train=False, plot_pretrain=False)
 
         '''
         fixed ws evaluation
         '''
-        out_train_fixed_ws = self.evaluate_iters(
+        self.evaluate_iters(
             self.num_samples, 'fixed_ws', train=True, plot_pretrain=False)
+        self.evaluate_iters(
+            self.num_samples, 'fixed_ws', train=False, plot_pretrain=False)
 
         if pretrain_on:
             print("Pretraining...")
@@ -752,8 +788,10 @@ class Workspace:
                                                                                    stepsize=self.pretrain_cfg.pretrain_stepsize,
                                                                                    df_pretrain=self.df_pretrain,
                                                                                    batches=self.pretrain_cfg.pretrain_batches)
-            out_train_fixed_ws = self.evaluate_iters(
+            self.evaluate_iters(
                 self.num_samples, 'pretrain', train=True, plot_pretrain=pretrain_on)
+            self.evaluate_iters(
+                self.num_samples, 'pretrain', train=False, plot_pretrain=pretrain_on)
             plt.plot(train_pretrain_losses, label='train')
             plt.plot(test_pretrain_losses, label='test')
             plt.yscale('log')
@@ -776,17 +814,22 @@ class Workspace:
         if os.stat('train_results.csv').st_size == 0:
             self.test_writer.writeheader()
 
-        out_trains = []
-
         '''
         NEW WAY - train_batch - better for saving
         '''
-        
+
         curr_iter = 0
+        
         for epoch in range(int(self.l2ws_model.epochs)):
             if epoch % self.eval_every_x_epochs == 0:
-                out_train = self.evaluate_iters(
-                    self.num_samples, f"train_iter_{curr_iter}", train=True, plot_pretrain=pretrain_on)
+                self.evaluate_iters(
+                    self.num_samples, f"train_iter_{curr_iter}", train=True,
+                    plot_pretrain=pretrain_on)
+                self.evaluate_iters(
+                    self.num_samples, f"train_iter_{curr_iter}", train=False,
+                    plot_pretrain=pretrain_on)
+            if epoch > self.l2ws_model.dont_decay_until:
+                self.l2ws_model.decay_upon_plateau()
 
             key = random.PRNGKey(epoch)
             permutation = jax.random.permutation(key, self.l2ws_model.N_train)
@@ -808,19 +851,8 @@ class Workspace:
                 train_losses.append(train_loss)
                 moving_avg_trains.append(moving_avg)
 
-                # self.writer.writerow({
-                #     'iter': self.state.iter_num,
-                #     'train_loss': self.state.value,
-                #     'moving_avg_train': moving_avg_train,
-                #     'test_loss': test_loss,
-                #     'time_per_iter': time_per_iter
-                # })
-
                 curr_iter += 1
 
-            # if epoch % self.eval_every_x_epochs == 0:
-            #     out_train = self.evaluate_iters(
-            #         self.num_samples, f"train_iter_{curr_iter}", train=True, plot_pretrain=pretrain_on)
             for batch in range(self.l2ws_model.num_batches):
                 self.writer.writerow({
                     'iter': iter_nums[batch],

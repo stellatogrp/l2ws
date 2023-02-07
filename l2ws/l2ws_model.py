@@ -17,6 +17,7 @@ import pdb
 import pandas as pd
 from jax.config import config
 from scipy.spatial import distance_matrix
+import logging
 config.update("jax_enable_x64", True)
 
 
@@ -69,6 +70,8 @@ class L2WSmodel(object):
         self.share_all = dict.get('share_all')
         self.pretrain_alpha = dict.get('pretrain_alpha')
         self.normalize_alpha = dict.get('normalize_alpha')
+        self.plateau_decay = dict.get('plateau_decay')
+        self.dont_decay_until = 2 * self.plateau_decay.avg_window_size
 
         if self.static_flag:
             self.static_M = dict['static_M']
@@ -94,7 +97,7 @@ class L2WSmodel(object):
                     n_y_non_psd = self.m - int(self.psd_size * (self.psd_size + 1) / 2)
                     n_x_low = n_x_non_psd + self.dx * self.psd_size
                     n_y_low = n_y_non_psd + self.dy * self.psd_size
-                    
+
                     output_size = n_x_low + n_y_low + self.tx + self.ty
                 else:
                     output_size = self.n + self.m
@@ -278,7 +281,7 @@ class L2WSmodel(object):
             Y_list.append(Y)
 
         # do clustering -- for now just take first self.num_clusters
-        # clusters = self.u_stars_train[:self.num_clusters, :] 
+        # clusters = self.u_stars_train[:self.num_clusters, :]
         clusters = self.u_stars_train[sample_indices, :]
 
         # compute distance matrix
@@ -361,7 +364,6 @@ class L2WSmodel(object):
         self.state = state
         return pretrain_losses, pretrain_test_losses
 
-
     def pretrain(self, num_iters, stepsize=.001, method='adam', df_pretrain=None, batches=1):
         # create pretrain function
         def pretrain_loss(params, inputs, targets):
@@ -371,6 +373,7 @@ class L2WSmodel(object):
                 uu = nn_output
             else:
                 num_nn_params = len(self.nn_params)
+
                 def predict(params_, inputs_):
                     nn_params = params_[:num_nn_params]
                     nn_output = predict_y(nn_params, inputs_)
@@ -395,7 +398,7 @@ class L2WSmodel(object):
             optimizer_pretrain = OptaxSolver(
                 opt=optax.sgd(stepsize), fun=pretrain_loss, jit=True, maxiter=maxiters)
         state = optimizer_pretrain.init_state(self.params)
-        params = self.params #self.nn_params
+        params = self.params  # self.nn_params
         pretrain_losses = np.zeros(batches + 1)
         pretrain_test_losses = np.zeros(batches + 1)
 
@@ -435,6 +438,48 @@ class L2WSmodel(object):
         self.state = state
         return pretrain_losses, pretrain_test_losses
 
+    def decay_upon_plateau(self):
+        """
+        this method decays the learning rate upon hitting a plateau
+            on the training loss
+        self.avg_window_plateau: take the last avg_window number of epochs and compared it against the previous
+            avg_window number of epochs to compare
+        self.plateau_decay_factor: multiplicative factor we decay the learning rate by
+        self.plateau_tolerance: the tolerance condition decrease to check if we should decrease
+
+        we decay the learn rate by decay_factor if
+           self.tr_losses[-2*avg_window:-avg_window] - self.tr_losses[-avg_window:] <= tolerance
+        """
+        decay_factor = self.plateau_decay.decay_factor
+
+        window_batches = self.plateau_decay.avg_window_size * self.num_batches
+        plateau_tolerance = self.plateau_decay.tolerance
+        patience = self.plateau_decay.patience
+
+        if self.plateau_decay.min_lr <= self.lr / decay_factor:
+            tr_losses_batch_np = np.array(self.tr_losses_batch)
+            prev_window_losses = tr_losses_batch_np[-2*window_batches:-window_batches].mean()
+            curr_window_losses = tr_losses_batch_np[-window_batches:].mean()
+            print('prev_window_losses', prev_window_losses)
+            print('curr_window_losses', curr_window_losses)
+            plateau = prev_window_losses - curr_window_losses <= plateau_tolerance
+            if plateau:
+                # keep track of the learning rate
+                self.lr = self.lr / decay_factor
+
+                # update the optimizer (restart) and reset the state
+                if self.nn_cfg.method == 'adam':
+                    self.optimizer = OptaxSolver(opt=optax.adam(
+                        self.lr), fun=self.loss_fn_train, has_aux=True)
+                elif self.nn_cfg.method == 'sgd':
+                    self.optimizer = OptaxSolver(opt=optax.sgd(
+                        self.lr), fun=self.loss_fn_train, has_aux=True)
+                self.state = self.optimizer.init_state(self.params)
+                logging.info(f"the decay rate is now {self.lr}")
+
+                # don't decay for another 2 * window number of epochs
+                self.dont_decay_until = self.epoch + 2 * patience * self.plateau_decay.avg_window_size
+
     def train_batch(self, batch_indices, decay_lr_flag=False, writer=None, logf=None):
         batch_inputs = self.train_inputs[batch_indices, :]
         batch_q_data = self.q_mat_train[batch_indices, :]
@@ -452,11 +497,11 @@ class L2WSmodel(object):
 
         t0 = time.time()
         results = self.optimizer.update(params=self.params,
-                                            state=self.state,
-                                            inputs=batch_inputs,
-                                            q=batch_q_data,
-                                            iters=self.train_unrolls,
-                                            z_stars=batch_z_stars)
+                                        state=self.state,
+                                        inputs=batch_inputs,
+                                        q=batch_q_data,
+                                        iters=self.train_unrolls,
+                                        z_stars=batch_z_stars)
 
         self.params, self.state = results
 
@@ -468,22 +513,6 @@ class L2WSmodel(object):
         print(
             f"[Step {self.state.iter_num}] train loss: {self.state.value:.6f}")
 
-        # if self.static_flag:
-        #     test_loss, test_out, time_per_prob = self.evaluate(self.train_unrolls,
-        #                                                        self.test_inputs,
-        #                                                        self.q_mat_test,
-        #                                                        self.w_stars_test)
-        # else:
-        #     eval_out = self.dynamic_eval(self.train_unrolls,
-        #                                  self.test_inputs,
-        #                                  self.matrix_invs_test,
-        #                                  self.M_tensor_test,
-        #                                  self.q_mat_test)
-        #     test_loss, test_out, time_per_prob = eval_out
-
-        # time_per_iter = time_per_prob / self.train_unrolls
-
-        # row = np.array([self.state.value, test_loss])
         row = np.array([self.state.value])
         self.train_data.append(pd.Series(row))
         self.tr_losses_batch.append(self.state.value)
@@ -491,7 +520,6 @@ class L2WSmodel(object):
         last10 = np.array(self.tr_losses_batch[-10:])
         moving_avg_train = last10.mean()
         return self.state.iter_num, self.state.value, moving_avg_train
-        
 
     def short_test_eval(self, writer=None, logf=None):
         if self.static_flag:
@@ -519,9 +547,8 @@ class L2WSmodel(object):
             })
             logf.flush()
 
-
-
     # def evaluate(self, k, inputs, q, tag='test', fixed_ws=False):
+
     def evaluate(self, k, inputs, q, z_stars, tag='test', fixed_ws=False):
         if fixed_ws:
             curr_loss_fn = self.loss_fn_fixed_ws
@@ -658,7 +685,6 @@ def create_loss_fn(input_dict):
         all_z_ = jnp.zeros((iters, z.size))
         all_z_ = all_z_.at[0, :].set(z)
 
-
         if diff_required:
             def _fp(i, val):
                 z, loss_vec = val
@@ -673,7 +699,7 @@ def create_loss_fn(input_dict):
             def _fp_(i, val):
                 z, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals = val
                 z_next, u, v = fixed_point(z, factor, q)
-                diff = jnp.linalg.norm(z_next - z) 
+                diff = jnp.linalg.norm(z_next - z)
                 loss_vec = loss_vec.at[i].set(diff)
 
                 pr = jnp.linalg.norm(A @ u[:n] + v[n:] - b)
@@ -782,4 +808,5 @@ def create_loss_fn(input_dict):
                     params, inputs, q, iters, factor, M)
                 loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
             return losses.mean(), loss_out
+
     return loss_fn

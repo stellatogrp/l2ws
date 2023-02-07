@@ -8,6 +8,14 @@ nn_cfg:
   min_lr: 1e-7
   decay_every: 1e7
 
+plateau_decay:
+  min_lr: 1e-7
+  decay_factor: 2
+  avg_window_size: 20 # in epochs
+  tolerance: 1e-4
+  patience: 10
+
+
 pretrain:
   pretrain_method: adam
   pretrain_stepsize: 1e-3
@@ -19,13 +27,13 @@ data:
 
 train_unrolls: 20
 eval_unrolls: 500
-eval_every_x_epochs: 20
+eval_every_x_epochs: 50
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
-N_train: 10000
-N_test: 200
-num_samples: 500
+N_train: 100
+N_test: 20
+num_samples: 20
 prediction_variable: w
 angle_anchors: [0]
 supervised: False

@@ -895,7 +895,6 @@ def static_canon(T, gamma, dt, mu, rho):
         A_dynamics=Ad,
         Bd=Bd
     )
-    # pdb.set_trace()
     return out_dict
 
 

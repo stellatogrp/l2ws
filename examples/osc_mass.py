@@ -244,13 +244,13 @@ def setup_probs(setup_cfg):
             solve_times[i] = scs_instance.solve_time
 
             ############ check with our jax implementation
-            P_jax = jnp.array(P_sparse.todense())
-            A_jax = jnp.array(A_sparse.todense())
-            c_jax, b_jax = jnp.array(c), jnp.array(b)
-            data = dict(P=P_jax, A=A_jax, b=b_jax, c=c_jax, cones=cones_dict)
-            # data['x'] = x_stars[i, :]
-            # data['y'] = y_stars[i, :]
-            x_jax, y_jax, s_jax = scs_jax(data, iters=100)
+            # P_jax = jnp.array(P_sparse.todense())
+            # A_jax = jnp.array(A_sparse.todense())
+            # c_jax, b_jax = jnp.array(c), jnp.array(b)
+            # data = dict(P=P_jax, A=A_jax, b=b_jax, c=c_jax, cones=cones_dict)
+            # # data['x'] = x_stars[i, :]
+            # # data['y'] = y_stars[i, :]
+            # x_jax, y_jax, s_jax = scs_jax(data, iters=100)
 
             # M, E, D = ruiz_equilibrate(M)
             # pdb.set_trace()
