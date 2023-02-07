@@ -460,11 +460,16 @@ class Workspace:
 
         loss_train, out_train, train_time = eval_out
         iter_losses_mean = out_train[2].mean(axis=0)
-        if not os.path.exists('losses_over_examples'):
-            os.mkdir('losses_over_examples')
+        if train:
+            loe_folder = 'losses_over_examples_train'
+        else:
+            loe_folder = 'losses_over_examples_test'
+        if not os.path.exists(loe_folder):
+            os.mkdir(loe_folder)
+        
         plt.plot(out_train[2].T)
         plt.yscale('log')
-        plt.savefig(f"losses_over_examples/losses_{col}_plot.pdf", bbox_inches='tight')
+        plt.savefig(f"{loe_folder}/losses_{col}_plot.pdf", bbox_inches='tight')
         plt.clf()
 
         angles = out_train[3]
@@ -551,10 +556,14 @@ class Workspace:
 
         # SRG-type plots
         # one for each problem
-        if not os.path.exists('polar'):
-            os.mkdir('polar')
-        if not os.path.exists(f"polar/{col}"):
-            os.mkdir(f"polar/{col}")
+        if train:
+            polar_path = 'polar_train'
+        else:
+            polar_path = 'polar_test'
+        if not os.path.exists(polar_path):
+            os.mkdir(polar_path)
+        if not os.path.exists(f"{polar_path}/{col}"):
+            os.mkdir(f"{polar_path}/{col}")
 
         num_angles = len(self.angle_anchors)
         for i in range(5):
@@ -571,7 +580,7 @@ class Workspace:
             ax.set_rscale('symlog')
             ax.set_title("Magnitude", va='bottom')
             plt.legend()
-            plt.savefig(f"polar/{col}/prob_{i}_mag.pdf")
+            plt.savefig(f"{polar_path}/{col}/prob_{i}_mag.pdf")
             plt.clf()
 
         for i in range(5):
@@ -589,7 +598,7 @@ class Workspace:
             # ax2.set_rscale('symlog')
             ax2.set_title("Iterations", va='bottom')
             plt.legend()
-            plt.savefig(f"polar/{col}/prob_{i}_iters.pdf")
+            plt.savefig(f"{polar_path}/{col}/prob_{i}_iters.pdf")
             plt.clf()
 
         '''
@@ -607,7 +616,7 @@ class Workspace:
             ax.set_rscale('symlog')
             ax.set_title("Magnitude", va='bottom')
             plt.legend()
-            plt.savefig(f"polar/{col}/prob_{i}_subseq_mag.pdf")
+            plt.savefig(f"{polar_path}/{col}/prob_{i}_subseq_mag.pdf")
             plt.clf()
 
         for i in range(5):
@@ -623,7 +632,7 @@ class Workspace:
             ax2.grid(True)
             ax2.set_title("Iterations", va='bottom')
             plt.legend()
-            plt.savefig(f"polar/{col}/prob_{i}_subseq_iters.pdf")
+            plt.savefig(f"{polar_path}/{col}/prob_{i}_subseq_iters.pdf")
             plt.clf()
 
         '''
@@ -636,7 +645,7 @@ class Workspace:
         #     os.mkdir(f"polar/angle_data/{col}")
         subsequent_angles = angles[:, -1, 1:]
         angles_df = pd.DataFrame(subsequent_angles)
-        angles_df.to_csv(f"polar/{col}/angle_data.csv")
+        angles_df.to_csv(f"{polar_path}/{col}/angle_data.csv")
 
         # also plot the angles for the first 5 problems
         for i in range(5):
@@ -644,7 +653,7 @@ class Workspace:
             plt.ylabel('angle')
             plt.xlabel('eval iters')
             plt.hlines(0, 0, angles[i, -1, 2:].size, 'r')
-            plt.savefig(f"polar/{col}/prob_{i}_angles.pdf")
+            plt.savefig(f"{polar_path}/{col}/prob_{i}_angles.pdf")
             plt.clf()
 
         '''
@@ -654,10 +663,14 @@ class Workspace:
         u_all = out_train[0][3]
         z_all = out_train[0][0]
 
-        if not os.path.exists('warm-starts'):
-            os.mkdir('warm-starts')
-        if not os.path.exists(f"warm-starts/{col}"):
-            os.mkdir(f"warm-starts/{col}")
+        if train:
+            ws_path = 'warm-starts_train'
+        else:
+            ws_path = 'warm-starts_test'
+        if not os.path.exists(ws_path):
+            os.mkdir(ws_path)
+        if not os.path.exists(f"{ws_path}/{col}"):
+            os.mkdir(f"{ws_path}/{col}")
         for i in range(5):
             '''
             plot for x
@@ -670,7 +683,7 @@ class Workspace:
             else:
                 plt.plot(self.x_stars_test[i, :], label='optimal')
             plt.legend()
-            plt.savefig(f"warm-starts/{col}/prob_{i}_x_ws.pdf")
+            plt.savefig(f"{ws_path}/{col}/prob_{i}_x_ws.pdf")
             plt.clf()
 
             for j in self.plot_iterates:
@@ -678,7 +691,7 @@ class Workspace:
                          self.x_stars_train[i, :], label=f"prediction_{j}")
             plt.legend()
             plt.title('diffs to optimal')
-            plt.savefig(f"warm-starts/{col}/prob_{i}_diffs_x.pdf")
+            plt.savefig(f"{ws_path}/{col}/prob_{i}_diffs_x.pdf")
             plt.clf()
 
             '''
@@ -691,7 +704,7 @@ class Workspace:
             else:
                 plt.plot(self.y_stars_test[i, :], label='optimal')
             plt.legend()
-            plt.savefig(f"warm-starts/{col}/prob_{i}_y_ws.pdf")
+            plt.savefig(f"{ws_path}/{col}/prob_{i}_y_ws.pdf")
             plt.clf()
 
             for j in self.plot_iterates:
@@ -699,7 +712,7 @@ class Workspace:
                          self.y_stars_train[i, :], label=f"prediction_{j}")
             plt.legend()
             plt.title('diffs to optimal')
-            plt.savefig(f"warm-starts/{col}/prob_{i}_diffs_y.pdf")
+            plt.savefig(f"{ws_path}/{col}/prob_{i}_diffs_y.pdf")
             plt.clf()
 
             '''
@@ -712,7 +725,7 @@ class Workspace:
             else:
                 plt.plot(self.l2ws_model.w_stars_test[i, :], label='optimal')
             plt.legend()
-            plt.savefig(f"warm-starts/{col}/prob_{i}_z_ws.pdf")
+            plt.savefig(f"{ws_path}/{col}/prob_{i}_z_ws.pdf")
             plt.clf()
 
             for j in self.plot_iterates:
@@ -720,16 +733,20 @@ class Workspace:
                          label=f"prediction_{j}")
             plt.legend()
             plt.title('diffs to optimal')
-            plt.savefig(f"warm-starts/{col}/prob_{i}_diffs_z.pdf")
+            plt.savefig(f"{ws_path}/{col}/prob_{i}_diffs_z.pdf")
             plt.clf()
 
         alpha = out_train[0][2]
+        if train:
+            alpha_path = 'alphas_train'
+        else:
+            alpha_path = 'alphas_test'
         if alpha is not None:
-            if not os.path.exists('alphas'):
-                os.mkdir('alphas')
+            if not os.path.exists(alpha_path):
+                os.mkdir(alpha_path)
             for i in range(10):
                 plt.plot(alpha[i, :])
-            plt.savefig(f"alphas/{col}.pdf")
+            plt.savefig(f"{alpha_path}/{col}.pdf")
             plt.clf()
 
         return out_train
