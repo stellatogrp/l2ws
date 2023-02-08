@@ -750,8 +750,17 @@ def create_loss_fn(input_dict):
         u = proj(u_temp)
         z_next = z + u - u_tilde
 
+        # out = x_primal, z_next, u, all_x_primals
+        all_z_ = all_z_.at[1:, :].set(all_z[:-1, :])
+
         if supervised:
-            loss = jnp.linalg.norm(z_next - z_star)
+            # loss = jnp.linalg.norm(z_next - z_star)
+            if loss_method == 'constant_sum':
+                loss = 0
+                for i in range(iters):
+                    loss += jnp.linalg.norm(all_z_[i, :] - z_star)
+            elif loss_method == 'fixed_k':
+                loss = jnp.linalg.norm(z_next - z_star)
         else:
             if loss_method == 'increasing_sum':
                 weights = (1+jnp.arange(iter_losses.size))
@@ -763,8 +772,7 @@ def create_loss_fn(input_dict):
             elif loss_method == 'first_2_last':
                 loss = jnp.linalg.norm(z_next-z0)
 
-        # out = x_primal, z_next, u, all_x_primals
-        all_z_ = all_z_.at[1:, :].set(all_z[:-1, :])
+        
         out = all_z_, z_next, alpha, all_u
 
         if diff_required:

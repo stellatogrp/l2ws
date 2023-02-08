@@ -15,7 +15,8 @@ from utils.data_utils import recover_last_datetime
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
-    "font.size": 24,
+    # "font.size": 24,
+    "font.size": 16,
 })
 
 
@@ -40,6 +41,13 @@ def vehicle_plot_eval_iters(cfg):
 def robust_pca_plot_eval_iters(cfg):
     example = 'robust_pca'
     plot_eval_iters(example, cfg)
+
+
+@hydra.main(config_path='configs/robust_kalman', config_name='robust_kalman_plot.yaml')
+def robust_kalman_plot_eval_iters(cfg):
+    example = 'robust_kalman'
+    plot_eval_iters(example, cfg, train=True)
+    overlay_training_losses(example, cfg)
 
 
 @hydra.main(config_path='configs/all', config_name='plot.yaml')
@@ -135,7 +143,96 @@ def get_data(example, datetime, csv_title, eval_iters):
     return last_column[:eval_iters]
 
 
-def plot_eval_iters(example, cfg):
+def get_loss_data(example, datetime):
+    orig_cwd = hydra.utils.get_original_cwd()
+
+    path = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/train_test_results.csv"
+    df = read_csv(path)
+    # if csv_title == 'last':
+    #     last_column = df.iloc[:, -1]
+    # else:
+    #     last_column = df[csv_title]
+    # return last_column[:eval_iters]
+    train_losses = df['train_loss']
+    test_losses = df['test_loss']
+    return train_losses, test_losses
+
+
+def overlay_training_losses(example, cfg):
+    orig_cwd = hydra.utils.get_original_cwd()
+
+    # recover the datetimes
+    datetimes = cfg.output_datetimes
+    if datetimes == []:
+        dt = recover_last_datetime(orig_cwd, example, 'train')
+        datetimes = [dt]
+
+    '''
+    retrieve the training + test loss values held in 
+    train_test_results.csv
+    '''
+    all_train_losses = []
+    all_test_losses = []
+    for i in range(len(datetimes)):
+        datetime = datetimes[i]
+        train_losses, test_losses = get_loss_data(example, datetime)
+        all_train_losses.append(train_losses)
+        all_test_losses.append(test_losses)
+
+    titles = cfg.loss_overlay_titles
+    for i in range(len(datetimes)):
+        plt.plot(all_train_losses[i], label=f"train: {titles[i]}")
+        plt.plot(all_test_losses[i], label=f"test: {titles[i]}")
+    plt.yscale('log')
+    plt.xlabel('epochs')
+    plt.ylabel('fixed point residual average')
+    plt.legend()
+    plt.savefig('losses_over_epochs.pdf', bbox_inches='tight')
+    plt.clf()
+
+    for i in range(len(datetimes)):
+        plt.plot(all_train_losses[i], label=f"train: {titles[i]}")
+    plt.yscale('log')
+    plt.xlabel('epochs')
+    plt.ylabel('fixed point residual average')
+    plt.legend()
+    plt.savefig('train_losses_over_epochs.pdf', bbox_inches='tight')
+    plt.clf()
+
+    # # batch_losses = np.array(self.l2ws_model.tr_losses_batch)
+    # # te_losses = np.array(self.l2ws_model.te_losses)
+    # num_data_points = batch_losses.size
+    # epoch_axis = np.arange(num_data_points) / \
+    #     self.l2ws_model.num_batches
+    # epoch_test_axis = 1 + np.arange(te_losses.size)
+    # plt.plot(epoch_axis, batch_losses, label='train')
+    # plt.plot(epoch_test_axis, te_losses, label='test')
+    # plt.yscale('log')
+    # plt.xlabel('epochs')
+    # plt.ylabel('fixed point residual average')
+    # plt.legend()
+    # plt.savefig('losses_over_training.pdf', bbox_inches='tight')
+    # plt.clf()
+
+    # plt.plot(epoch_axis, batch_losses, label='train')
+
+    # # include when learning rate decays
+    # if len(self.l2ws_model.epoch_decay_points) > 0:
+    #     epoch_decay_points = self.l2ws_model.epoch_decay_points
+    #     epoch_decay_points_np = np.array(epoch_decay_points)
+    #     batch_decay_points = epoch_decay_points_np * self.l2ws_model.num_batches
+
+    #     batch_decay_points_int = batch_decay_points.astype('int')
+    #     decay_vals = batch_losses[batch_decay_points_int]
+    #     plt.scatter(epoch_decay_points_np, decay_vals, c='r', label='lr decay')
+    # plt.yscale('log')
+    # plt.xlabel('epochs')
+    # plt.ylabel('fixed point residual average')
+    # plt.legend()
+    # plt.savefig('train_losses_over_training.pdf', bbox_inches='tight')
+    # plt.clf()
+
+def plot_eval_iters(example, cfg, train=False):
     '''
     get the datetimes
     1. no learning
@@ -163,11 +260,16 @@ def plot_eval_iters(example, cfg):
     accs = cfg.accuracies
     df_acc = pd.DataFrame()
     df_acc['accuracies'] = np.array(accs)
+
+    if train:
+        iters_file = "iters_compared_train.csv"
+    else:
+        iters_file = "iters_compared_test.csv"
     
     '''
     no learning
     '''
-    no_learning_path = f"{orig_cwd}/outputs/{example}/train_outputs/{no_learning_datetime}/iters_compared.csv"
+    no_learning_path = f"{orig_cwd}/outputs/{example}/train_outputs/{no_learning_datetime}/{iters_file}"
     no_learning_df = read_csv(no_learning_path)
     last_column = no_learning_df['no_train']
     plt.plot(last_column[:eval_iters], 'k-.', label='no learning')
@@ -177,7 +279,7 @@ def plot_eval_iters(example, cfg):
     '''
     naive warm start
     '''
-    naive_ws_path = f"{orig_cwd}/outputs/{example}/train_outputs/{naive_ws_datetime}/iters_compared.csv"
+    naive_ws_path = f"{orig_cwd}/outputs/{example}/train_outputs/{naive_ws_datetime}/{iters_file}"
     naive_ws_df = read_csv(naive_ws_path)
     last_column = naive_ws_df['fixed_ws']
     # plt.plot(last_column[:eval_iters], 'm-.', label='naive warm start')
@@ -189,16 +291,17 @@ def plot_eval_iters(example, cfg):
     pretraining
     '''
     if pretrain_datetime != '':
-        pretrain_path = f"{orig_cwd}/outputs/{example}/train_outputs/{pretrain_datetime}/iters_compared.csv"
+        pretrain_path = f"{orig_cwd}/outputs/{example}/train_outputs/{pretrain_datetime}/{iters_file}"
         pretrain_df = read_csv(pretrain_path)
         last_column = pretrain_df['pretrain']
         plt.plot(last_column[:eval_iters], 'r+', label='pretrain')
     
     k_vals = np.zeros(len(datetimes))
     second_derivs = []
+    titles = cfg.loss_overlay_titles
     for i in range(len(datetimes)):
         datetime = datetimes[i]
-        path = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/iters_compared.csv"
+        path = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/{iters_file}"
         df = read_csv(path)
 
         '''
@@ -217,7 +320,7 @@ def plot_eval_iters(example, cfg):
         last_column = df.iloc[:, -1]
         second_derivs.append(second_derivative_fn(np.log(last_column[:eval_iters])))
         # plt.plot(last_column[:250], label=f"train k={k}")
-        plt.plot(last_column[:eval_iters], label=f"train $k={k_vals[i]}$")
+        plt.plot(last_column[:eval_iters], label=f"train $k={int(k_vals[i])}$, {titles[i]}")
         df_acc = update_acc(df_acc, accs, f"traink{int(k_vals[i])}", last_column[:eval_iters])
 
     plt.yscale('log')
@@ -355,6 +458,10 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'vehicle/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         vehicle_plot_eval_iters()
+    elif sys.argv[1] == 'robust_kalman':
+        sys.argv[1] = base + 'robust_kalman/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        robust_kalman_plot_eval_iters()
     elif sys.argv[1] == 'robust_pca':
         sys.argv[1] = base + 'robust_pca/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
