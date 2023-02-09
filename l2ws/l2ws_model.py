@@ -693,7 +693,10 @@ def create_loss_fn(input_dict):
             def _fp(i, val):
                 z, loss_vec = val
                 z_next, u, v = fixed_point(z, factor, q)
-                diff = jnp.linalg.norm(z_next - z)
+                if supervised:
+                    diff = jnp.linalg.norm(z - z_star)
+                else:
+                    diff = jnp.linalg.norm(z_next - z)
                 loss_vec = loss_vec.at[i].set(diff)
                 return z_next, loss_vec
             val = z, iter_losses
@@ -757,11 +760,12 @@ def create_loss_fn(input_dict):
             # loss = jnp.linalg.norm(z_next - z_star)
             if loss_method == 'constant_sum':
                 loss = 0
-                opt_diffs = jnp.zeros(iters)
-                for i in range(iters):
-                    # loss += jnp.linalg.norm(all_z_[i, :] - z_star)
-                    opt_diffs = opt_diffs.at[i].set(jnp.linalg.norm(all_z_[i, :] - z_star))
-                loss = opt_diffs.sum()
+                # opt_diffs = jnp.zeros(iters)
+                # for i in range(iters):
+                #     # loss += jnp.linalg.norm(all_z_[i, :] - z_star)
+                #     opt_diffs = opt_diffs.at[i].set(jnp.linalg.norm(all_z_[i, :] - z_star))
+                # loss = opt_diffs.sum()
+                loss = iter_losses.sum()
             elif loss_method == 'fixed_k':
                 loss = jnp.linalg.norm(z_next - z_star)
         else:
