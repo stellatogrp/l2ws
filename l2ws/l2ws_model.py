@@ -759,7 +759,7 @@ def create_loss_fn(input_dict):
         if supervised:
             # loss = jnp.linalg.norm(z_next - z_star)
             if loss_method == 'constant_sum':
-                loss = 0
+                # loss = 0
                 # opt_diffs = jnp.zeros(iters)
                 # for i in range(iters):
                 #     # loss += jnp.linalg.norm(all_z_[i, :] - z_star)
