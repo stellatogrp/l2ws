@@ -176,7 +176,7 @@ class L2WSmodel(object):
                           'factor_static': self.static_algo_factor,
                           'diff_required': False,
                           'angle_anchors': self.angle_anchors,
-                          'supervised': self.supervised,
+                          'supervised': False,
                           'num_nn_params': len(self.nn_params),
                           'tx': self.tx,
                           'ty': self.ty,
@@ -200,7 +200,7 @@ class L2WSmodel(object):
                          'factor_static': self.static_algo_factor,
                          'diff_required': False,
                          'angle_anchors': self.angle_anchors,
-                         'supervised': self.supervised,
+                         'supervised': False,
                          'num_nn_params': len(self.nn_params),
                          'tx': self.tx,
                          'ty': self.ty,
@@ -757,8 +757,11 @@ def create_loss_fn(input_dict):
             # loss = jnp.linalg.norm(z_next - z_star)
             if loss_method == 'constant_sum':
                 loss = 0
+                opt_diffs = jnp.zeros(iters)
                 for i in range(iters):
-                    loss += jnp.linalg.norm(all_z_[i, :] - z_star)
+                    # loss += jnp.linalg.norm(all_z_[i, :] - z_star)
+                    opt_diffs = opt_diffs.at[i].set(jnp.linalg.norm(all_z_[i, :] - z_star))
+                loss = opt_diffs.sum()
             elif loss_method == 'fixed_k':
                 loss = jnp.linalg.norm(z_next - z_star)
         else:
