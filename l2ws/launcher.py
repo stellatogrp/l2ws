@@ -99,6 +99,7 @@ class Workspace:
         self.normalize_inputs = cfg.get('normalize_inputs')
         self.normalize_alpha = cfg.get('normalize_alpha')
         self.plateau_decay = cfg.plateau_decay
+        self.epochs_jit = cfg.epochs_jit
 
         '''
         from the run cfg retrieve the following via the data cfg
@@ -354,6 +355,7 @@ class Workspace:
     def _init_logging(self):
         self.logf = open('log.csv', 'a')
         fieldnames = ['iter', 'train_loss', 'val_loss', 'test_loss']
+        # fieldnames = ['train_loss', 'test_loss']
         self.writer = csv.DictWriter(self.logf, fieldnames=fieldnames)
         if os.stat('log.csv').st_size == 0:
             self.writer.writeheader()
@@ -470,7 +472,7 @@ class Workspace:
             loe_folder = 'losses_over_examples_test'
         if not os.path.exists(loe_folder):
             os.mkdir(loe_folder)
-        
+
         plt.plot(out_train[2].T)
         plt.yscale('log')
         plt.savefig(f"{loe_folder}/losses_{col}_plot.pdf", bbox_inches='tight')
@@ -840,50 +842,102 @@ class Workspace:
 
         '''
         NEW WAY - train_batch - better for saving
+        batch < epoch < epoch_batch
+        epoch_batch is many epochs that we jit together
         '''
-
-        curr_iter = 0
-        
-        for epoch in range(int(self.l2ws_model.epochs)):
-            if epoch % self.eval_every_x_epochs == 0:
-                self.evaluate_iters(
-                    self.num_samples, f"train_iter_{curr_iter}", train=True,
-                    plot_pretrain=pretrain_on)
-                self.evaluate_iters(
-                    self.num_samples, f"train_iter_{curr_iter}", train=False,
-                    plot_pretrain=pretrain_on)
+        num_epochs_jit = int(self.l2ws_model.epochs / self.epochs_jit)
+        for epoch_batch in num_epochs_jit:
+            epoch = int(epoch_batch * self.epochs_jit)
+            self.evaluate_iters(
+                self.num_samples, f"train_epoch_{epoch}", train=True,
+                plot_pretrain=pretrain_on)
+            self.evaluate_iters(
+                self.num_samples, f"train_epoch_{epoch}", train=False,
+                plot_pretrain=pretrain_on)
             if epoch > self.l2ws_model.dont_decay_until:
                 self.l2ws_model.decay_upon_plateau()
+            key = random.PRNGKey(epoch_batch)
+            permutation = jax.random.permutation(
+                key, int(self.l2ws_model.N_train * self.epochs_jit))
 
-            key = random.PRNGKey(epoch)
-            permutation = jax.random.permutation(key, self.l2ws_model.N_train)
-            iter_nums, train_losses, moving_avg_trains = [], [], []
-            for batch in range(self.l2ws_model.num_batches):
+            @jit
+            def body_fn(batch, val):
+                train_losses, params, state = val
                 start_index = batch*self.l2ws_model.batch_size
-                end_index = (batch+1)*self.l2ws_model.batch_size
-                batch_indices = permutation[start_index:end_index]
+                batch_indices = jax.lax.dynamic_slice(
+                    permutation, (start_index,), (self.l2ws_model.batch_size,))
+                train_loss, params, state = self.l2ws_model.train_batch(
+                    batch_indices, params, state)
+                train_losses = train_losses.at[batch].set(train_loss)
+                val = train_losses, params, state
+                return val
 
-                if epoch % self.nn_cfg.decay_every == 0 and epoch > 0:
-                    decay_lr_flag = True
-                else:
-                    decay_lr_flag = False
-                train_batch_out = self.l2ws_model.train_batch(
-                    batch_indices, decay_lr_flag=decay_lr_flag,
-                    writer=self.writer, logf=self.logf)
-                iter_num, train_loss, moving_avg = train_batch_out
-                iter_nums.append(iter_num)
-                train_losses.append(train_loss)
-                moving_avg_trains.append(moving_avg)
+        # curr_iter = 0
+        # for epoch in range(int(self.l2ws_model.epochs)):
+        #     if epoch % self.eval_every_x_epochs == 0:
+        #         self.evaluate_iters(
+        #             self.num_samples, f"train_iter_{curr_iter}", train=True,
+        #             plot_pretrain=pretrain_on)
+        #         self.evaluate_iters(
+        #             self.num_samples, f"train_iter_{curr_iter}", train=False,
+        #             plot_pretrain=pretrain_on)
+        #     if epoch > self.l2ws_model.dont_decay_until:
+        #         self.l2ws_model.decay_upon_plateau()
 
-                curr_iter += 1
+        #     key = random.PRNGKey(epoch)
+        #     permutation = jax.random.permutation(key, self.l2ws_model.N_train)
+
+        #     @jit
+        #     def body_fn(batch, val):
+        #         train_losses, params, state = val
+        #         start_index = batch*self.l2ws_model.batch_size
+        #         batch_indices = jax.lax.dynamic_slice(
+        #             permutation, (start_index,), (self.l2ws_model.batch_size,))
+        #         train_loss, params, state = self.l2ws_model.train_batch(
+        #             batch_indices, params, state)
+        #         train_losses = train_losses.at[batch].set(train_loss)
+        #         val = train_losses, params, state
+        #         return val
+
+
+
+
+            epoch_train_losses = jnp.zeros(self.l2ws_model.num_batches)
+            if epoch == 0:
+                # unroll the first iterate so that This allows `init_val` and `body_fun`
+                # below to have the same output type, which is a requirement of
+                # jax.lax.while_loop and jax.lax.scan.
+                batch_indices = jax.lax.dynamic_slice(
+                    permutation, (0,), (self.l2ws_model.batch_size,))
+                train_loss_first, params, state = self.l2ws_model.train_batch(
+                    batch_indices, self.l2ws_model.params, self.l2ws_model.state)
+
+                epoch_train_losses = epoch_train_losses.at[0].set(train_loss_first)
+                start_index = 1
+            else:
+                start_index = 0
+
+            # loop the last (self.l2ws_model.num_batches - 1) iterates
+            init_val = epoch_train_losses, params, state
+            val = jax.lax.fori_loop(start_index, self.l2ws_model.num_batches, body_fn, init_val)
+            epoch_train_losses, params, state = val
+
+            # reset the global (params, state)
+            self.l2ws_model.params = params
+            self.l2ws_model.state = state
+
+            self.l2ws_model.tr_losses_batch = self.l2ws_model.tr_losses_batch + \
+                list(epoch_train_losses)
 
             for batch in range(self.l2ws_model.num_batches):
+                last10 = np.array(self.l2ws_model.tr_losses_batch[-10:])
+                moving_avg = last10.mean()
                 self.writer.writerow({
-                    'iter': iter_nums[batch],
-                    'train_loss': train_losses[batch],
-                    'moving_avg_train': moving_avg_trains[batch],
+                    'train_loss': epoch_train_losses[batch],
+                    'moving_avg_train': moving_avg,
                 })
                 self.logf.flush()
+                print('train_loss', epoch_train_losses[batch])
 
             self.l2ws_model.epoch += 1
 

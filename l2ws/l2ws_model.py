@@ -46,8 +46,8 @@ class L2WSmodel(object):
         self.y_stars_test = dict['y_stars_test']
         self.x_stars_train = dict['x_stars_train']
         self.x_stars_test = dict['x_stars_test']
-        self.w_stars_train = dict['w_stars_train']
-        self.w_stars_test = dict['w_stars_test']
+        self.w_stars_train = jnp.array(dict['w_stars_train'])
+        self.w_stars_test = jnp.array(dict['w_stars_test'])
         self.u_stars_train = jnp.hstack([self.x_stars_train, self.y_stars_train])
         self.u_stars_test = jnp.hstack([self.x_stars_test, self.y_stars_test])
 
@@ -484,46 +484,25 @@ class L2WSmodel(object):
                 # don't decay for another 2 * window number of epochs
                 self.dont_decay_until = self.epoch + 2 * patience * self.plateau_decay.avg_window_size
 
-    def train_batch(self, batch_indices, decay_lr_flag=False, writer=None, logf=None):
+    def train_batch(self, batch_indices, params, state):
         batch_inputs = self.train_inputs[batch_indices, :]
         batch_q_data = self.q_mat_train[batch_indices, :]
         batch_z_stars = self.w_stars_train[batch_indices, :]
-
-        # check if we need to update lr
-        # if decay_lr_flag:
-        #     if self.min_lr <= self.lr * self.decay_lr and self.decay_lr < 1.0:
-        #         # re-initialize the optimizer
-        #         self.lr = self.lr * self.decay_lr
-        #         print(f"lr decayed to {self.lr}")
-        #         self.optimizer = OptaxSolver(opt=optax.adam(
-        #             self.lr), fun=self.loss_fn_train, has_aux=True)
-        #         self.state = self.optimizer.init_state(self.params)
-
-        t0 = time.time()
-        results = self.optimizer.update(params=self.params,
-                                        state=self.state,
+        # results = self.optimizer.update(params=self.params,
+        #                                 state=self.state,
+        #                                 inputs=batch_inputs,
+        #                                 q=batch_q_data,
+        #                                 iters=self.train_unrolls,
+        #                                 z_stars=batch_z_stars)
+        results = self.optimizer.update(params=params,
+                                        state=state,
                                         inputs=batch_inputs,
                                         q=batch_q_data,
                                         iters=self.train_unrolls,
                                         z_stars=batch_z_stars)
-
-        self.params, self.state = results
-
-        t1 = time.time()
-        time_per_batch = (t1 - t0)
-        print('time per batch', time_per_batch)
-        train_out = self.state.aux
-
-        print(
-            f"[Step {self.state.iter_num}] train loss: {self.state.value:.6f}")
-
-        row = np.array([self.state.value])
-        self.train_data.append(pd.Series(row))
-        self.tr_losses_batch.append(self.state.value)
-        # self.te_losses.append(test_loss)
-        last10 = np.array(self.tr_losses_batch[-10:])
-        moving_avg_train = last10.mean()
-        return self.state.iter_num, self.state.value, moving_avg_train
+        # self.params, self.state = results
+        params, state = results
+        return state.value, params, state
 
     def short_test_eval(self, writer=None, logf=None):
         if self.static_flag:

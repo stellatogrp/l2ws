@@ -2,7 +2,7 @@ nn_cfg:
   lr: 1e-3
   method: adam
   intermediate_layer_sizes: [2000, 2000]
-  batch_size: 1000
+  batch_size: 10
   epochs: 1e6
   decay_lr: .1
   min_lr: 1e-7
@@ -25,15 +25,15 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 50
+train_unrolls: 5
 eval_unrolls: 500
 eval_every_x_epochs: 30
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
-N_train: 10000
-N_test: 200
-num_samples: 200
+N_train: 100
+N_test: 20
+num_samples: 20
 prediction_variable: w
 angle_anchors: [0]
 supervised: True
@@ -44,3 +44,4 @@ num_clusters: 500
 pretrain_alpha: False
 normalize_inputs: True
 normalize_alpha: 'other'
+epochs_jit: 10
