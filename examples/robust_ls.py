@@ -124,7 +124,8 @@ def run(run_cfg):
     rho = setup_cfg['rho']
 
     # create the nominal matrix A
-    A = np.random.normal(size=(m_orig, n_orig))
+    # A = np.random.normal(size=(m_orig, n_orig))
+    A = (np.random.rand(m_orig, n_orig) * 2) - 1
 
     static_dict = static_canon(A, rho)
 
@@ -158,7 +159,8 @@ def setup_probs(setup_cfg):
     m_orig, n_orig = cfg.m_orig, cfg.n_orig
 
     np.random.seed(cfg.seed)
-    A = np.random.normal(size=(m_orig, n_orig))
+    # A = np.random.normal(size=(m_orig, n_orig))
+    A = (np.random.rand(m_orig, n_orig) * 2) - 1
 
     log.info("creating static canonicalization...")
     t0 = time.time()
@@ -209,7 +211,7 @@ def setup_probs(setup_cfg):
     """
     sample theta for each problem
     """
-    thetas_np = (2 * np.random.rand(N, m_orig) - 1) * cfg.b_range
+    thetas_np = (2 * np.random.rand(N, m_orig) - 1) * cfg.b_range + cfg.b_nominal
     thetas = jnp.array(thetas_np)
 
     batch_q = vmap(single_q, in_axes=(0, None, None, None), out_axes=(0))
@@ -282,6 +284,25 @@ def setup_probs(setup_cfg):
     for i in range(5):
         plt.plot(x_stars[i, :])
     plt.savefig("x_stars.pdf")
+    plt.clf()
+
+    # save plot of first 5 solutions - just x
+    for i in range(5):
+        plt.plot(x_stars[i, :-2])
+    plt.savefig("x_stars_just_x.pdf")
+    plt.clf()
+
+    # save plot of first 5 solutions - non-zeros
+    for i in range(5):
+        plt.plot(x_stars[i, :-2] >= 0.0001)
+    plt.savefig("x_stars_zero_one.pdf")
+    plt.clf()
+
+    # correlation matrix
+    corrcoef = np.corrcoef(x_stars[:, :-2] >= 0.0001)
+    print('corrcoef', corrcoef)
+    plt.imshow(corrcoef)
+    plt.savefig("corrcoef_zero_one.pdf")
     plt.clf()
 
     for i in range(5):

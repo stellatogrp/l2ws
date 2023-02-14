@@ -857,6 +857,8 @@ class Workspace:
             })
             self.test_logf.flush()
         num_epochs_jit = int(self.l2ws_model.epochs / self.epochs_jit)
+
+        key_count = 0
         for epoch_batch in range(num_epochs_jit):
             epoch = int(epoch_batch * self.epochs_jit)
             if epoch % self.eval_every_x_epochs == 0:
@@ -868,11 +870,13 @@ class Workspace:
                     plot_pretrain=pretrain_on)
             if epoch > self.l2ws_model.dont_decay_until:
                 self.l2ws_model.decay_upon_plateau()
-            key = random.PRNGKey(epoch_batch)
+            # key = random.PRNGKey(epoch_batch)
 
             # setup the permutations
             permutations = []
             for i in range(self.epochs_jit):
+                key = random.PRNGKey(key_count)
+                key_count += 1
                 epoch_permutation = jax.random.permutation(key, int(self.l2ws_model.N_train))
                 permutations.append(epoch_permutation)
             stacked_permutation = jnp.stack(permutations)

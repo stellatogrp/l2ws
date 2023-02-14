@@ -269,7 +269,8 @@ def robust_ls_main(cfg):
     m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
     # m = 2 * m_orig + n_orig + 2
     # n = n_orig + 2
-    A = np.random.normal(size=(m_orig, n_orig))
+    # A = np.random.normal(size=(m_orig, n_orig))
+    A = (np.random.rand(m_orig, n_orig) * 2) - 1
     static_dict = robust_ls.static_canon(A, setup_cfg['rho'])
 
     get_q_single = functools.partial(robust_ls.single_q,
