@@ -404,10 +404,10 @@ class L2WSmodel(object):
         pretrain_test_losses = np.zeros(batches + 1)
 
         if self.prediction_variable == 'w':
-            train_targets = self.u_stars_train
-            test_targets = self.u_stars_test
-            # train_targets = self.w_stars_train
-            # test_targets = self.w_stars_test
+            # train_targets = self.u_stars_train
+            # test_targets = self.u_stars_test
+            train_targets = self.w_stars_train
+            test_targets = self.w_stars_test
         elif self.prediction_variable == 'x':
             train_targets = self.x_stars_train
             test_targets = self.x_stars_test

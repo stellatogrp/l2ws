@@ -548,9 +548,13 @@ class Workspace:
                  'ko', label='no learning dual')
 
         if plot_pretrain:
+            # plt.plot(
+            #     self.primal_residuals_df['pretrain'], 'r+', label='pretraining primal')
+            # plt.plot(self.dual_residuals_df['pretrain'],
+            #          'ro', label='pretraining dual')
             plt.plot(
-                self.primal_residuals_df['pretrain'], 'r+', label='pretraining primal')
-            plt.plot(self.dual_residuals_df['pretrain'],
+                primal_residuals_df['pretrain'], 'r+', label='pretraining primal')
+            plt.plot(dual_residuals_df['pretrain'],
                      'ro', label='pretraining dual')
         if col != 'no_train' and col != 'pretrain' and col != 'fixed_ws':
             plt.plot(
