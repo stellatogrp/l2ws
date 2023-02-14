@@ -61,7 +61,8 @@ def soc_projection(y, s):
             return y, s
 
         def case2b(y, s):
-            return (0.0*jnp.zeros(2), 0.0)
+            # return (0.0*jnp.zeros(2), 0.0)
+            return (0.0*jnp.zeros(y.size), 0.0)
         return lax.cond(s >= 0, case2a, case2b, y, s)
     return lax.cond(y_norm >= jnp.abs(s), case1_soc_proj, case2_soc_proj, y, s)
 
@@ -178,7 +179,7 @@ class Workspace:
         # alternate -- load it if available (but this is memory-intensive)
         q_mat_train = q_mat[:N_train, :]
         q_mat_test = q_mat[N_train:N, :]
-        print('q_mat_train', q_mat_train[0, n:])
+        print('q_mat_train', q_mat_train[0, :])
 
         self.M = static_M
 
@@ -354,7 +355,7 @@ class Workspace:
 
     def _init_logging(self):
         self.logf = open('log.csv', 'a')
-        fieldnames = ['iter', 'train_loss', 'val_loss', 'test_loss']
+        fieldnames = ['iter', 'train_loss', 'val_loss', 'test_loss', 'time_train_per_epoch']
         # fieldnames = ['train_loss', 'test_loss']
         self.writer = csv.DictWriter(self.logf, fieldnames=fieldnames)
         if os.stat('log.csv').st_size == 0:
@@ -829,7 +830,7 @@ class Workspace:
 
         self.logf = open('train_results.csv', 'a')
         # fieldnames = ['iter', 'train_loss', 'moving_avg_train', 'test_loss', 'time_per_iter']
-        fieldnames = ['iter', 'train_loss', 'moving_avg_train']
+        fieldnames = ['train_loss', 'moving_avg_train', 'time_train_per_epoch']
         self.writer = csv.DictWriter(self.logf, fieldnames=fieldnames)
         if os.stat('train_results.csv').st_size == 0:
             self.writer.writeheader()
@@ -845,20 +846,39 @@ class Workspace:
         batch < epoch < epoch_batch
         epoch_batch is many epochs that we jit together
         '''
+        # eval test data to start
+        test_loss, time_per_iter = self.l2ws_model.short_test_eval()
+        if self.test_writer is not None:
+            self.test_writer.writerow({
+                'iter': 0,
+                'train_loss': 0,
+                'test_loss': test_loss,
+                'time_per_iter': time_per_iter
+            })
+            self.test_logf.flush()
         num_epochs_jit = int(self.l2ws_model.epochs / self.epochs_jit)
-        for epoch_batch in num_epochs_jit:
+        for epoch_batch in range(num_epochs_jit):
             epoch = int(epoch_batch * self.epochs_jit)
-            self.evaluate_iters(
-                self.num_samples, f"train_epoch_{epoch}", train=True,
-                plot_pretrain=pretrain_on)
-            self.evaluate_iters(
-                self.num_samples, f"train_epoch_{epoch}", train=False,
-                plot_pretrain=pretrain_on)
+            if epoch % self.eval_every_x_epochs == 0:
+                self.evaluate_iters(
+                    self.num_samples, f"train_epoch_{epoch}", train=True,
+                    plot_pretrain=pretrain_on)
+                self.evaluate_iters(
+                    self.num_samples, f"train_epoch_{epoch}", train=False,
+                    plot_pretrain=pretrain_on)
             if epoch > self.l2ws_model.dont_decay_until:
                 self.l2ws_model.decay_upon_plateau()
             key = random.PRNGKey(epoch_batch)
-            permutation = jax.random.permutation(
-                key, int(self.l2ws_model.N_train * self.epochs_jit))
+
+            # setup the permutations
+            permutations = []
+            for i in range(self.epochs_jit):
+                epoch_permutation = jax.random.permutation(key, int(self.l2ws_model.N_train))
+                permutations.append(epoch_permutation)
+            stacked_permutation = jnp.stack(permutations)
+            permutation = jnp.ravel(stacked_permutation)
+            
+            print('permutation', permutation.shape, permutation)
 
             @jit
             def body_fn(batch, val):
@@ -872,37 +892,10 @@ class Workspace:
                 val = train_losses, params, state
                 return val
 
-        # curr_iter = 0
-        # for epoch in range(int(self.l2ws_model.epochs)):
-        #     if epoch % self.eval_every_x_epochs == 0:
-        #         self.evaluate_iters(
-        #             self.num_samples, f"train_iter_{curr_iter}", train=True,
-        #             plot_pretrain=pretrain_on)
-        #         self.evaluate_iters(
-        #             self.num_samples, f"train_iter_{curr_iter}", train=False,
-        #             plot_pretrain=pretrain_on)
-        #     if epoch > self.l2ws_model.dont_decay_until:
-        #         self.l2ws_model.decay_upon_plateau()
+            epoch_batch_start_time = time.time()
 
-        #     key = random.PRNGKey(epoch)
-        #     permutation = jax.random.permutation(key, self.l2ws_model.N_train)
-
-        #     @jit
-        #     def body_fn(batch, val):
-        #         train_losses, params, state = val
-        #         start_index = batch*self.l2ws_model.batch_size
-        #         batch_indices = jax.lax.dynamic_slice(
-        #             permutation, (start_index,), (self.l2ws_model.batch_size,))
-        #         train_loss, params, state = self.l2ws_model.train_batch(
-        #             batch_indices, params, state)
-        #         train_losses = train_losses.at[batch].set(train_loss)
-        #         val = train_losses, params, state
-        #         return val
-
-
-
-
-            epoch_train_losses = jnp.zeros(self.l2ws_model.num_batches)
+            loop_size = int(self.l2ws_model.num_batches * self.epochs_jit)
+            epoch_train_losses = jnp.zeros(loop_size)
             if epoch == 0:
                 # unroll the first iterate so that This allows `init_val` and `body_fun`
                 # below to have the same output type, which is a requirement of
@@ -919,31 +912,49 @@ class Workspace:
 
             # loop the last (self.l2ws_model.num_batches - 1) iterates
             init_val = epoch_train_losses, params, state
-            val = jax.lax.fori_loop(start_index, self.l2ws_model.num_batches, body_fn, init_val)
+            # val = jax.lax.fori_loop(start_index, self.l2ws_model.num_batches, body_fn, init_val)
+            val = jax.lax.fori_loop(start_index, loop_size, body_fn, init_val)
+
+            epoch_batch_end_time = time.time()
+            time_diff = epoch_batch_end_time - epoch_batch_start_time
+            time_train_per_epoch = time_diff / self.epochs_jit
+            print('time_train_per_epoch', time_train_per_epoch)
             epoch_train_losses, params, state = val
 
             # reset the global (params, state)
+            self.l2ws_model.epoch += self.epochs_jit
             self.l2ws_model.params = params
             self.l2ws_model.state = state
 
+            prev_batches = len(self.l2ws_model.tr_losses_batch)
             self.l2ws_model.tr_losses_batch = self.l2ws_model.tr_losses_batch + \
                 list(epoch_train_losses)
 
-            for batch in range(self.l2ws_model.num_batches):
-                last10 = np.array(self.l2ws_model.tr_losses_batch[-10:])
+            for batch in range(loop_size):
+                # last10 = np.array(self.l2ws_model.tr_losses_batch[-10:])
+                start_window = prev_batches - 10 + batch
+                end_window = prev_batches + batch
+                last10 = np.array(self.l2ws_model.tr_losses_batch[start_window:end_window])
                 moving_avg = last10.mean()
                 self.writer.writerow({
                     'train_loss': epoch_train_losses[batch],
                     'moving_avg_train': moving_avg,
+                    'time_train_per_epoch': time_train_per_epoch
                 })
                 self.logf.flush()
                 print('train_loss', epoch_train_losses[batch])
 
-            self.l2ws_model.epoch += 1
+            # self.l2ws_model.epoch += 1
 
-            # if epoch % self.test_every_x_epochs == 0:
-            self.l2ws_model.short_test_eval(
-                writer=self.test_writer, logf=self.test_logf)
+            test_loss, time_per_iter = self.l2ws_model.short_test_eval()
+            if self.test_writer is not None:
+                self.test_writer.writerow({
+                    'iter': self.l2ws_model.state.iter_num,
+                    'train_loss': epoch_train_losses[-1],
+                    'test_loss': test_loss,
+                    'time_per_iter': time_per_iter
+                })
+                self.test_logf.flush()
 
             # plot the train / test loss so far
             if epoch % self.save_every_x_epochs == 0:
@@ -952,7 +963,8 @@ class Workspace:
                 num_data_points = batch_losses.size
                 epoch_axis = np.arange(num_data_points) / \
                     self.l2ws_model.num_batches
-                epoch_test_axis = 1 + np.arange(te_losses.size)
+                # epoch_test_axis = 1 + np.arange(te_losses.size)
+                epoch_test_axis = self.epochs_jit * np.arange(te_losses.size)
                 plt.plot(epoch_axis, batch_losses, label='train')
                 plt.plot(epoch_test_axis, te_losses, label='test')
                 plt.yscale('log')

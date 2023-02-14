@@ -488,23 +488,16 @@ class L2WSmodel(object):
         batch_inputs = self.train_inputs[batch_indices, :]
         batch_q_data = self.q_mat_train[batch_indices, :]
         batch_z_stars = self.w_stars_train[batch_indices, :]
-        # results = self.optimizer.update(params=self.params,
-        #                                 state=self.state,
-        #                                 inputs=batch_inputs,
-        #                                 q=batch_q_data,
-        #                                 iters=self.train_unrolls,
-        #                                 z_stars=batch_z_stars)
         results = self.optimizer.update(params=params,
                                         state=state,
                                         inputs=batch_inputs,
                                         q=batch_q_data,
                                         iters=self.train_unrolls,
                                         z_stars=batch_z_stars)
-        # self.params, self.state = results
         params, state = results
         return state.value, params, state
 
-    def short_test_eval(self, writer=None, logf=None):
+    def short_test_eval(self):
         if self.static_flag:
             test_loss, test_out, time_per_prob = self.evaluate(self.train_unrolls,
                                                                self.test_inputs,
@@ -520,17 +513,7 @@ class L2WSmodel(object):
         self.te_losses.append(test_loss)
 
         time_per_iter = time_per_prob / self.train_unrolls
-        if writer is not None:
-            writer.writerow({
-                'iter': self.state.iter_num,
-                'train_loss': self.state.value,
-                # 'moving_avg_train': moving_avg_train,
-                'test_loss': test_loss,
-                'time_per_iter': time_per_iter
-            })
-            logf.flush()
-
-    # def evaluate(self, k, inputs, q, tag='test', fixed_ws=False):
+        return test_loss, time_per_iter
 
     def evaluate(self, k, inputs, q, z_stars, tag='test', fixed_ws=False):
         if fixed_ws:
@@ -758,7 +741,6 @@ def create_loss_fn(input_dict):
             elif loss_method == 'first_2_last':
                 loss = jnp.linalg.norm(z_next-z0)
 
-        
         out = all_z_, z_next, alpha, all_u
 
         if diff_required:

@@ -4,6 +4,7 @@ import examples.osc_mass as osc_mass
 import examples.vehicle as vehicle
 import examples.robust_kalman as robust_kalman
 import examples.robust_pca as robust_pca
+import examples.robust_ls as robust_ls
 import hydra
 import pdb
 import cvxpy as cp
@@ -36,6 +37,11 @@ def main_setup_robust_pca(cfg):
     robust_pca.setup_probs(cfg)
 
 
+@hydra.main(config_path='configs/robust_ls', config_name='robust_ls_setup.yaml')
+def main_setup_robust_ls(cfg):
+    robust_ls.setup_probs(cfg)
+
+
 if __name__ == '__main__':
     if sys.argv[2] == 'cluster':
         base = 'hydra.run.dir=/scratch/gpfs/rajivs/learn2warmstart/outputs/'
@@ -64,3 +70,7 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'robust_pca/data_setup_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_setup_robust_pca()
+    elif sys.argv[1] == 'robust_ls':
+        sys.argv[1] = base + 'robust_ls/data_setup_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_setup_robust_ls()

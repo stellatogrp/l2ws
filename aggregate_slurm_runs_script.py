@@ -10,6 +10,7 @@ import examples.osc_mass as osc_mass
 import examples.vehicle as vehicle
 import examples.robust_kalman as robust_kalman
 import examples.robust_pca as robust_pca
+import examples.robust_ls as robust_ls
 import yaml
 import numpy as np
 import time
@@ -192,12 +193,6 @@ def robust_kalman_main(cfg):
         except yaml.YAMLError as exc:
             print(exc)
             setup_cfg = {}
-    # T, control_box = setup_cfg['T'], setup_cfg['control_box']
-    # state_box = setup_cfg['state_box']
-    # nx, nu = setup_cfg['nx'], setup_cfg['nu']
-    # Q_val, QT_val = setup_cfg['Q_val'], setup_cfg['QT_val']
-    # R_val = setup_cfg['R_val']
-    # Ad, Bd = osc_mass.oscillating_masses_setup(nx, nu)
 
     # save the data setup cfg file in the aggregate folder
     with open('data_setup_copied.yaml', 'w') as file:
@@ -210,8 +205,6 @@ def robust_kalman_main(cfg):
         setup_cfg['mu'],
         setup_cfg['rho']
     )
-    # A_sparse = static_dict['A_sparse']
-    # m, n = A_sparse.shape
 
     get_q_single = functools.partial(robust_kalman.single_q,
                                      mu=setup_cfg['mu'],
@@ -219,6 +212,70 @@ def robust_kalman_main(cfg):
                                      T=setup_cfg['T'],
                                      gamma=setup_cfg['gamma'],
                                      dt=setup_cfg['dt'])
+    get_q = vmap(get_q_single, in_axes=0, out_axes=0)
+    M = static_dict['M']
+    static_flag = True
+    save_aggregate(static_flag, M, datetimes, example, get_q)
+
+
+@hydra.main(config_path='configs/robust_ls', config_name='robust_ls_agg.yaml')
+def robust_ls_main(cfg):
+    '''
+    given data and time of all the previous experiments
+    creates new folder with hydra
+    combines all the npz files into 1
+    '''
+    # access first datafile via the data_cfg file
+    example = 'robust_ls'
+    orig_cwd = hydra.utils.get_original_cwd()
+
+    datetimes = cfg.datetimes
+    if len(datetimes) == 0:
+        # get the most recent datetime and update datetimes
+        last_datetime = recover_last_datetime(orig_cwd, example, 'data_setup')
+        datetimes = [last_datetime]
+
+        cfg = {'datetimes': datetimes}
+
+    # save the datetime to we can recover
+    with open('agg_datetimes.yaml', 'w') as file:
+        yaml.dump(cfg, file)
+
+    datetime0 = datetimes[0]
+
+    folder = f"{orig_cwd}/outputs/{example}/data_setup_outputs/{datetime0}"
+    folder_entries = os.listdir(folder)
+    entry = folder_entries[0]
+
+    '''
+    the next line is not right -- need to get the setup cfg file from
+    '''
+    #    the location specified in the aggregation cfg file
+    data_yaml_filename = f"{orig_cwd}/outputs/{example}/data_setup_outputs/{datetime0}/.hydra/config.yaml"
+
+    # read the yaml file
+    with open(data_yaml_filename, "r") as stream:
+        try:
+            setup_cfg = yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+            setup_cfg = {}
+
+    # save the data setup cfg file in the aggregate folder
+    with open('data_setup_copied.yaml', 'w') as file:
+        yaml.dump(setup_cfg, file)
+
+    np.random.seed(setup_cfg['seed'])
+    m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
+    # m = 2 * m_orig + n_orig + 2
+    # n = n_orig + 2
+    A = np.random.normal(size=(m_orig, n_orig))
+    static_dict = robust_ls.static_canon(A, setup_cfg['rho'])
+
+    get_q_single = functools.partial(robust_ls.single_q,
+                                     rho=setup_cfg['rho'],
+                                     m_orig=setup_cfg['m_orig'],
+                                     n_orig=setup_cfg['n_orig'])
     get_q = vmap(get_q_single, in_axes=0, out_axes=0)
     M = static_dict['M']
     static_flag = True
@@ -514,3 +571,10 @@ if __name__ == '__main__':
             'robust_pca/aggregate_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         robust_pca_main()
+    elif sys.argv[1] == 'robust_ls':
+        # step 1. remove the markowitz argument -- otherwise hydra uses it as an override
+        # step 2. add the train_outputs/... argument for train_outputs not outputs
+        sys.argv[1] = base + \
+            'robust_ls/aggregate_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        robust_ls_main()
