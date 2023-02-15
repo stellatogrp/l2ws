@@ -50,6 +50,13 @@ def robust_kalman_plot_eval_iters(cfg):
     overlay_training_losses(example, cfg)
 
 
+@hydra.main(config_path='configs/robust_ls', config_name='robust_ls_plot.yaml')
+def robust_ls_plot_eval_iters(cfg):
+    example = 'robust_ls'
+    plot_eval_iters(example, cfg, train=False)
+    # overlay_training_losses(example, cfg)
+
+
 @hydra.main(config_path='configs/all', config_name='plot.yaml')
 def plot_l4dc(cfg):
     orig_cwd = hydra.utils.get_original_cwd()
@@ -466,6 +473,10 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'robust_pca/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         robust_pca_plot_eval_iters()
+    elif sys.argv[1] == 'robust_ls':
+        sys.argv[1] = base + 'robust_ls/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        robust_ls_plot_eval_iters()
     elif sys.argv[1] == 'all':
         sys.argv[1] = base + 'all/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
