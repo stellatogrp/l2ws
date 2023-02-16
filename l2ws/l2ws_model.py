@@ -617,6 +617,8 @@ def create_loss_fn(input_dict):
                 elif normalize_alpha == 'convex':
                     alpha = jnp.maximum(0, alpha)
                     alpha = alpha / alpha.sum()
+                elif normalize_alpha == 'softmax':
+                    alpha = jax.nn.softmax(alpha)
                 z = Z_shared @ alpha
                 u_ws = z
             else:

@@ -958,7 +958,7 @@ class Workspace:
             if self.test_writer is not None:
                 self.test_writer.writerow({
                     'iter': self.l2ws_model.state.iter_num,
-                    'train_loss': epoch_train_losses[-1],
+                    'train_loss': moving_avg, #epoch_train_losses[-1],
                     'test_loss': test_loss,
                     'time_per_iter': time_per_iter
                 })
