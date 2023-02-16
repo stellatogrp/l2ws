@@ -55,7 +55,7 @@ def simulate(T, gamma, dt, sigma, p):
     return y, x_true, w_true, v
 
 
-def sample_theta(N, T, sigma, p, gamma, dt):
+def sample_theta(N, T, sigma, p, gamma, dt, rotate):
     # A, B, C = robust_kalman_setup(gamma, dt)
 
     # generate random input and noise vectors
@@ -85,15 +85,60 @@ def sample_theta(N, T, sigma, p, gamma, dt):
     # y_mat = simulate_fwd(w, v, T, gamma, dt)
     y_mat, x_trues = simulate_fwd_batch(w, v, T, gamma, dt)
 
+    # get the rotation angle
+    # y_mat has shape (N, 2, T)
+    find_rotation_angle_vmap = vmap(find_rotation_angle, in_axes=(0,), out_axes=(0))
+
+    angles = find_rotation_angle_vmap(y_mat[:, :, -1])
+
+    # rotation_vmap = vmap(rotate_vector, in_axes=(0, 0), out_axes=(0))
+    clockwise = True
+    y_mat_rotated = rotation_vmap(y_mat, angles, clockwise)
+
     thetas = jnp.zeros((N, 2*T))
     for i in range(N):
-        theta = jnp.ravel(y_mat[i, :, :].T)
+        theta = jnp.ravel(y_mat_rotated[i, :, :].T)
         thetas = thetas.at[i, :].set(theta)
 
     w_trues = w
-    # thetas = y_mat.T.ravel()
+    # pdb.set_trace()
+    state_pos = jnp.array([0, 1])
+    x_states = x_trues[:, state_pos, :]
+    x_trues_rotated = rotation_vmap(x_states, angles, clockwise)
+    w_trues_rotated = rotation_vmap(w_trues, angles, clockwise)
+    # pdb.set_trace()
 
-    return thetas, x_trues, w_trues
+    return thetas, y_mat, x_trues, w_trues, y_mat_rotated, x_trues_rotated, w_trues_rotated, angles
+
+
+def rotate_vector(position, angle, clockwise):
+    if clockwise:
+        angle = -angle
+    cos, sin = jnp.cos(angle), jnp.sin(angle)
+    rotation_matrix = jnp.array([[cos, -sin], [sin, cos]])
+    new_position = rotation_matrix @ position
+    return new_position
+
+
+rotation_vmap = vmap(rotate_vector, in_axes=(0, 0, None), out_axes=(0))
+rotation_single = vmap(rotate_vector, in_axes=(0, None, None), out_axes=(0))
+
+
+def find_rotation_angle(y_T):
+    """
+    y_mat has shape (2, T)
+    give (y_1, ..., y_T) where each entry is in R^2,
+    returns the angle
+    """
+    # # only need the last entry, y_T
+    # pos_angle = jnp.arctan(y_T[1] / y_T[0])
+
+    # # if y_T[0] is positive, this is correct
+    # # otherwise, angle is
+    # if
+    # angle = np.pi - pos_angle
+    # return angle
+    return jnp.arctan2(y_T[1], y_T[0])
 
 
 def test_kalman():
@@ -593,7 +638,8 @@ def setup_probs(setup_cfg):
     # thetas_np = np.zeros((N, cfg.T * no))
     # for i in range(N):
     #     thetas_np[i, :] = sample_theta(cfg.T, cfg.sigma, cfg.p, cfg.gamma, cfg.dt)
-    thetas_np, x_trues, w_trues = sample_theta(N, cfg.T, cfg.sigma, cfg.p, cfg.gamma, cfg.dt)
+    out = sample_theta(N, cfg.T, cfg.sigma, cfg.p, cfg.gamma, cfg.dt, True)
+    thetas_np, y_mat, x_trues, w_trues, y_mat_rotated, x_trues_rotated, w_trues_rotated, angles = out
     thetas = jnp.array(thetas_np)
 
     batch_q = vmap(single_q, in_axes=(0, None, None, None, None, None), out_axes=(0))
@@ -601,11 +647,6 @@ def setup_probs(setup_cfg):
     q_mat = batch_q(thetas, cfg.mu, cfg.rho, cfg.T, cfg.gamma, cfg.dt)
 
     scs_instances = []
-
-    '''
-    attempt at removing redundant vars
-    '''
-    get_full_x_ = functools.partial(get_full_x, T=cfg.T, Ad=Ad, Bd=Bd, rho=cfg.rho)
 
     for i in range(N):
         log.info(f"solving problem number {i}")
@@ -670,6 +711,10 @@ def setup_probs(setup_cfg):
     df_solve_times = pd.DataFrame(solve_times, columns=['solve_times'])
     df_solve_times.to_csv('solve_times.csv')
 
+    # save angles
+    df_angles = pd.DataFrame(angles, columns=['angles'])
+    df_angles.to_csv('angles.csv')
+
     # print(f"finished saving final data... took {save_time-t0}'", flush=True)
     save_time = time.time()
     log.info(f"finished saving final data... took {save_time-t0}'")
@@ -705,11 +750,26 @@ def setup_probs(setup_cfg):
 
         x_state_mat = jnp.reshape(x_state, (cfg.T, 4)).T
         x_control_mat = jnp.reshape(x_control, (cfg.T - 1, 2)).T
-        y_mat = jnp.reshape(thetas[i, :], (cfg.T, 2)).T
+        # y_mat = jnp.reshape(thetas[i, :], (cfg.T, 2)).T
+
+        # plot original
+        # rotate back the output, x_kalman
+        clockwise = False
+
+        x_kalman_rotated_transpose = rotation_single(x_kalman.T, angles[i], clockwise)
+        x_kalman_rotated = x_kalman_rotated_transpose.T
+        # pdb.set_trace()
         plot_state(ts, (x_trues[i, :, :-1], w_trues[i, :, :-1]),
                    (x_state_mat, x_control_mat), filename=f"states_plots/positions_{i}.pdf")
-        plot_positions([x_trues[i, :, :-1], x_kalman, y_mat],
+        plot_positions([x_trues[i, :, :-1], x_kalman_rotated, y_mat[i, :, :]],
                        ['True', 'KF recovery', 'Noisy'], filename=f"positions_plots/positions_{i}.pdf")
+
+        # plot rotated
+        plot_state(ts, (x_trues_rotated[i, :, :-1], w_trues_rotated[i, :, :-1]),
+                   (x_state_mat, x_control_mat), filename=f"states_plots/positions_{i}_rotated.pdf")
+        plot_positions([x_trues_rotated[i, :, :-1], x_kalman, y_mat_rotated[i, :, :]],
+                       ['True', 'KF recovery', 'Noisy'], filename=f"positions_plots/positions_{i}_rotated.pdf")
+    pdb.set_trace()
 
 
 def get_full_x(x0, x_w, y, T, Ad, Bd, rho):
