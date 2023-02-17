@@ -251,10 +251,14 @@ def scs_jax(data, iters=5000):
         z = z_next
         all_x_primals = all_x_primals.at[i, :].set(x[:n])
 
-    plt.plot(primal_residuals[5:], label='primal residuals')
-    plt.plot(dual_residuals[5:], label='dual residuals')
-    plt.plot(duality_gaps[5:], label='duality gaps')
-    plt.plot(iter_losses[5:], label='fixed point residuals')
+    # plt.plot(primal_residuals[5:], label='primal residuals')
+    # plt.plot(dual_residuals[5:], label='dual residuals')
+    # plt.plot(duality_gaps[5:], label='duality gaps')
+    # plt.plot(iter_losses[5:], label='fixed point residuals')
+    plt.plot(primal_residuals, label='primal residuals')
+    plt.plot(dual_residuals, label='dual residuals')
+    plt.plot(duality_gaps, label='duality gaps')
+    plt.plot(iter_losses, label='fixed point residuals')
     plt.yscale('log')
     plt.legend()
     plt.show()

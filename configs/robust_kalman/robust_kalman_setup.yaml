@@ -7,5 +7,6 @@ solve_acc_rel: 0
 dt: .5
 sigma: 20
 p: 1e-8
-N_train: 100
-N_test: 20
+divide_state: 10
+N_train: 1000
+N_test: 200

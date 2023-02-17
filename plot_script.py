@@ -481,4 +481,3 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'all/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         plot_l4dc()
-

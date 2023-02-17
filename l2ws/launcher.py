@@ -1,5 +1,4 @@
 from jax.config import config
-from ast import Return
 import csv
 import os
 import matplotlib.pyplot as plt
@@ -13,58 +12,16 @@ import hydra
 import pdb
 import time
 import jax
-from jax import random, lax
-from l2ws.scs_problem import SCSinstance, scs_jax
+from jax import random
 from scipy.spatial import distance_matrix
-from utils.generic_utils import vec_symm, unvec_symm
 from functools import partial
+from l2ws.projections import create_projection_fn
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
     "font.size": 16,
 })
 config.update("jax_enable_x64", True)
-
-
-def soc_proj_single(input):
-    y, s = input[1:], input[0]
-    pi_y, pi_s = soc_projection(y, s)
-    return jnp.append(pi_s, pi_y)
-
-
-def sdp_proj_single(x, dim):
-    X = unvec_symm(x, dim)
-    evals, evecs = jnp.linalg.eigh(X)
-    evals_plus = jnp.clip(evals, 0, jnp.inf)
-    num_proj = evals_plus - evals > 0
-    print('evals diff', num_proj.sum())
-    X_proj = evecs @ jnp.diag(evals_plus) @ evecs.T
-    x_proj = vec_symm(X_proj)
-    return x_proj
-
-
-def soc_projection(y, s):
-    y_norm = jnp.linalg.norm(y)
-
-    def case1_soc_proj(y, s):
-        # case 1: y_norm >= |s|
-        val = (s + y_norm) / (2 * y_norm)
-        t = val * y_norm
-        x = val * y
-        return x, t
-
-    def case2_soc_proj(y, s):
-        # case 2: y_norm <= |s|
-        # case 2a: s > 0
-        # case 2b: s < 0
-        def case2a(y, s):
-            return y, s
-
-        def case2b(y, s):
-            # return (0.0*jnp.zeros(2), 0.0)
-            return (0.0*jnp.zeros(y.size), 0.0)
-        return lax.cond(s >= 0, case2a, case2b, y, s)
-    return lax.cond(y_norm >= jnp.abs(s), case1_soc_proj, case2_soc_proj, y, s)
 
 
 class Workspace:
@@ -86,15 +43,15 @@ class Workspace:
         self.prediction_variable = cfg.prediction_variable
         self.angle_anchors = cfg.angle_anchors
         self.supervised = cfg.supervised
-        self.tx = cfg.get('tx')  # cfg.tx
-        self.ty = cfg.get('ty')  # cfg.ty
-        self.dx = cfg.get('dx')  # cfg.dx
-        self.dy = cfg.get('dy')  # cfg.dy
-        self.learn_XY = cfg.get('learn_XY')  # cfg.learn_XY
-        self.num_clusters = cfg.get('num_clusters')  # cfg.num_clusters
+        self.tx = cfg.get('tx')
+        self.ty = cfg.get('ty')
+        self.dx = cfg.get('dx')
+        self.dy = cfg.get('dy')
+        self.learn_XY = cfg.get('learn_XY')
+        self.num_clusters = cfg.get('num_clusters')
         self.loss_method = cfg.loss_method
         self.plot_iterates = cfg.plot_iterates
-        self.share_all = cfg.get('share_all')  # cfg.share_all
+        self.share_all = cfg.get('share_all')
         self.pretrain_alpha = cfg.get('pretrain_alpha')
         self.test_every_x_epochs = cfg.get('test_every_x_epochs')
         self.normalize_inputs = cfg.get('normalize_inputs')
@@ -146,7 +103,6 @@ class Workspace:
 
             # call get_q_mat
             q_mat = get_M_q(thetas)
-            dynamic_algo_factors, M_tensor = None, None
             M_tensor_train, M_tensor_test = None, None
             matrix_invs_train, matrix_invs_test = None, None
 
@@ -159,17 +115,8 @@ class Workspace:
             # load the matrix invs
             matrix_invs = jnp_load_obj['matrix_invs']
 
-            # calculate matrix invs
-            # def inv(M_in):
-            #     return jnp.linalg.inv(M_in + jnp.eye(m+n))
-            # batch_inv  = vmap(inv, in_axes=(0), out_axes=(0))
-            # t0 = time.time()
-            # matrix_invs = batch_inv(M_tensor)
-            # t1 = time.time()
-            # print('inv time', t1 - t0)
             static_M, static_algo_factor = None, None
-            cones_array = static_dict['cones_array']
-            # cones = dict(z=cones_array[0], l=cones_array[1])
+
             cones = static_dict['cones_dict']
             M_tensor_train = M_tensor[:N_train, :, :]
             M_tensor_test = M_tensor[N_train:N, :, :]
@@ -183,61 +130,58 @@ class Workspace:
 
         self.M = static_M
 
-        zero_cone, nonneg_cone = cones['z'], cones['l']
-
-        soc = 'q' in cones.keys() and len(cones['q']) > 0
-        sdp_ = 's' in cones.keys() and len(cones['s']) > 0
-
         self.train_unrolls = cfg.train_unrolls
         eval_unrolls = cfg.train_unrolls
 
-        zero_cone_int = int(zero_cone)
-        nonneg_cone_int = int(nonneg_cone)
-        if soc:
-            num_soc = len(cones['q'])
-            soc_total = sum(cones['q'])
-            soc_cones_array = np.array(cones['q'])
-            soc_size = soc_cones_array[0]
-            soc_proj_single_batch = vmap(soc_proj_single, in_axes=(0), out_axes=(0))
-        else:
-            soc_total = 0
-        if sdp_:
-            num_sdp = len(cones['s'])
-            sdp_total = sum(cones['s'])
-            sdp_cones_array = np.array(cones['s'])
-            sdp_size = int(sdp_cones_array[0] * (sdp_cones_array[0]+1) / 2)
-            sdp_proj_single_dim = partial(sdp_proj_single, dim=sdp_cones_array[0])
-            sdp_proj_single_batch = vmap(sdp_proj_single_dim, in_axes=(0), out_axes=(0))
-            self.psd_size = sdp_size
-        else:
-            self.psd_size = 0
+        # zero_cone, nonneg_cone = cones['z'], cones['l']
 
-        @jit
-        def proj(input):
-            nonneg = jnp.clip(input[n+zero_cone_int:n+zero_cone_int+nonneg_cone_int], a_min=0)
-            projection = jnp.concatenate([input[:n+zero_cone_int], nonneg])
-            if soc:
-                socp = jnp.zeros(soc_total)
-                soc_input = input[n+zero_cone_int+nonneg_cone_int:n +
-                                  zero_cone_int+nonneg_cone_int+soc_total]
-                soc_input_reshaped = jnp.reshape(soc_input, (num_soc, soc_size))
-                soc_out_reshaped = soc_proj_single_batch(soc_input_reshaped)
-                socp = jnp.ravel(soc_out_reshaped)
-                projection = jnp.concatenate([projection, socp])
-            if sdp_:
-                sdp = jnp.zeros(sdp_total)
-                sdp_input = input[n + zero_cone_int+nonneg_cone_int+soc_total:]
-                sdp_input_reshaped = jnp.reshape(sdp_input, (num_sdp, sdp_size))
-                sdp_out_reshaped = sdp_proj_single_batch(sdp_input_reshaped)
-                sdp = jnp.ravel(sdp_out_reshaped)
-                projection = jnp.concatenate([projection, sdp])
-            return projection
+        # soc = 'q' in cones.keys() and len(cones['q']) > 0
+        # sdp_ = 's' in cones.keys() and len(cones['s']) > 0
 
-        self.proj = proj
+        # zero_cone_int = int(zero_cone)
+        # nonneg_cone_int = int(nonneg_cone)
+        # if soc:
+        #     num_soc = len(cones['q'])
+        #     soc_total = sum(cones['q'])
+        #     soc_cones_array = np.array(cones['q'])
+        #     soc_size = soc_cones_array[0]
+        #     soc_proj_single_batch = vmap(soc_proj_single, in_axes=(0), out_axes=(0))
+        # else:
+        #     soc_total = 0
+        # if sdp_:
+        #     num_sdp = len(cones['s'])
+        #     sdp_total = sum(cones['s'])
+        #     sdp_cones_array = np.array(cones['s'])
+        #     sdp_size = int(sdp_cones_array[0] * (sdp_cones_array[0]+1) / 2)
+        #     sdp_proj_single_dim = partial(sdp_proj_single, dim=sdp_cones_array[0])
+        #     sdp_proj_single_batch = vmap(sdp_proj_single_dim, in_axes=(0), out_axes=(0))
+        #     self.psd_size = sdp_size
+        # else:
+        #     self.psd_size = 0
 
         # @jit
-        # def lin_sys_solve(rhs):
-        #     return jsp.linalg.lu_solve(algo_factor, rhs)
+        # def proj(input):
+        #     nonneg = jnp.clip(input[n+zero_cone_int:n+zero_cone_int+nonneg_cone_int], a_min=0)
+        #     projection = jnp.concatenate([input[:n+zero_cone_int], nonneg])
+        #     if soc:
+        #         socp = jnp.zeros(soc_total)
+        #         soc_input = input[n+zero_cone_int+nonneg_cone_int:n +
+        #                           zero_cone_int+nonneg_cone_int+soc_total]
+        #         soc_input_reshaped = jnp.reshape(soc_input, (num_soc, soc_size))
+        #         soc_out_reshaped = soc_proj_single_batch(soc_input_reshaped)
+        #         socp = jnp.ravel(soc_out_reshaped)
+        #         projection = jnp.concatenate([projection, socp])
+        #     if sdp_:
+        #         sdp = jnp.zeros(sdp_total)
+        #         sdp_input = input[n + zero_cone_int+nonneg_cone_int+soc_total:]
+        #         sdp_input_reshaped = jnp.reshape(sdp_input, (num_sdp, sdp_size))
+        #         sdp_out_reshaped = sdp_proj_single_batch(sdp_input_reshaped)
+        #         sdp = jnp.ravel(sdp_out_reshaped)
+        #         projection = jnp.concatenate([projection, sdp])
+        #     return projection
+
+        out = create_projection_fn(cones, n)
+        self.proj, self.psd_size, sdp = out[0], out[1], out[2]
 
         def lin_sys_solve(factor_, rhs):
             if static_flag:
@@ -246,7 +190,7 @@ class Workspace:
                 return factor_ @ rhs
         self.lin_sys_solve = lin_sys_solve
 
-        # normalize the inputs
+        # normalize the inputs if the option is on
         if self.normalize_inputs:
             col_sums = thetas.mean(axis=0)
             inputs_normalized = (thetas - col_sums) / thetas.std(axis=0)
@@ -255,8 +199,6 @@ class Workspace:
             inputs = thetas
         train_inputs = inputs[:N_train, :]
         test_inputs = inputs[N_train:N, :]
-        # train_inputs = thetas[:N_train, :]
-        # test_inputs = thetas[N_train:N, :]
 
         num_plot = np.min([N_train, 4])
         for i in range(num_plot):
@@ -288,25 +230,8 @@ class Workspace:
         plt.savefig('sample_z_stars.pdf')
         plt.clf()
 
-        # check
-        # P_jax = static_M[:n,:n]
-        # A_jax = -static_M[n:,:n]
-        # c_jax, b_jax = q_mat_train[0,:n], q_mat_train[0,n:]
-        # data = dict(P=P_jax, A=A_jax, b=b_jax, c=c_jax, cones=cones)
-        # data['x'] = x_stars[0, :]
-        # data['y'] = y_stars[0, :]
-        # x_jax, y_jax, s_jax = scs_jax(data, iters=1000)
-        # pdb.set_trace()
-        # end check
-
-        # cones = static_dict['cones_dict']
-        # psd_cones = cones.get('s')
-        # if psd_cones is None:
-        # else:
-        #     self.psd_size = cones['s'][0]  # TOFIX in general
-
         input_dict = {'nn_cfg': self.nn_cfg,
-                      'proj': proj,
+                      'proj': self.proj,
                       'train_inputs': train_inputs,
                       'test_inputs': test_inputs,
                       'lin_sys_solve': lin_sys_solve,
@@ -330,10 +255,9 @@ class Workspace:
                       'static_algo_factor': static_algo_factor,
                       'matrix_invs_train': matrix_invs_train,
                       'matrix_invs_test': matrix_invs_test,
-                      #   'dynamic_algo_factors': matrix_invs,
                       'angle_anchors': self.angle_anchors,
                       'supervised': self.supervised,
-                      'psd': sdp_,
+                      'psd': sdp,
                       'tx': self.tx,
                       'ty': self.ty,
                       'dx': self.dx,
@@ -356,7 +280,6 @@ class Workspace:
     def _init_logging(self):
         self.logf = open('log.csv', 'a')
         fieldnames = ['iter', 'train_loss', 'val_loss', 'test_loss', 'time_train_per_epoch']
-        # fieldnames = ['train_loss', 'test_loss']
         self.writer = csv.DictWriter(self.logf, fieldnames=fieldnames)
         if os.stat('log.csv').st_size == 0:
             self.writer.writeheader()
@@ -378,7 +301,8 @@ class Workspace:
 
                 # compute distances to train inputs
                 distances = distance_matrix(
-                    np.array(self.l2ws_model.train_inputs[:num, :]), np.array(self.l2ws_model.train_inputs))
+                    np.array(self.l2ws_model.train_inputs[:num, :]),
+                    np.array(self.l2ws_model.train_inputs))
                 print('distances', distances)
                 indices = np.argmin(distances, axis=1)
                 print('indices', indices)
@@ -427,7 +351,8 @@ class Workspace:
 
                 # compute distances to train inputs
                 distances = distance_matrix(
-                    np.array(self.l2ws_model.test_inputs[:num, :]), np.array(self.l2ws_model.train_inputs))
+                    np.array(self.l2ws_model.test_inputs[:num, :]),
+                    np.array(self.l2ws_model.train_inputs))
                 print('distances', distances)
                 indices = np.argmin(distances, axis=1)
                 print('indices', indices)
@@ -523,7 +448,6 @@ class Workspace:
         # plot of the fixed point residuals
         plt.plot(iters_df['no_train'], 'k-', label='no learning')
         if col != 'no_train':
-            # plt.plot(iters_df['fixed_ws'], 'm-', label='naive warm start')
             plt.plot(iters_df['fixed_ws'], 'm-', label='nearest neighbor')
         if plot_pretrain:
             plt.plot(iters_df['pretrain'], 'r-', label='pretraining')
@@ -548,10 +472,6 @@ class Workspace:
                  'ko', label='no learning dual')
 
         if plot_pretrain:
-            # plt.plot(
-            #     self.primal_residuals_df['pretrain'], 'r+', label='pretraining primal')
-            # plt.plot(self.dual_residuals_df['pretrain'],
-            #          'ro', label='pretraining dual')
             plt.plot(
                 primal_residuals_df['pretrain'], 'r+', label='pretraining primal')
             plt.plot(dual_residuals_df['pretrain'],
@@ -654,9 +574,6 @@ class Workspace:
         - new csv file for each
         - put
         '''
-
-        # if not os.path.exists(f"polar/angle_data/{col}"):
-        #     os.mkdir(f"polar/angle_data/{col}")
         subsequent_angles = angles[:, -1, 1:]
         angles_df = pd.DataFrame(subsequent_angles)
         angles_df.to_csv(f"{polar_path}/{col}/angle_data.csv")
@@ -673,7 +590,6 @@ class Workspace:
         '''
         plot the warm-start predictions
         '''
-        # u_ws = out_train[0][0]
         u_all = out_train[0][3]
         z_all = out_train[0][0]
 
@@ -815,10 +731,11 @@ class Workspace:
             print("Pretraining...")
             self.df_pretrain = pd.DataFrame(
                 columns=['pretrain_loss', 'pretrain_test_loss'])
-            train_pretrain_losses, test_pretrain_losses = self.l2ws_model.pretrain(self.pretrain_cfg.pretrain_iters,
-                                                                                   stepsize=self.pretrain_cfg.pretrain_stepsize,
-                                                                                   df_pretrain=self.df_pretrain,
-                                                                                   batches=self.pretrain_cfg.pretrain_batches)
+            pretrain_out = self.l2ws_model.pretrain(self.pretrain_cfg.pretrain_iters,
+                                                    stepsize=self.pretrain_cfg.pretrain_stepsize,
+                                                    df_pretrain=self.df_pretrain,
+                                                    batches=self.pretrain_cfg.pretrain_batches)
+            train_pretrain_losses, test_pretrain_losses = pretrain_out
             self.evaluate_iters(
                 self.num_samples, 'pretrain', train=True, plot_pretrain=pretrain_on)
             self.evaluate_iters(
@@ -833,7 +750,7 @@ class Workspace:
             plt.clf()
 
         self.logf = open('train_results.csv', 'a')
-        # fieldnames = ['iter', 'train_loss', 'moving_avg_train', 'test_loss', 'time_per_iter']
+
         fieldnames = ['train_loss', 'moving_avg_train', 'time_train_per_epoch']
         self.writer = csv.DictWriter(self.logf, fieldnames=fieldnames)
         if os.stat('train_results.csv').st_size == 0:
@@ -874,7 +791,6 @@ class Workspace:
                     plot_pretrain=pretrain_on)
             if epoch > self.l2ws_model.dont_decay_until:
                 self.l2ws_model.decay_upon_plateau()
-            # key = random.PRNGKey(epoch_batch)
 
             # setup the permutations
             permutations = []
@@ -885,7 +801,7 @@ class Workspace:
                 permutations.append(epoch_permutation)
             stacked_permutation = jnp.stack(permutations)
             permutation = jnp.ravel(stacked_permutation)
-            
+
             print('permutation', permutation.shape, permutation)
 
             @jit
@@ -920,7 +836,6 @@ class Workspace:
 
             # loop the last (self.l2ws_model.num_batches - 1) iterates
             init_val = epoch_train_losses, params, state
-            # val = jax.lax.fori_loop(start_index, self.l2ws_model.num_batches, body_fn, init_val)
             val = jax.lax.fori_loop(start_index, loop_size, body_fn, init_val)
 
             epoch_batch_end_time = time.time()
@@ -939,7 +854,6 @@ class Workspace:
                 list(epoch_train_losses)
 
             for batch in range(loop_size):
-                # last10 = np.array(self.l2ws_model.tr_losses_batch[-10:])
                 start_window = prev_batches - 10 + batch
                 end_window = prev_batches + batch
                 last10 = np.array(self.l2ws_model.tr_losses_batch[start_window:end_window])
@@ -952,13 +866,11 @@ class Workspace:
                 self.logf.flush()
                 print('train_loss', epoch_train_losses[batch])
 
-            # self.l2ws_model.epoch += 1
-
             test_loss, time_per_iter = self.l2ws_model.short_test_eval()
             if self.test_writer is not None:
                 self.test_writer.writerow({
                     'iter': self.l2ws_model.state.iter_num,
-                    'train_loss': moving_avg, #epoch_train_losses[-1],
+                    'train_loss': moving_avg,
                     'test_loss': test_loss,
                     'time_per_iter': time_per_iter
                 })
@@ -971,7 +883,7 @@ class Workspace:
                 num_data_points = batch_losses.size
                 epoch_axis = np.arange(num_data_points) / \
                     self.l2ws_model.num_batches
-                # epoch_test_axis = 1 + np.arange(te_losses.size)
+
                 epoch_test_axis = self.epochs_jit * np.arange(te_losses.size)
                 plt.plot(epoch_axis, batch_losses, label='train')
                 plt.plot(epoch_test_axis, te_losses, label='test')

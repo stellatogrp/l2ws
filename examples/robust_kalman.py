@@ -55,7 +55,7 @@ def simulate(T, gamma, dt, sigma, p):
     return y, x_true, w_true, v
 
 
-def sample_theta(N, T, sigma, p, gamma, dt, rotate):
+def sample_theta(N, T, sigma, p, gamma, dt, rotate, divide_state):
     # A, B, C = robust_kalman_setup(gamma, dt)
 
     # generate random input and noise vectors
@@ -638,9 +638,10 @@ def setup_probs(setup_cfg):
     # thetas_np = np.zeros((N, cfg.T * no))
     # for i in range(N):
     #     thetas_np[i, :] = sample_theta(cfg.T, cfg.sigma, cfg.p, cfg.gamma, cfg.dt)
-    out = sample_theta(N, cfg.T, cfg.sigma, cfg.p, cfg.gamma, cfg.dt, True)
+    rotate = True
+    out = sample_theta(N, cfg.T, cfg.sigma, cfg.p, cfg.gamma, cfg.dt, rotate, cfg.divide_state)
     thetas_np, y_mat, x_trues, w_trues, y_mat_rotated, x_trues_rotated, w_trues_rotated, angles = out
-    thetas = jnp.array(thetas_np)
+    thetas = jnp.array(thetas_np) / 10
 
     batch_q = vmap(single_q, in_axes=(0, None, None, None, None, None), out_axes=(0))
 
@@ -683,18 +684,18 @@ def setup_probs(setup_cfg):
         # disturbance_x = disturbance_x / np.linalg.norm(disturbance_x) * 1e-2
         # disturbance_y = np.random.normal(size=(m))
         # disturbance_y = disturbance_y / np.linalg.norm(disturbance_y) * 1e-2
-        # data['x'] = x_stars[i, :] + disturbance_x
-        # data['y'] = y_stars[i, :] + disturbance_y
+        # # data['x'] = x_stars[i, :] + disturbance_x
+        # # data['y'] = y_stars[i, :] + disturbance_y
         # x_jax, y_jax, s_jax = scs_jax(data, iters=1000)
 
         ############
         # qq = single_q(x_init_mat[0, :], m, n, cfg.T, cfg.nx, cfg.nu, cfg.state_box, cfg.control_box, Ad)
-        xx = scs_instance.x_star
-        yy = scs_instance.y_star
+        # xx = scs_instance.x_star
+        # yy = scs_instance.y_star
 
-        x0 = xx[:4]
-        x_w = xx[4*cfg.T:6*cfg.T]
-        y = thetas[i, :]
+        # x0 = xx[:4]
+        # x_w = xx[4*cfg.T:6*cfg.T]
+        # y = thetas[i, :]
 
     # resave the data??
     # print('saving final data...', flush=True)
