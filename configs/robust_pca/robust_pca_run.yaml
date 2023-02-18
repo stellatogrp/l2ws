@@ -8,6 +8,13 @@ nn_cfg:
   min_lr: 1e-7
   decay_every: 1000
 
+plateau_decay:
+  min_lr: 1e-7
+  decay_factor: 5
+  avg_window_size: 10 # in epochs
+  tolerance: 1e-4
+  patience: 2
+
 pretrain:
   pretrain_method: adam
   pretrain_stepsize: 1e-4
@@ -33,8 +40,12 @@ dy: 0
 tx: 50
 ty: 50
 learn_XY: False
-num_clusters: 50
 loss_method: constant_sum
 #increasing_sum or constant_sum or fixed_k 
 plot_iterates: [0, 10, 20]
 share_all: False
+num_clusters: 100
+pretrain_alpha: False
+normalize_inputs: True
+normalize_alpha: 'other'
+epochs_jit: 10

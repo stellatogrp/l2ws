@@ -375,16 +375,8 @@ def static_canon(p, q):
         P_sparse=P_sparse,
         b=b,
         c=c
-        # A_dynamics=Ad,
     )
-    # data_scs = {
-    #     'P': csc_matrix(np.zeros((n, n))),
-    #     'A': data['A'],
-    #     'b': data['b'],
-    #     'c': data['c'],
-    # }
-    # soln = scs.solve(data_scs, cones, verbose=True)
-    pdb.set_trace()
+
     return out_dict
 
 

@@ -1,4 +1,16 @@
 import jax.numpy as jnp
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+def sample_plot(input, title, num_plot):
+    num_plot = np.min([num_plot, 4])
+    for i in range(num_plot):
+        plt.plot(input[i, :])
+    plt.ylabel(f"{title} values")
+    plt.xlabel(f"{title} indices")
+    plt.savefig(f"sample_{title}.pdf")
+    plt.clf()
 
 
 def vec_symm(X, triu_indices=None, factor=jnp.sqrt(2)):

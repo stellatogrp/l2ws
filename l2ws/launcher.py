@@ -15,7 +15,8 @@ import jax
 from jax import random
 from scipy.spatial import distance_matrix
 from functools import partial
-from l2ws.projections import create_projection_fn
+from l2ws.algo_steps import create_projection_fn, lin_sys_solve
+from utils.generic_utils import sample_plot
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
@@ -40,13 +41,11 @@ class Workspace:
         self.save_every_x_epochs = cfg.save_every_x_epochs
         self.num_samples = cfg.num_samples
         self.pretrain_cfg = cfg.pretrain
-        self.prediction_variable = cfg.prediction_variable
+        # self.prediction_variable = cfg.prediction_variable
         self.angle_anchors = cfg.angle_anchors
         self.supervised = cfg.supervised
-        self.tx = cfg.get('tx')
-        self.ty = cfg.get('ty')
-        self.dx = cfg.get('dx')
-        self.dy = cfg.get('dy')
+        self.tx, self.ty = cfg.get('tx'), cfg.get('ty')
+        self.dx, self.dy = cfg.get('dx'), cfg.get('dy')
         self.learn_XY = cfg.get('learn_XY')
         self.num_clusters = cfg.get('num_clusters')
         self.loss_method = cfg.loss_method
@@ -181,13 +180,9 @@ class Workspace:
         #     return projection
 
         out = create_projection_fn(cones, n)
-        self.proj, self.psd_size, sdp = out[0], out[1], out[2]
+        self.proj, self.psd_size = out[0], out[1]
+        sdp_bool = self.psd_size > 0
 
-        def lin_sys_solve(factor_, rhs):
-            if static_flag:
-                return jsp.linalg.lu_solve(factor_, rhs)
-            else:
-                return factor_ @ rhs
         self.lin_sys_solve = lin_sys_solve
 
         # normalize the inputs if the option is on
@@ -200,41 +195,18 @@ class Workspace:
         train_inputs = inputs[:N_train, :]
         test_inputs = inputs[N_train:N, :]
 
-        num_plot = np.min([N_train, 4])
-        for i in range(num_plot):
-            plt.plot(thetas[i, :])
-        plt.ylabel('theta values')
-        plt.xlabel('theta indices')
-        plt.savefig('sample_thetas.pdf')
-        plt.clf()
-
-        for i in range(num_plot):
-            plt.plot(train_inputs[i, :])
-        plt.ylabel('input values')
-        plt.xlabel('input indices')
-        plt.savefig('sample_inputs.pdf')
-        plt.clf()
-
-        for i in range(num_plot):
-            plt.plot(x_stars_train[i, :])
-        plt.savefig('sample_x_stars.pdf')
-        plt.clf()
-
-        for i in range(num_plot):
-            plt.plot(y_stars_train[i, :])
-        plt.savefig('sample_y_stars.pdf')
-        plt.clf()
-
-        for i in range(num_plot):
-            plt.plot(w_stars_train[i, :])
-        plt.savefig('sample_z_stars.pdf')
-        plt.clf()
+        num_plot = 5
+        sample_plot(thetas, 'theta', num_plot)
+        sample_plot(train_inputs, 'input', num_plot)
+        sample_plot(x_stars, 'x_stars', num_plot)
+        sample_plot(y_stars, 'y_stars', num_plot)
+        sample_plot(w_stars, 'w_stars', num_plot)
 
         input_dict = {'nn_cfg': self.nn_cfg,
                       'proj': self.proj,
                       'train_inputs': train_inputs,
                       'test_inputs': test_inputs,
-                      'lin_sys_solve': lin_sys_solve,
+                    #   'lin_sys_solve': lin_sys_solve,
                       'train_unrolls': self.train_unrolls,
                       'eval_unrolls': eval_unrolls,
                       'w_stars_train': w_stars_train,
@@ -250,14 +222,14 @@ class Workspace:
                       'y_stars_test': self.y_stars_test,
                       'x_stars_train': x_stars_train,
                       'x_stars_test': self.x_stars_test,
-                      'prediction_variable': self.prediction_variable,
+                    #   'prediction_variable': self.prediction_variable,
                       'static_flag': static_flag,
                       'static_algo_factor': static_algo_factor,
                       'matrix_invs_train': matrix_invs_train,
                       'matrix_invs_test': matrix_invs_test,
                       'angle_anchors': self.angle_anchors,
                       'supervised': self.supervised,
-                      'psd': sdp,
+                      'psd': sdp_bool,
                       'tx': self.tx,
                       'ty': self.ty,
                       'dx': self.dx,

@@ -1,5 +1,4 @@
 import copy
-import functools
 from jax import jit, vmap
 import jax.numpy as jnp
 import jax
@@ -18,12 +17,14 @@ import pandas as pd
 from jax.config import config
 from scipy.spatial import distance_matrix
 import logging
+from l2ws.algo_steps import lin_sys_solve
+from functools import partial
 config.update("jax_enable_x64", True)
 
 
 class L2WSmodel(object):
     def __init__(self, dict):
-        proj, lin_sys_solve = dict['proj'], dict['lin_sys_solve']
+        proj = dict['proj']
         self.static_flag = dict['static_flag']
         self.batch_size = dict['nn_cfg'].batch_size
         self.epochs = dict['nn_cfg'].epochs
@@ -86,24 +87,24 @@ class L2WSmodel(object):
 
         self.nn_cfg = dict['nn_cfg']
         input_size = self.train_inputs.shape[1]
-        self.prediction_variable = dict['prediction_variable']
+        # self.prediction_variable = dict['prediction_variable']
         self.batched_predict_y = vmap(predict_y, in_axes=(None, 0))
 
         if self.share_all:
             output_size = self.num_clusters
         else:
-            if self.prediction_variable == 'w':
-                if self.psd:
-                    n_x_non_psd = self.n - int(self.psd_size * (self.psd_size + 1) / 2)
-                    n_y_non_psd = self.m - int(self.psd_size * (self.psd_size + 1) / 2)
-                    n_x_low = n_x_non_psd + self.dx * self.psd_size
-                    n_y_low = n_y_non_psd + self.dy * self.psd_size
+            # if self.prediction_variable == 'w':
+            if self.psd:
+                n_x_non_psd = self.n - int(self.psd_size * (self.psd_size + 1) / 2)
+                n_y_non_psd = self.m - int(self.psd_size * (self.psd_size + 1) / 2)
+                n_x_low = n_x_non_psd + self.dx * self.psd_size
+                n_y_low = n_y_non_psd + self.dy * self.psd_size
 
-                    output_size = n_x_low + n_y_low + self.tx + self.ty
-                else:
-                    output_size = self.n + self.m
-            elif self.prediction_variable == 'x':
-                output_size = self.n
+                output_size = n_x_low + n_y_low + self.tx + self.ty
+            else:
+                output_size = self.n + self.m
+            # elif self.prediction_variable == 'x':
+            #     output_size = self.n
         layer_sizes = [input_size] + \
             self.nn_cfg['intermediate_layer_sizes'] + [output_size]
 
@@ -130,14 +131,12 @@ class L2WSmodel(object):
                     out = self.cluster_init_XY_list()
                     self.X_list, self.Y_list = out[0], out[1]
                     self.train_cluster_indices, self.test_cluster_indices = out[2], out[3]
-                    # self.Y_list = cluster_init_Y_list()
                     self.params = self.nn_params
                     if self.pretrain_alpha:
                         self.pretrain_alphas(1000, n_x_low + n_y_low)
             else:
                 self.X_list, self.Y_list = [], []
                 self.params = self.nn_params
-        # self.state = None
 
         self.epoch = 0
 
@@ -147,7 +146,8 @@ class L2WSmodel(object):
                            'unrolls': self.train_unrolls,
                            'm': self.m,
                            'n': self.n,
-                           'prediction_variable': self.prediction_variable,
+                           #    'prediction_variable': self.prediction_variable,
+                           'bypass_nn': False,
                            'M_static': self.static_M,
                            'factor_static': self.static_algo_factor,
                            'diff_required': True,
@@ -171,7 +171,8 @@ class L2WSmodel(object):
                           'unrolls': self.eval_unrolls,
                           'm': self.m,
                           'n': self.n,
-                          'prediction_variable': self.prediction_variable,
+                          #   'prediction_variable': self.prediction_variable,
+                          'bypass_nn': False,
                           'M_static': self.static_M,
                           'factor_static': self.static_algo_factor,
                           'diff_required': False,
@@ -195,7 +196,8 @@ class L2WSmodel(object):
                          'unrolls': self.eval_unrolls,
                          'm': self.m,
                          'n': self.n,
-                         'prediction_variable': 'x',
+                         #  'prediction_variable': 'x',
+                         'bypass_nn': True,
                          'M_static': self.static_M,
                          'factor_static': self.static_algo_factor,
                          'diff_required': False,
@@ -231,13 +233,6 @@ class L2WSmodel(object):
         self.input_dict = dict
         self.tr_losses = None
         self.te_losses = None
-        self.saveable_model = copy.copy(dict)
-
-        self.saveable_model['tr_losses'] = self.tr_losses
-        self.saveable_model['te_losses'] = self.te_losses
-
-        self.saveable_model['pi'] = None
-        self.saveable_model['proxf'] = None
 
         self.train_data = []
 
@@ -403,14 +398,16 @@ class L2WSmodel(object):
         pretrain_losses = np.zeros(batches + 1)
         pretrain_test_losses = np.zeros(batches + 1)
 
-        if self.prediction_variable == 'w':
-            # train_targets = self.u_stars_train
-            # test_targets = self.u_stars_test
-            train_targets = self.w_stars_train
-            test_targets = self.w_stars_test
-        elif self.prediction_variable == 'x':
-            train_targets = self.x_stars_train
-            test_targets = self.x_stars_test
+        # if self.prediction_variable == 'w':
+        #     # train_targets = self.u_stars_train
+        #     # test_targets = self.u_stars_test
+        #     train_targets = self.w_stars_train
+        #     test_targets = self.w_stars_test
+        # elif self.prediction_variable == 'x':
+        #     train_targets = self.x_stars_train
+        #     test_targets = self.x_stars_test
+        train_targets = self.w_stars_train
+        test_targets = self.w_stars_test
 
         curr_pretrain_loss = pretrain_loss(
             params, self.train_inputs, train_targets)
@@ -482,7 +479,8 @@ class L2WSmodel(object):
                 self.epoch_decay_points.append(self.epoch)
 
                 # don't decay for another 2 * window number of epochs
-                self.dont_decay_until = self.epoch + 2 * patience * self.plateau_decay.avg_window_size
+                wait_time = 2 * patience * self.plateau_decay.avg_window_size
+                self.dont_decay_until = self.epoch + wait_time
 
     def train_batch(self, batch_indices, params, state):
         batch_inputs = self.train_inputs[batch_indices, :]
@@ -522,8 +520,7 @@ class L2WSmodel(object):
             curr_loss_fn = self.loss_fn_eval
         num_probs, _ = inputs.shape
         test_time0 = time.time()
-        # loss, out = curr_loss_fn(
-        #     self.params, inputs, q, k)
+
         loss, out = curr_loss_fn(
             self.params, inputs, q, k, z_stars)
         time_per_prob = (time.time() - test_time0)/num_probs
@@ -546,39 +543,13 @@ class L2WSmodel(object):
 
         return loss, out, time_per_prob
 
-    def save(self):
-        '''
-        save the model itself
-        this will also save the losses
-        '''
-
-        path = self.work_dir
-
-        self.saveable_model['params'] = self.params
-        self.saveable_model['state'] = self.state
-
-        pkl_filename = path + '.pkl'
-        with open(pkl_filename, 'wb') as f:
-            pkl.dump(self.saveable_model, f)
-
-        if self.train_data is not None:
-            columns_train = ['train_loss', 'train_obj',
-                             'rel_train_subopt', 'train_infeas']
-            columns_test = ['test_loss', 'test_obj',
-                            'rel_test_subopt', 'test_infeas']
-
-            df = pd.DataFrame(self.train_data, columns=columns_train)
-            df.to_csv(self.work_dir + 'results_train_data.csv')
-            df = pd.DataFrame(self.test_data, columns=columns_test)
-            df.to_csv(self.work_dir + 'results_test_data.csv')
-
 
 def create_loss_fn(input_dict):
     static_flag = input_dict['static_flag']
-    lin_sys_solve, proj = input_dict['lin_sys_solve'], input_dict['proj']
-    # unrolls = input_dict['unrolls']
+    proj = input_dict['proj']
+
     m, n = input_dict['m'], input_dict['n']
-    prediction_variable = input_dict['prediction_variable']
+    bypass_nn = input_dict['bypass_nn']
     diff_required = input_dict['diff_required']
     angle_anchors = input_dict['angle_anchors']
     supervised = input_dict['supervised']
@@ -607,7 +578,11 @@ def create_loss_fn(input_dict):
         P, A = M[:n, :n], -M[n:, :n]
         b, c = q[n:], q[:n]
         alpha = None
-        if prediction_variable == 'w':
+        # if prediction_variable == 'w':
+        if bypass_nn:
+            z = input
+            u_ws = input
+        else:
             if share_all:
                 alpha = predict_y(params, input)
                 if normalize_alpha == 'conic':
@@ -622,7 +597,6 @@ def create_loss_fn(input_dict):
                 z = Z_shared @ alpha
                 u_ws = z
             else:
-                # if tx + ty == -1:
                 if tx is None or ty is None:
                     nn_output = predict_y(params, input)
                     u_ws = nn_output
@@ -639,14 +613,14 @@ def create_loss_fn(input_dict):
 
                 # z = M @ u_ws + u_ws + q
                 z = u_ws
-        elif prediction_variable == 'x':
-            z = input
-            u_ws = input
+        # elif prediction_variable == 'x':
+        #     z = input
+        #     u_ws = input
         z0 = z
         iter_losses = jnp.zeros(iters)
         primal_residuals = jnp.zeros(iters)
         dual_residuals = jnp.zeros(iters)
-        # angles = jnp.zeros((len(angle_anchors), iters-1))
+
         angles = jnp.zeros((len(angle_anchors) + 1, iters-1))
         all_u = jnp.zeros((iters, z.size))
         all_z = jnp.zeros((iters, z.size))
@@ -721,14 +695,7 @@ def create_loss_fn(input_dict):
         all_z_ = all_z_.at[1:, :].set(all_z[:-1, :])
 
         if supervised:
-            # loss = jnp.linalg.norm(z_next - z_star)
             if loss_method == 'constant_sum':
-                # loss = 0
-                # opt_diffs = jnp.zeros(iters)
-                # for i in range(iters):
-                #     # loss += jnp.linalg.norm(all_z_[i, :] - z_star)
-                #     opt_diffs = opt_diffs.at[i].set(jnp.linalg.norm(all_z_[i, :] - z_star))
-                # loss = opt_diffs.sum()
                 loss = iter_losses.sum()
             elif loss_method == 'fixed_k':
                 loss = jnp.linalg.norm(z_next - z_star)
@@ -756,14 +723,14 @@ def create_loss_fn(input_dict):
         out_axes = (0, 0, 0, 0, 0, (0, 0, 0, 0))
 
     if static_flag:
-        predict_final = functools.partial(predict,
-                                          factor=factor_static,
-                                          M=M_static
-                                          )
+        predict_final = partial(predict,
+                                factor=factor_static,
+                                M=M_static
+                                )
         batch_predict = vmap(predict_final, in_axes=(
             None, 0, 0, None, 0), out_axes=out_axes)
 
-        @functools.partial(jax.jit, static_argnums=(3,))
+        @partial(jit, static_argnums=(3,))
         def loss_fn(params, inputs, q, iters, z_stars):
             if diff_required:
                 losses, iter_losses, angles, out = batch_predict(
@@ -779,7 +746,7 @@ def create_loss_fn(input_dict):
         batch_predict = vmap(predict, in_axes=(
             None, 0, 0, None, 0, 0), out_axes=out_axes)
 
-        @functools.partial(jax.jit, static_argnums=(5,))
+        @partial(jax.jit, static_argnums=(5,))
         def loss_fn(params, inputs, factor, M, q, iters):
             if diff_required:
                 losses, iter_losses, angles, out = batch_predict(
