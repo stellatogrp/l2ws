@@ -203,7 +203,8 @@ def robust_kalman_main(cfg):
         setup_cfg['gamma'],
         setup_cfg['dt'],
         setup_cfg['mu'],
-        setup_cfg['rho']
+        setup_cfg['rho'],
+        setup_cfg['B_const']
     )
 
     get_q_single = functools.partial(robust_kalman.single_q,

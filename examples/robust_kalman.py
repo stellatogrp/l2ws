@@ -1,4 +1,4 @@
-import functools
+from functools import partial
 import hydra
 import cvxpy as cp
 from l2ws.scs_problem import SCSinstance, scs_jax
@@ -17,6 +17,8 @@ import logging
 import yaml
 from jax import vmap, jit
 import pandas as pd
+import matplotlib.colors as mc
+import colorsys
 
 
 plt.rcParams.update(
@@ -55,12 +57,12 @@ def simulate(T, gamma, dt, sigma, p):
     return y, x_true, w_true, v
 
 
-def sample_theta(N, T, sigma, p, gamma, dt, rotate, divide_state):
-    # A, B, C = robust_kalman_setup(gamma, dt)
-
+def sample_theta(N, T, sigma, p, gamma, dt, noise_var=1, B_const=1):
     # generate random input and noise vectors
-    w = np.random.randn(N, 2, T)
-    v = np.random.randn(N, 2, T)
+    w = noise_var * np.random.randn(N, 2, T)
+    v = noise_var * np.random.randn(N, 2, T)
+    # w = np.random.randn(scale=noise_var, size=(N, 2, T))
+    # v = np.random.randn(scale=noise_var, size=(N, 2, T))
 
     # x = np.zeros((4, T + 1))
     # x[:, 0] = [0, 0, 0, 0]
@@ -80,10 +82,10 @@ def sample_theta(N, T, sigma, p, gamma, dt, rotate, divide_state):
     # w_flat = np.ravel(w)
     # v_flat = np.ravel(v)
     # theta = np.concatenate([w_flat, v_flat])
-    simulate_fwd_batch = vmap(simulate_fwd, in_axes=(0, 0, None, None, None), out_axes=(0, 0))
+    simulate_fwd_batch = vmap(simulate_fwd, in_axes=(0, 0, None, None, None, None), out_axes=(0, 0))
 
     # y_mat = simulate_fwd(w, v, T, gamma, dt)
-    y_mat, x_trues = simulate_fwd_batch(w, v, T, gamma, dt)
+    y_mat, x_trues = simulate_fwd_batch(w, v, T, gamma, dt, B_const)
 
     # get the rotation angle
     # y_mat has shape (N, 2, T)
@@ -295,6 +297,57 @@ def plot_positions(traj, labels, axis=None, filename=None):
         plt.show()
 
 
+def lighten_color(color, amount=0.5):
+    """
+    Lightens the given color by multiplying (1-luminosity) by the given amount.
+    Input can be matplotlib color string, hex string, or RGB tuple.
+
+    Examples:
+    >> lighten_color('g', 0.3)
+    >> lighten_color('#F034A3', 0.6)
+    >> lighten_color((.3,.55,.1), 0.5)
+    """
+    
+    try:
+        c = mc.cnames[color]
+    except:
+        c = color
+    c = colorsys.rgb_to_hls(*mc.to_rgb(c))
+    return colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
+
+
+def plot_positions_overlay(traj, labels, axis=None, filename=None):
+    '''
+    show point clouds for true, observed, and recovered positions
+    '''
+    # matplotlib.rcParams.update({'font.size': 14})
+    n = len(traj)
+
+    colors = ['green', 'red']
+    # pdb.set_trace()
+    for i in range(len(traj) - 2):
+        shade = (i + 1) / (len(traj) - 2)
+        colors.append(lighten_color('blue', shade))
+
+    # fig, ax = plt.subplots(1, n, sharex=True, sharey=True, figsize=(12, 5))
+    # if n == 1:
+    #     ax = [ax]
+
+    for i, x in enumerate(traj):
+        plt.plot(x[0, :], x[1, :], 'o', color=colors[i], alpha=.5, label=labels[i])
+        # ax[i].set_title(labels[i])
+        # if axis:
+        #     ax[i].axis(axis)
+
+    plt.legend()
+
+    if filename:
+        plt.savefig(filename, bbox_inches='tight')
+    else:
+        plt.show()
+    plt.clf()
+
+
 def cvxpy_huber(T, y, gamma, dt, mu, rho):
     x = cp.Variable(shape=(4, T + 1))
     w = cp.Variable(shape=(2, T))
@@ -355,10 +408,12 @@ def cvxpy_manual(T, y, gamma, dt, mu, rho):
     return x, w, v
 
 
-@functools.partial(jit, static_argnums=(2, 3, 4))
-def simulate_fwd(w_mat, v_mat, T, gamma, dt):
+partial(jit, static_argnums=(2, 3, 4))
+
+
+def simulate_fwd(w_mat, v_mat, T, gamma, dt, B_const):
     # def simulate(T, gamma, dt, sigma, p):
-    A, B, C = robust_kalman_setup(gamma, dt)
+    A, B, C = robust_kalman_setup(gamma, dt, B_const)
 
     # generate random input and noise vectors
     # w = np.random.randn(2, T)
@@ -520,28 +575,21 @@ def run(run_cfg):
             print(exc)
             setup_cfg = {}
 
-    # T, control_box = setup_cfg["T"], setup_cfg["control_box"]
-    # state_box = setup_cfg["state_box"]
-    # nx, nu = setup_cfg["nx"], setup_cfg["nu"]
-    # Q_val, QT_val = setup_cfg["Q_val"], setup_cfg["QT_val"]
-    # R_val = setup_cfg["R_val"]
-
-    # Ad, Bd = oscillating_masses_setup(nx, nu)
-
     static_dict = static_canon(
         setup_cfg['T'],
         setup_cfg['gamma'],
         setup_cfg['dt'],
         setup_cfg['mu'],
-        setup_cfg['rho']
+        setup_cfg['rho'],
+        setup_cfg['B_const']
     )
 
-    get_q_single = functools.partial(single_q,
-                                     mu=setup_cfg['mu'],
-                                     rho=setup_cfg['rho'],
-                                     T=setup_cfg['T'],
-                                     gamma=setup_cfg['gamma'],
-                                     dt=setup_cfg['dt'])
+    get_q_single = partial(single_q,
+                           mu=setup_cfg['mu'],
+                           rho=setup_cfg['rho'],
+                           T=setup_cfg['T'],
+                           gamma=setup_cfg['gamma'],
+                           dt=setup_cfg['dt'])
 
     get_q = vmap(get_q_single, in_axes=0, out_axes=0)
 
@@ -551,7 +599,11 @@ def run(run_cfg):
     we only need to factor once
     """
     static_flag = True
-    workspace = Workspace(run_cfg, static_flag, static_dict, example, get_q)
+
+    custom_visualize_fn_partial = partial(custom_visualize_fn, T=setup_cfg['T'])
+
+    workspace = Workspace(run_cfg, static_flag, static_dict, example, get_q,
+                          custom_visualize_fn=custom_visualize_fn_partial)
 
     """
     run the workspace
@@ -567,11 +619,6 @@ def setup_probs(setup_cfg):
     nx, nu, no = 4, 2, 2
 
     """
-    create the dynamics depending on the system
-    """
-    # Ad, Bd = robust_kalman_setup(cfg.nx, cfg.nu)
-
-    """
     - canonicalize according to whether we have states or not
     - extract information dependent on the setup
     """
@@ -582,7 +629,8 @@ def setup_probs(setup_cfg):
         cfg.gamma,
         cfg.dt,
         cfg.mu,
-        cfg.rho
+        cfg.rho,
+        cfg.B_const
     )
 
     t1 = time.time()
@@ -639,9 +687,9 @@ def setup_probs(setup_cfg):
     # for i in range(N):
     #     thetas_np[i, :] = sample_theta(cfg.T, cfg.sigma, cfg.p, cfg.gamma, cfg.dt)
     rotate = True
-    out = sample_theta(N, cfg.T, cfg.sigma, cfg.p, cfg.gamma, cfg.dt, rotate, cfg.divide_state)
+    out = sample_theta(N, cfg.T, cfg.sigma, cfg.p, cfg.gamma, cfg.dt, cfg.noise_var, cfg.B_const)
     thetas_np, y_mat, x_trues, w_trues, y_mat_rotated, x_trues_rotated, w_trues_rotated, angles = out
-    thetas = jnp.array(thetas_np) / 10
+    thetas = jnp.array(thetas_np)
 
     batch_q = vmap(single_q, in_axes=(0, None, None, None, None, None), out_axes=(0))
 
@@ -773,6 +821,36 @@ def setup_probs(setup_cfg):
     pdb.set_trace()
 
 
+def custom_visualize_fn(x_primals, x_stars, thetas, iterates, visual_path, T):
+    # ts, delt = np.linspace(0, time_limit, T-1, endpoint=True, retstep=True)
+
+    # plot rotated
+    # plot_state(ts, (x_trues_rotated[i, :, :-1], w_trues_rotated[i, :, :-1]),
+    #             (x_state_mat, x_control_mat), filename=f"states_plots/positions_{i}_rotated.pdf")
+    num = 5
+    y_mat_rotated = jnp.reshape(thetas[:num, :], (num, T, 2))
+    for i in range(5):
+        titles = ['x_star', 'noisy']
+        x_true_kalman = get_x_kalman_from_x_primal(x_stars[i, :], T)
+        traj = [x_true_kalman, y_mat_rotated[i, :].T]
+        for j in range(len(iterates)):
+            iter = iterates[j]
+            x_hat_kalman = get_x_kalman_from_x_primal(x_primals[i, iter, :], T)
+            traj.append(x_hat_kalman)
+            titles.append(f"iterate {iter}")
+
+        plot_positions_overlay(traj, titles, filename=f"{visual_path}/positions_{i}_rotated.pdf")
+
+
+def get_x_kalman_from_x_primal(x_primal, T):
+    x_state = x_primal[:T * 4]
+    # x_control = x_primal[T * 4: T * 6 - 2]
+    x1_kalman = x_state[0::4]
+    x2_kalman = x_state[1::4]
+    x_kalman = jnp.stack([x1_kalman, x2_kalman])
+    return x_kalman
+
+
 def get_full_x(x0, x_w, y, T, Ad, Bd, rho):
     '''
     returns full x variable without redundant constraints
@@ -806,7 +884,7 @@ def get_full_x(x0, x_w, y, T, Ad, Bd, rho):
     return x
 
 
-def static_canon(T, gamma, dt, mu, rho):
+def static_canon(T, gamma, dt, mu, rho, B_const):
     """
     variables
     (x_t, w_t, s_t, v_t,  u_t, z_t) \in (nx + nu + no + 3)
@@ -838,7 +916,7 @@ def static_canon(T, gamma, dt, mu, rho):
     assert z_start + T == single_len * T
 
     # get A, B, C
-    Ad, Bd, C = robust_kalman_setup(gamma, dt)
+    Ad, Bd, C = robust_kalman_setup(gamma, dt, B_const)
 
     # Quadratic objective
     P = np.zeros((single_len, single_len))
@@ -959,7 +1037,7 @@ def static_canon(T, gamma, dt, mu, rho):
     return out_dict
 
 
-def robust_kalman_setup(gamma, dt):
+def robust_kalman_setup(gamma, dt, B_const):
     A = jnp.zeros((4, 4))
     B = jnp.zeros((4, 2))
     C = jnp.zeros((2, 4))
@@ -979,7 +1057,7 @@ def robust_kalman_setup(gamma, dt):
     C = C.at[0, 0].set(1)
     C = C.at[1, 1].set(1)
 
-    return A, B, C
+    return A, B * B_const, C
 
 
 """

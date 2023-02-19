@@ -15,8 +15,8 @@ import jax
 from jax import random
 from scipy.spatial import distance_matrix
 from functools import partial
-from l2ws.algo_steps import create_projection_fn, lin_sys_solve
-from utils.generic_utils import sample_plot
+from l2ws.algo_steps import create_projection_fn
+from utils.generic_utils import sample_plot, setup_permutation
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
@@ -29,7 +29,8 @@ class Workspace:
     def __init__(self, cfg, static_flag, static_dict, example, get_M_q,
                  low_2_high_dim=None,
                  x_psd_indices=None,
-                 y_psd_indices=None):
+                 y_psd_indices=None,
+                 custom_visualize_fn=None):
         '''
         cfg is the run_cfg
         static_dict holds the data that doesn't change from problem to problem
@@ -41,7 +42,6 @@ class Workspace:
         self.save_every_x_epochs = cfg.save_every_x_epochs
         self.num_samples = cfg.num_samples
         self.pretrain_cfg = cfg.pretrain
-        # self.prediction_variable = cfg.prediction_variable
         self.angle_anchors = cfg.angle_anchors
         self.supervised = cfg.supervised
         self.tx, self.ty = cfg.get('tx'), cfg.get('ty')
@@ -57,17 +57,25 @@ class Workspace:
         self.normalize_alpha = cfg.get('normalize_alpha')
         self.plateau_decay = cfg.plateau_decay
         self.epochs_jit = cfg.epochs_jit
+        self.accs = cfg.get('accuracies')
+        self.iterates_visualize = cfg.get('iterates_visualize')
 
-        '''
-        from the run cfg retrieve the following via the data cfg
-        '''
+        # custom visualization
+        if custom_visualize_fn is None:
+            self.has_custom_visualization = False
+        else:
+            self.has_custom_visualization = True
+            self.custom_visualize_fn = custom_visualize_fn
+
+        # from the run cfg retrieve the following via the data cfg
         self.nn_cfg = cfg.nn_cfg
         N_train, N_test = cfg.N_train, cfg.N_test
         N = N_train + N_test
 
         # load the data from problem to problem
         orig_cwd = hydra.utils.get_original_cwd()
-        filename = f"{orig_cwd}/outputs/{example}/aggregate_outputs/{cfg.data.datetime}/data_setup_aggregate.npz"
+        folder = f"{orig_cwd}/outputs/{example}/aggregate_outputs/{cfg.data.datetime}"
+        filename = f"{folder}/data_setup_aggregate.npz"
         jnp_load_obj = jnp.load(filename)
 
         '''
@@ -84,6 +92,9 @@ class Workspace:
 
         self.x_stars_train = x_stars[:N_train, :]
         self.y_stars_train = y_stars[:N_train, :]
+
+        self.thetas_train = thetas[:N_train, :]
+        self.thetas_test = thetas[N_train:N, :]
 
         w_stars_train = w_stars[:N_train, :]
         self.x_stars_test = x_stars[N_train:N, :]
@@ -180,10 +191,9 @@ class Workspace:
         #     return projection
 
         out = create_projection_fn(cones, n)
-        self.proj, self.psd_size = out[0], out[1]
+        self.proj, psd_sizes = out[0], out[1]
+        self.psd_size = psd_sizes[0]
         sdp_bool = self.psd_size > 0
-
-        self.lin_sys_solve = lin_sys_solve
 
         # normalize the inputs if the option is on
         if self.normalize_inputs:
@@ -206,7 +216,6 @@ class Workspace:
                       'proj': self.proj,
                       'train_inputs': train_inputs,
                       'test_inputs': test_inputs,
-                    #   'lin_sys_solve': lin_sys_solve,
                       'train_unrolls': self.train_unrolls,
                       'eval_unrolls': eval_unrolls,
                       'w_stars_train': w_stars_train,
@@ -222,7 +231,6 @@ class Workspace:
                       'y_stars_test': self.y_stars_test,
                       'x_stars_train': x_stars_train,
                       'x_stars_test': self.x_stars_test,
-                    #   'prediction_variable': self.prediction_variable,
                       'static_flag': static_flag,
                       'static_algo_factor': static_algo_factor,
                       'matrix_invs_train': matrix_invs_train,
@@ -262,131 +270,414 @@ class Workspace:
         if os.stat('log.csv').st_size == 0:
             self.test_writer.writeheader()
 
+        self.logf = open('train_results.csv', 'a')
+
+        fieldnames = ['train_loss', 'moving_avg_train', 'time_train_per_epoch']
+        self.writer = csv.DictWriter(self.logf, fieldnames=fieldnames)
+        if os.stat('train_results.csv').st_size == 0:
+            self.writer.writeheader()
+
+        self.test_logf = open('train_test_results.csv', 'a')
+        fieldnames = ['iter', 'train_loss', 'test_loss', 'time_per_iter']
+        self.test_writer = csv.DictWriter(self.test_logf, fieldnames=fieldnames)
+        if os.stat('train_results.csv').st_size == 0:
+            self.test_writer.writeheader()
+
     def evaluate_iters(self, num, col, train=False, plot=True, plot_pretrain=False):
-        fixed_ws = col == 'fixed_ws'
-        if train:
-            if fixed_ws:
-                '''
-                find closest train point
-                neural network input
-                '''
+        fixed_ws = col == 'nearest_neighbor'
 
-                # compute distances to train inputs
-                distances = distance_matrix(
-                    np.array(self.l2ws_model.train_inputs[:num, :]),
-                    np.array(self.l2ws_model.train_inputs))
-                print('distances', distances)
-                indices = np.argmin(distances, axis=1)
-                print('indices', indices)
-                best_val = np.min(distances, axis=1)
-                print('best val', best_val)
-                plt.plot(indices)
-                plt.savefig(f"indices_plot.pdf", bbox_inches='tight')
-                plt.clf()
+        # do the actual evaluation (most important step in thie method)
+        eval_out = self.evaluate_only(fixed_ws, num, train, col)
 
-                inputs = self.l2ws_model.w_stars_train[indices, :]
-
-            elif col == 'no_train':
-                # random init with neural network
-                _, predict_size = self.l2ws_model.w_stars_test.shape
-                random_start = np.random.normal(size=(num, predict_size))
-                inputs = jnp.array(random_start)
-                fixed_ws = True
-
-                # inputs = self.l2ws_model.train_inputs[:num, :]
-                # fixed_ws = False
-            else:
-                inputs = self.l2ws_model.train_inputs[:num, :]
-            if self.l2ws_model.static_flag:
-                eval_out = self.l2ws_model.evaluate(self.eval_unrolls,
-                                                    # self.l2ws_model.train_inputs[:num, :],
-                                                    inputs,
-                                                    self.l2ws_model.q_mat_train[:num, :],
-                                                    self.l2ws_model.w_stars_train[:num, :],
-                                                    tag='train',
-                                                    fixed_ws=fixed_ws)
-            else:
-                eval_out = self.l2ws_model.dynamic_eval(self.eval_unrolls,
-                                                        # self.l2ws_model.train_inputs[:num, :],
-                                                        inputs,
-                                                        self.l2ws_model.matrix_invs_train[:num, :],
-                                                        self.l2ws_model.M_tensor_train[:num, :],
-                                                        self.l2ws_model.q_mat_train[:num, :],
-                                                        tag='train',
-                                                        fixed_ws=fixed_ws)
-        else:
-            if fixed_ws:
-                '''
-                find closest train point
-                neural network input
-                '''
-
-                # compute distances to train inputs
-                distances = distance_matrix(
-                    np.array(self.l2ws_model.test_inputs[:num, :]),
-                    np.array(self.l2ws_model.train_inputs))
-                print('distances', distances)
-                indices = np.argmin(distances, axis=1)
-                print('indices', indices)
-                best_val = np.min(distances, axis=1)
-                print('best val', best_val)
-                plt.plot(indices)
-                plt.savefig(f"indices_plot.pdf", bbox_inches='tight')
-                plt.clf()
-
-                inputs = self.l2ws_model.w_stars_train[indices, :]
-
-            elif col == 'no_train':
-                # random init with neural network
-                # _, predict_size = self.l2ws_model.w_stars_test.shape
-                # random_start = .05*np.random.normal(size=(num, predict_size))
-                # inputs = jnp.array(random_start)
-                # fixed_ws = True
-                inputs = self.l2ws_model.test_inputs[:num, :]
-                fixed_ws = False
-            else:
-                inputs = self.l2ws_model.test_inputs[:num, :]
-            if self.l2ws_model.static_flag:
-                eval_out = self.l2ws_model.evaluate(self.eval_unrolls,
-                                                    inputs,
-                                                    self.l2ws_model.q_mat_test[:num, :],
-                                                    self.l2ws_model.w_stars_test[:num, :],
-                                                    tag='test',
-                                                    fixed_ws=fixed_ws)
-            else:
-                eval_out = self.l2ws_model.dynamic_eval(self.eval_unrolls,
-                                                        inputs,
-                                                        self.l2ws_model.matrix_invs_test[:num, :, :],
-                                                        self.l2ws_model.M_tensor_test[:num, :, :],
-                                                        self.l2ws_model.q_mat_test[:num, :],
-                                                        tag='test',
-                                                        fixed_ws=fixed_ws)
-
+        # extract information from the evaluation
         loss_train, out_train, train_time = eval_out
         iter_losses_mean = out_train[2].mean(axis=0)
-        if train:
-            loe_folder = 'losses_over_examples_train'
-        else:
-            loe_folder = 'losses_over_examples_test'
-        if not os.path.exists(loe_folder):
-            os.mkdir(loe_folder)
-
-        plt.plot(out_train[2].T)
-        plt.yscale('log')
-        plt.savefig(f"{loe_folder}/losses_{col}_plot.pdf", bbox_inches='tight')
-        plt.clf()
-
         angles = out_train[3]
         primal_residuals = out_train[4].mean(axis=0)
         dual_residuals = out_train[5].mean(axis=0)
-        print('after iterations z', out_train[0][1][0, :])
-        print('truth z', self.l2ws_model.w_stars_test[0, :])
-        print('after iterations z', out_train[0][1][1, :])
-        print('truth z', self.l2ws_model.w_stars_test[1, :])
-        plt.plot(self.l2ws_model.w_stars_test[0, :] - out_train[0][1][0, :], label='truth')
-        plt.savefig('debug.pdf', bbox_inches='tight')
+
+        # plot losses over examples
+        losses_over_examples = out_train[2].T
+        self.plot_losses_over_examples(losses_over_examples, train, col)
+
+        # update the eval csv files
+        df_out = self.update_eval_csv(
+            iter_losses_mean, primal_residuals, dual_residuals, train, col)
+        iters_df, primal_residuals_df, dual_residuals_df = df_out
+
+        # write accuracies dataframe to csv
+        self.write_accuracies_csv(iter_losses_mean, train, col)
+
+        # plot the evaluation iterations
+        self.plot_eval_iters(iters_df, primal_residuals_df,
+                             dual_residuals_df, plot_pretrain, train, col)
+
+        # SRG-type plots
+        r = out_train[2]
+        self.plot_angles(angles, r, train, col)
+
+        # plot the warm-start predictions
+        u_all = out_train[0][3]
+        z_all = out_train[0][0]
+        self.plot_warm_starts(u_all, z_all, train, col)
+
+        # plot the alpha coefficients
+        alpha = out_train[0][2]
+        self.plot_alphas(alpha, train, col)
+
+        # custom visualize
+        if self.has_custom_visualization is not None:
+            x_primals = u_all[:, :, :self.l2ws_model.n]
+            self.custom_visualize(x_primals, train, col)
+
+        return out_train
+
+    def custom_visualize(self, x_primals, train, col):
+        """
+        x_primals has shape [N, eval_iters]
+        """
+        visualize_path = 'visualize_train' if train else 'visualize_test'
+
+        if not os.path.exists(visualize_path):
+            os.mkdir(visualize_path)
+        if not os.path.exists(f"{visualize_path}/{col}"):
+            os.mkdir(f"{visualize_path}/{col}")
+
+        visual_path = f"{visualize_path}/{col}"
+
+        # call custom visualize fn
+        if train:
+            x_stars = self.l2ws_model.x_stars_train
+            thetas = self.thetas_train
+        else:
+            x_stars = self.l2ws_model.x_stars_test
+            thetas = self.thetas_test
+        self.custom_visualize_fn(x_primals, x_stars, thetas, self.iterates_visualize, visual_path)
+
+        # save x_primals to csv (TODO)
+        # x_primals_df = pd.DataFrame(x_primals[:5, :])
+        # x_primals_df.to_csv(f"{visualize_path}/{col}/x_primals.csv")
+
+    def run(self):
+        # setup logging and dataframes
+        self._init_logging()
+        self.setup_dataframes()
+
+        # set pretrain_on boolean
+        pretrain_on = self.pretrain_cfg.pretrain_iters > 0
+
+        # no learning evaluation
+        self.eval_iters_train_and_test('no_train', False)
+
+        # fixed ws evaluation
+        self.eval_iters_train_and_test('nearest_neighbor', False)
+
+        # pretrain evaluation
+        if pretrain_on:
+            self.pretrain()
+
+        # eval test data to start
+        self.test_eval_write()
+
+        num_epochs_jit = int(self.l2ws_model.epochs / self.epochs_jit)
+
+        # key_count updated to get random permutation for each epoch
+        key_count = 0
+        for epoch_batch in range(num_epochs_jit):
+            epoch = int(epoch_batch * self.epochs_jit)
+            if epoch % self.eval_every_x_epochs == 0:
+                self.eval_iters_train_and_test(f"train_epoch_{epoch}", pretrain_on)
+            if epoch > self.l2ws_model.dont_decay_until:
+                self.l2ws_model.decay_upon_plateau()
+
+            # setup the permutations
+            permutation = setup_permutation(key_count, self.l2ws_model.N_train, self.epochs_jit)
+
+            @jit
+            def body_fn(batch, val):
+                train_losses, params, state = val
+                start_index = batch * self.l2ws_model.batch_size
+                batch_indices = jax.lax.dynamic_slice(
+                    permutation, (start_index,), (self.l2ws_model.batch_size,))
+                train_loss, params, state = self.l2ws_model.train_batch(
+                    batch_indices, params, state)
+                train_losses = train_losses.at[batch].set(train_loss)
+                val = train_losses, params, state
+                return val
+
+            epoch_batch_start_time = time.time()
+
+            loop_size = int(self.l2ws_model.num_batches * self.epochs_jit)
+            epoch_train_losses = jnp.zeros(loop_size)
+            if epoch == 0:
+                # unroll the first iterate so that This allows `init_val` and `body_fun`
+                # below to have the same output type, which is a requirement of
+                # jax.lax.while_loop and jax.lax.scan.
+                batch_indices = jax.lax.dynamic_slice(
+                    permutation, (0,), (self.l2ws_model.batch_size,))
+                train_loss_first, params, state = self.l2ws_model.train_batch(
+                    batch_indices, self.l2ws_model.params, self.l2ws_model.state)
+
+                epoch_train_losses = epoch_train_losses.at[0].set(train_loss_first)
+                start_index = 1
+            else:
+                start_index = 0
+
+            # loop the last (self.l2ws_model.num_batches - 1) iterates
+            init_val = epoch_train_losses, params, state
+            val = jax.lax.fori_loop(start_index, loop_size, body_fn, init_val)
+
+            epoch_batch_end_time = time.time()
+            time_diff = epoch_batch_end_time - epoch_batch_start_time
+            time_train_per_epoch = time_diff / self.epochs_jit
+            epoch_train_losses, params, state = val
+
+            # reset the global (params, state)
+            self.l2ws_model.epoch += self.epochs_jit
+            self.l2ws_model.params = params
+            self.l2ws_model.state = state
+
+            prev_batches = len(self.l2ws_model.tr_losses_batch)
+            self.l2ws_model.tr_losses_batch = self.l2ws_model.tr_losses_batch + \
+                list(epoch_train_losses)
+
+            # write train results
+            self.write_train_results(loop_size, prev_batches,
+                                     epoch_train_losses, time_train_per_epoch)
+
+            # evaluate the test set and write results
+            self.test_eval_write()
+
+            # plot the train / test loss so far
+            if epoch % self.save_every_x_epochs == 0:
+                self.plot_train_test_losses()
+
+    def write_accuracies_csv(self, losses, train, col):
+        # def update_acc(df_acc, accs, col, losses):
+        df_acc = pd.DataFrame()
+        df_acc['accuracies'] = np.array(self.accs)
+
+        if train:
+            accs_path = 'accuracies_train'
+        else:
+            accs_path = 'accuracies_test'
+        if not os.path.exists(accs_path):
+            os.mkdir(accs_path)
+        if not os.path.exists(f"{accs_path}/{col}"):
+            os.mkdir(f"{accs_path}/{col}")
+
+        # accuracies
+        iter_vals = np.zeros(len(self.accs))
+        for i in range(len(self.accs)):
+            if losses.min() < self.accs[i]:
+                iter_vals[i] = int(np.argmax(losses < self.accs[i]))
+            else:
+                iter_vals[i] = losses.size
+        int_iter_vals = iter_vals.astype(int)
+        df_acc[col] = int_iter_vals
+        df_acc.to_csv(f"{accs_path}/{col}/accuracies.csv")
+
+        # save no learning accuracies
+        if col == 'no_train':
+            self.no_learning_accs = int_iter_vals
+
+        # percent reduction
+        df_percent = pd.DataFrame()
+        df_percent['accuracies'] = np.array(self.accs)
+
+        for col in df_acc.columns:
+            if col != 'accuracies':
+                val = 1 - df_acc[col] / self.no_learning_accs
+                df_percent[col] = np.round(val, decimals=2)
+        df_percent.to_csv(f"{accs_path}/{col}/reduction.csv")
+
+        # save both iterations and fraction reduction in single table
+        # df_acc_both = pd.DataFrame()
+        # # df_acc_both['accuracies'] = df_acc['no_learn']
+        # df_acc_both['no_learn_iters'] = np.array(self.accs)
+
+        # for col in df_percent.columns:
+        #     if col != 'accuracies' and col != 'no_learn':
+        #         df_acc_both[col + '_iters'] = df_acc[col]
+        #         df_acc_both[col + '_red'] = df_percent[col]
+        # df_acc_both.to_csv(f"{accs_path}/{col}/accuracies_reduction_both.csv")
+
+    def eval_iters_train_and_test(self, col, pretrain_on):
+        self.evaluate_iters(
+            self.num_samples, col, train=True, plot_pretrain=pretrain_on)
+        self.evaluate_iters(
+            self.num_samples, col, train=False, plot_pretrain=pretrain_on)
+
+    def write_train_results(self, loop_size, prev_batches, epoch_train_losses, time_train_per_epoch):
+        for batch in range(loop_size):
+            start_window = prev_batches - 10 + batch
+            end_window = prev_batches + batch
+            last10 = np.array(self.l2ws_model.tr_losses_batch[start_window:end_window])
+            moving_avg = last10.mean()
+            self.writer.writerow({
+                'train_loss': epoch_train_losses[batch],
+                'moving_avg_train': moving_avg,
+                'time_train_per_epoch': time_train_per_epoch
+            })
+            self.logf.flush()
+
+    def evaluate_only(self, fixed_ws, num, train, col):
+        tag = 'train' if train else 'test'
+        z_stars = self.l2ws_model.w_stars_train[:num,
+                                                :] if train else self.l2ws_model.w_stars_test[:num,
+                                                                                              :]
+        q_mat = self.l2ws_model.q_mat_train[:num,
+                                            :] if train else self.l2ws_model.q_mat_test[:num, :]
+
+        factors = None if self.l2ws_model.static_flag else self.l2ws_model.matrix_invs_train[:num,
+                                                                                             :]
+        M_tensor = None if self.l2ws_model.static_flag else self.l2ws_model.M_tensor_train[:num, :]
+
+        inputs = self.get_inputs_for_eval(fixed_ws, num, train, col)
+        eval_out = self.l2ws_model.evaluate(self.eval_unrolls, inputs, factors,
+                                            M_tensor, q_mat, z_stars, fixed_ws, tag=tag)
+        return eval_out
+
+    def get_inputs_for_eval(self, fixed_ws, num, train, col):
+        if fixed_ws:
+            inputs = self.get_nearest_neighbors(train, num)
+        else:
+            # elif col == 'no_train': (possible case to consider)
+            # random init with neural network ()
+            # _, predict_size = self.l2ws_model.w_stars_test.shape
+            # random_start = np.random.normal(size=(num, predict_size))
+            # inputs = jnp.array(random_start)
+            # fixed_ws = True
+            if train:
+                inputs = self.l2ws_model.train_inputs[:num, :]
+            else:
+                inputs = self.l2ws_model.test_inputs[:num, :]
+        return inputs
+
+    def get_nearest_neighbors(self, train, num):
+        if train:
+            distances = distance_matrix(
+                np.array(self.l2ws_model.train_inputs[:num, :]),
+                np.array(self.l2ws_model.train_inputs))
+        else:
+            distances = distance_matrix(
+                np.array(self.l2ws_model.test_inputs[:num, :]),
+                np.array(self.l2ws_model.train_inputs))
+        print('distances', distances)
+        indices = np.argmin(distances, axis=1)
+        print('indices', indices)
+        best_val = np.min(distances, axis=1)
+        print('best val', best_val)
+        plt.plot(indices)
+        if train:
+            plt.savefig("indices_train_plot.pdf", bbox_inches='tight')
+        else:
+            plt.savefig("indices_train_plot.pdf", bbox_inches='tight')
+        plt.clf()
+        return self.l2ws_model.w_stars_train[indices, :]
+
+    def setup_dataframes(self):
+        self.iters_df_train = pd.DataFrame(
+            columns=['iterations', 'no_train'])
+        self.iters_df_train['iterations'] = np.arange(1, self.eval_unrolls+1)
+
+        self.iters_df_test = pd.DataFrame(
+            columns=['iterations', 'no_train'])
+        self.iters_df_test['iterations'] = np.arange(1, self.eval_unrolls+1)
+
+        self.primal_residuals_df_train = pd.DataFrame(
+            columns=['iterations'])
+        self.primal_residuals_df_train['iterations'] = np.arange(
+            1, self.eval_unrolls+1)
+        self.dual_residuals_df_train = pd.DataFrame(
+            columns=['iterations'])
+        self.dual_residuals_df_train['iterations'] = np.arange(
+            1, self.eval_unrolls+1)
+
+        self.primal_residuals_df_test = pd.DataFrame(
+            columns=['iterations'])
+        self.primal_residuals_df_test['iterations'] = np.arange(
+            1, self.eval_unrolls+1)
+        self.dual_residuals_df_test = pd.DataFrame(
+            columns=['iterations'])
+        self.dual_residuals_df_test['iterations'] = np.arange(
+            1, self.eval_unrolls+1)
+
+    def pretrain(self):
+        print("Pretraining...")
+        pretrain_on = True
+        self.df_pretrain = pd.DataFrame(
+            columns=['pretrain_loss', 'pretrain_test_loss'])
+        pretrain_out = self.l2ws_model.pretrain(self.pretrain_cfg.pretrain_iters,
+                                                stepsize=self.pretrain_cfg.pretrain_stepsize,
+                                                df_pretrain=self.df_pretrain,
+                                                batches=self.pretrain_cfg.pretrain_batches)
+        train_pretrain_losses, test_pretrain_losses = pretrain_out
+        self.evaluate_iters(
+            self.num_samples, 'pretrain', train=True, plot_pretrain=pretrain_on)
+        self.evaluate_iters(
+            self.num_samples, 'pretrain', train=False, plot_pretrain=pretrain_on)
+        plt.plot(train_pretrain_losses, label='train')
+        plt.plot(test_pretrain_losses, label='test')
+        plt.yscale('log')
+        plt.xlabel('pretrain iterations')
+        plt.ylabel('pretrain loss')
+        plt.legend()
+        plt.savefig('pretrain_losses.pdf')
         plt.clf()
 
+    def test_eval_write(self):
+        test_loss, time_per_iter = self.l2ws_model.short_test_eval()
+        last_epoch = np.array(self.l2ws_model.tr_losses_batch[-self.l2ws_model.num_batches:])
+        moving_avg = last_epoch.mean()
+        if self.test_writer is not None:
+            self.test_writer.writerow({
+                'iter': self.l2ws_model.state.iter_num,
+                'train_loss': moving_avg,
+                'test_loss': test_loss,
+                'time_per_iter': time_per_iter
+            })
+            self.test_logf.flush()
+
+    def plot_train_test_losses(self):
+        batch_losses = np.array(self.l2ws_model.tr_losses_batch)
+        te_losses = np.array(self.l2ws_model.te_losses)
+        num_data_points = batch_losses.size
+        epoch_axis = np.arange(num_data_points) / \
+            self.l2ws_model.num_batches
+
+        epoch_test_axis = self.epochs_jit * np.arange(te_losses.size)
+        plt.plot(epoch_axis, batch_losses, label='train')
+        plt.plot(epoch_test_axis, te_losses, label='test')
+        plt.yscale('log')
+        plt.xlabel('epochs')
+        plt.ylabel('fixed point residual average')
+        plt.legend()
+        plt.savefig('losses_over_training.pdf', bbox_inches='tight')
+        plt.clf()
+
+        plt.plot(epoch_axis, batch_losses, label='train')
+
+        # include when learning rate decays
+        if len(self.l2ws_model.epoch_decay_points) > 0:
+            epoch_decay_points = self.l2ws_model.epoch_decay_points
+            epoch_decay_points_np = np.array(epoch_decay_points)
+            batch_decay_points = epoch_decay_points_np * self.l2ws_model.num_batches
+
+            batch_decay_points_int = batch_decay_points.astype('int')
+            decay_vals = batch_losses[batch_decay_points_int]
+            plt.scatter(epoch_decay_points_np, decay_vals, c='r', label='lr decay')
+        plt.yscale('log')
+        plt.xlabel('epochs')
+        plt.ylabel('fixed point residual average')
+        plt.legend()
+        plt.savefig('train_losses_over_training.pdf', bbox_inches='tight')
+        plt.clf()
+
+    def update_eval_csv(self, iter_losses_mean, primal_residuals, dual_residuals, train, col):
+        """
+        update the eval csv files
+        """
         if train:
             self.iters_df_train[col] = iter_losses_mean
             self.iters_df_train.to_csv('iters_compared_train.csv')
@@ -409,18 +700,14 @@ class Workspace:
             iters_df = self.iters_df_test
             primal_residuals_df = self.primal_residuals_df_test
             dual_residuals_df = self.dual_residuals_df_test
+        return iters_df, primal_residuals_df, dual_residuals_df
 
-        '''
-        now save the plots so we can monitor
-        -- no_learning colummn
-        -- pretrain column (if enabled)
-        -- last column of training
-        '''
-
+    def plot_eval_iters(self, iters_df, primal_residuals_df, dual_residuals_df, plot_pretrain,
+                        train, col):
         # plot of the fixed point residuals
         plt.plot(iters_df['no_train'], 'k-', label='no learning')
         if col != 'no_train':
-            plt.plot(iters_df['fixed_ws'], 'm-', label='nearest neighbor')
+            plt.plot(iters_df['nearest_neighbor'], 'm-', label='nearest neighbor')
         if plot_pretrain:
             plt.plot(iters_df['pretrain'], 'r-', label='pretraining')
         if col != 'no_train' and col != 'pretrain' and col != 'fixed_ws':
@@ -460,8 +747,34 @@ class Workspace:
         plt.savefig('primal_dual_residuals.pdf', bbox_inches='tight')
         plt.clf()
 
+    def plot_alphas(self, alpha, train, col):
+        if train:
+            alpha_path = 'alphas_train'
+        else:
+            alpha_path = 'alphas_test'
+        if alpha is not None:
+            if not os.path.exists(alpha_path):
+                os.mkdir(alpha_path)
+            for i in range(10):
+                plt.plot(alpha[i, :])
+            plt.savefig(f"{alpha_path}/{col}.pdf")
+            plt.clf()
+
+    def plot_losses_over_examples(self, losses_over_examples, train, col):
+        if train:
+            loe_folder = 'losses_over_examples_train'
+        else:
+            loe_folder = 'losses_over_examples_test'
+        if not os.path.exists(loe_folder):
+            os.mkdir(loe_folder)
+
+        plt.plot(losses_over_examples)
+        plt.yscale('log')
+        plt.savefig(f"{loe_folder}/losses_{col}_plot.pdf", bbox_inches='tight')
+        plt.clf()
+
+    def plot_angles(self, angles, r, train, col):
         # SRG-type plots
-        # one for each problem
         if train:
             polar_path = 'polar_train'
         else:
@@ -474,14 +787,13 @@ class Workspace:
         num_angles = len(self.angle_anchors)
         for i in range(5):
             fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
-            # fig2, ax2 = plt.subplots(subplot_kw={'projection': 'polar'})
             for j in range(num_angles):
                 angle = self.angle_anchors[j]
-                r = out_train[2][i, angle:-1]
-                theta = np.zeros(r.size)
+                curr_r = r[i, angle:-1]
+                theta = np.zeros(curr_r.size)
                 theta[1:] = angles[i, j, angle+1:]
-                ax.plot(theta, r, label=f"anchor={angle}")
-                ax.plot(theta[self.train_unrolls-angle], r[self.train_unrolls-angle], 'r+')
+                ax.plot(theta, curr_r, label=f"anchor={angle}")
+                ax.plot(theta[self.train_unrolls-angle], curr_r[self.train_unrolls-angle], 'r+')
             ax.grid(True)
             ax.set_rscale('symlog')
             ax.set_title("Magnitude", va='bottom')
@@ -493,15 +805,14 @@ class Workspace:
             fig2, ax2 = plt.subplots(subplot_kw={'projection': 'polar'})
             for j in range(num_angles):
                 angle = self.angle_anchors[j]
-                r = out_train[2][i, angle:-1]
-                theta = np.zeros(r.size)
+                curr_r = r[i, angle:-1]
+                theta = np.zeros(curr_r.size)
                 theta[1:] = angles[i, j, angle+1:]
                 num_iters = np.max([100, self.train_unrolls + 5])
                 r2 = num_iters - np.arange(num_iters)
                 ax2.plot(theta[:num_iters], r2, label=f"anchor={angle}")
                 ax2.plot(theta[self.train_unrolls-angle], r2[self.train_unrolls-angle], 'r+')
             ax2.grid(True)
-            # ax2.set_rscale('symlog')
             ax2.set_title("Iterations", va='bottom')
             plt.legend()
             plt.savefig(f"{polar_path}/{col}/prob_{i}_iters.pdf")
@@ -513,11 +824,12 @@ class Workspace:
         num_angles = len(self.angle_anchors)
         for i in range(5):
             fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
-            r = out_train[2][i, 0:-1]
-            theta = np.zeros(r.size)
+            curr_r = r[i, :-1]
+            theta = np.zeros(curr_r.size)
+
             theta[1:] = angles[i, -1, 1:]
-            ax.plot(theta, r, label=f"anchor={angle}")
-            ax.plot(theta[self.train_unrolls-angle], r[self.train_unrolls-angle], 'r+')
+            ax.plot(theta, curr_r, label=f"anchor={angle}")
+            ax.plot(theta[self.train_unrolls-angle], curr_r[self.train_unrolls-angle], 'r+')
             ax.grid(True)
             ax.set_rscale('symlog')
             ax.set_title("Magnitude", va='bottom')
@@ -528,8 +840,8 @@ class Workspace:
         for i in range(5):
             fig2, ax2 = plt.subplots(subplot_kw={'projection': 'polar'})
             for j in range(num_angles):
-                r = out_train[2][i, 0:-1]
-                theta = np.zeros(r.size)
+                curr_r = r[i, :-1]
+                theta = np.zeros(curr_r.size)
                 theta[1:] = angles[i, -1, 1:]
                 num_iters = np.max([100, self.train_unrolls + 5])
                 r2 = num_iters - np.arange(num_iters)
@@ -559,12 +871,7 @@ class Workspace:
             plt.savefig(f"{polar_path}/{col}/prob_{i}_angles.pdf")
             plt.clf()
 
-        '''
-        plot the warm-start predictions
-        '''
-        u_all = out_train[0][3]
-        z_all = out_train[0][0]
-
+    def plot_warm_starts(self, u_all, z_all, train, col):
         if train:
             ws_path = 'warm-starts_train'
         else:
@@ -574,10 +881,7 @@ class Workspace:
         if not os.path.exists(f"{ws_path}/{col}"):
             os.mkdir(f"{ws_path}/{col}")
         for i in range(5):
-            '''
-            plot for x
-            '''
-
+            # plot for x
             for j in self.plot_iterates:
                 plt.plot(u_all[i, j, :self.l2ws_model.n], label=f"prediction_{j}")
             if train:
@@ -596,9 +900,7 @@ class Workspace:
             plt.savefig(f"{ws_path}/{col}/prob_{i}_diffs_x.pdf")
             plt.clf()
 
-            '''
-            plot for y
-            '''
+            # plot for y
             for j in self.plot_iterates:
                 plt.plot(u_all[i, j, self.l2ws_model.n:], label=f"prediction_{j}")
             if train:
@@ -617,9 +919,7 @@ class Workspace:
             plt.savefig(f"{ws_path}/{col}/prob_{i}_diffs_y.pdf")
             plt.clf()
 
-            '''
-            plot for z
-            '''
+            # plot for z
             for j in self.plot_iterates:
                 plt.plot(z_all[i, j, :], label=f"prediction_{j}")
             if train:
@@ -637,249 +937,3 @@ class Workspace:
             plt.title('diffs to optimal')
             plt.savefig(f"{ws_path}/{col}/prob_{i}_diffs_z.pdf")
             plt.clf()
-
-        alpha = out_train[0][2]
-        if train:
-            alpha_path = 'alphas_train'
-        else:
-            alpha_path = 'alphas_test'
-        if alpha is not None:
-            if not os.path.exists(alpha_path):
-                os.mkdir(alpha_path)
-            for i in range(10):
-                plt.plot(alpha[i, :])
-            plt.savefig(f"{alpha_path}/{col}.pdf")
-            plt.clf()
-
-        return out_train
-
-    def run(self):
-        self._init_logging()
-
-        self.iters_df_train = pd.DataFrame(
-            columns=['iterations', 'no_train', 'final'])
-        self.iters_df_train['iterations'] = np.arange(1, self.eval_unrolls+1)
-
-        self.iters_df_test = pd.DataFrame(
-            columns=['iterations', 'no_train', 'final'])
-        self.iters_df_test['iterations'] = np.arange(1, self.eval_unrolls+1)
-
-        self.primal_residuals_df_train = pd.DataFrame(
-            columns=['iterations'])
-        self.primal_residuals_df_train['iterations'] = np.arange(
-            1, self.eval_unrolls+1)
-        self.dual_residuals_df_train = pd.DataFrame(
-            columns=['iterations'])
-        self.dual_residuals_df_train['iterations'] = np.arange(
-            1, self.eval_unrolls+1)
-
-        self.primal_residuals_df_test = pd.DataFrame(
-            columns=['iterations'])
-        self.primal_residuals_df_test['iterations'] = np.arange(
-            1, self.eval_unrolls+1)
-        self.dual_residuals_df_test = pd.DataFrame(
-            columns=['iterations'])
-        self.dual_residuals_df_test['iterations'] = np.arange(
-            1, self.eval_unrolls+1)
-
-        '''
-        no learning evaluation
-        '''
-        pretrain_on = self.pretrain_cfg.pretrain_iters > 0
-        self.evaluate_iters(
-            self.num_samples, 'no_train', train=True, plot_pretrain=False)
-        self.evaluate_iters(
-            self.num_samples, 'no_train', train=False, plot_pretrain=False)
-
-        '''
-        fixed ws evaluation
-        '''
-        self.evaluate_iters(
-            self.num_samples, 'fixed_ws', train=True, plot_pretrain=False)
-        self.evaluate_iters(
-            self.num_samples, 'fixed_ws', train=False, plot_pretrain=False)
-
-        if pretrain_on:
-            print("Pretraining...")
-            self.df_pretrain = pd.DataFrame(
-                columns=['pretrain_loss', 'pretrain_test_loss'])
-            pretrain_out = self.l2ws_model.pretrain(self.pretrain_cfg.pretrain_iters,
-                                                    stepsize=self.pretrain_cfg.pretrain_stepsize,
-                                                    df_pretrain=self.df_pretrain,
-                                                    batches=self.pretrain_cfg.pretrain_batches)
-            train_pretrain_losses, test_pretrain_losses = pretrain_out
-            self.evaluate_iters(
-                self.num_samples, 'pretrain', train=True, plot_pretrain=pretrain_on)
-            self.evaluate_iters(
-                self.num_samples, 'pretrain', train=False, plot_pretrain=pretrain_on)
-            plt.plot(train_pretrain_losses, label='train')
-            plt.plot(test_pretrain_losses, label='test')
-            plt.yscale('log')
-            plt.xlabel('pretrain iterations')
-            plt.ylabel('pretrain loss')
-            plt.legend()
-            plt.savefig('pretrain_losses.pdf')
-            plt.clf()
-
-        self.logf = open('train_results.csv', 'a')
-
-        fieldnames = ['train_loss', 'moving_avg_train', 'time_train_per_epoch']
-        self.writer = csv.DictWriter(self.logf, fieldnames=fieldnames)
-        if os.stat('train_results.csv').st_size == 0:
-            self.writer.writeheader()
-
-        self.test_logf = open('train_test_results.csv', 'a')
-        fieldnames = ['iter', 'train_loss', 'test_loss', 'time_per_iter']
-        self.test_writer = csv.DictWriter(self.test_logf, fieldnames=fieldnames)
-        if os.stat('train_results.csv').st_size == 0:
-            self.test_writer.writeheader()
-
-        '''
-        NEW WAY - train_batch - better for saving
-        batch < epoch < epoch_batch
-        epoch_batch is many epochs that we jit together
-        '''
-        # eval test data to start
-        test_loss, time_per_iter = self.l2ws_model.short_test_eval()
-        if self.test_writer is not None:
-            self.test_writer.writerow({
-                'iter': 0,
-                'train_loss': 0,
-                'test_loss': test_loss,
-                'time_per_iter': time_per_iter
-            })
-            self.test_logf.flush()
-        num_epochs_jit = int(self.l2ws_model.epochs / self.epochs_jit)
-
-        key_count = 0
-        for epoch_batch in range(num_epochs_jit):
-            epoch = int(epoch_batch * self.epochs_jit)
-            if epoch % self.eval_every_x_epochs == 0:
-                self.evaluate_iters(
-                    self.num_samples, f"train_epoch_{epoch}", train=True,
-                    plot_pretrain=pretrain_on)
-                self.evaluate_iters(
-                    self.num_samples, f"train_epoch_{epoch}", train=False,
-                    plot_pretrain=pretrain_on)
-            if epoch > self.l2ws_model.dont_decay_until:
-                self.l2ws_model.decay_upon_plateau()
-
-            # setup the permutations
-            permutations = []
-            for i in range(self.epochs_jit):
-                key = random.PRNGKey(key_count)
-                key_count += 1
-                epoch_permutation = jax.random.permutation(key, int(self.l2ws_model.N_train))
-                permutations.append(epoch_permutation)
-            stacked_permutation = jnp.stack(permutations)
-            permutation = jnp.ravel(stacked_permutation)
-
-            print('permutation', permutation.shape, permutation)
-
-            @jit
-            def body_fn(batch, val):
-                train_losses, params, state = val
-                start_index = batch*self.l2ws_model.batch_size
-                batch_indices = jax.lax.dynamic_slice(
-                    permutation, (start_index,), (self.l2ws_model.batch_size,))
-                train_loss, params, state = self.l2ws_model.train_batch(
-                    batch_indices, params, state)
-                train_losses = train_losses.at[batch].set(train_loss)
-                val = train_losses, params, state
-                return val
-
-            epoch_batch_start_time = time.time()
-
-            loop_size = int(self.l2ws_model.num_batches * self.epochs_jit)
-            epoch_train_losses = jnp.zeros(loop_size)
-            if epoch == 0:
-                # unroll the first iterate so that This allows `init_val` and `body_fun`
-                # below to have the same output type, which is a requirement of
-                # jax.lax.while_loop and jax.lax.scan.
-                batch_indices = jax.lax.dynamic_slice(
-                    permutation, (0,), (self.l2ws_model.batch_size,))
-                train_loss_first, params, state = self.l2ws_model.train_batch(
-                    batch_indices, self.l2ws_model.params, self.l2ws_model.state)
-
-                epoch_train_losses = epoch_train_losses.at[0].set(train_loss_first)
-                start_index = 1
-            else:
-                start_index = 0
-
-            # loop the last (self.l2ws_model.num_batches - 1) iterates
-            init_val = epoch_train_losses, params, state
-            val = jax.lax.fori_loop(start_index, loop_size, body_fn, init_val)
-
-            epoch_batch_end_time = time.time()
-            time_diff = epoch_batch_end_time - epoch_batch_start_time
-            time_train_per_epoch = time_diff / self.epochs_jit
-            print('time_train_per_epoch', time_train_per_epoch)
-            epoch_train_losses, params, state = val
-
-            # reset the global (params, state)
-            self.l2ws_model.epoch += self.epochs_jit
-            self.l2ws_model.params = params
-            self.l2ws_model.state = state
-
-            prev_batches = len(self.l2ws_model.tr_losses_batch)
-            self.l2ws_model.tr_losses_batch = self.l2ws_model.tr_losses_batch + \
-                list(epoch_train_losses)
-
-            for batch in range(loop_size):
-                start_window = prev_batches - 10 + batch
-                end_window = prev_batches + batch
-                last10 = np.array(self.l2ws_model.tr_losses_batch[start_window:end_window])
-                moving_avg = last10.mean()
-                self.writer.writerow({
-                    'train_loss': epoch_train_losses[batch],
-                    'moving_avg_train': moving_avg,
-                    'time_train_per_epoch': time_train_per_epoch
-                })
-                self.logf.flush()
-                print('train_loss', epoch_train_losses[batch])
-
-            test_loss, time_per_iter = self.l2ws_model.short_test_eval()
-            if self.test_writer is not None:
-                self.test_writer.writerow({
-                    'iter': self.l2ws_model.state.iter_num,
-                    'train_loss': moving_avg,
-                    'test_loss': test_loss,
-                    'time_per_iter': time_per_iter
-                })
-                self.test_logf.flush()
-
-            # plot the train / test loss so far
-            if epoch % self.save_every_x_epochs == 0:
-                batch_losses = np.array(self.l2ws_model.tr_losses_batch)
-                te_losses = np.array(self.l2ws_model.te_losses)
-                num_data_points = batch_losses.size
-                epoch_axis = np.arange(num_data_points) / \
-                    self.l2ws_model.num_batches
-
-                epoch_test_axis = self.epochs_jit * np.arange(te_losses.size)
-                plt.plot(epoch_axis, batch_losses, label='train')
-                plt.plot(epoch_test_axis, te_losses, label='test')
-                plt.yscale('log')
-                plt.xlabel('epochs')
-                plt.ylabel('fixed point residual average')
-                plt.legend()
-                plt.savefig('losses_over_training.pdf', bbox_inches='tight')
-                plt.clf()
-
-                plt.plot(epoch_axis, batch_losses, label='train')
-
-                # include when learning rate decays
-                if len(self.l2ws_model.epoch_decay_points) > 0:
-                    epoch_decay_points = self.l2ws_model.epoch_decay_points
-                    epoch_decay_points_np = np.array(epoch_decay_points)
-                    batch_decay_points = epoch_decay_points_np * self.l2ws_model.num_batches
-
-                    batch_decay_points_int = batch_decay_points.astype('int')
-                    decay_vals = batch_losses[batch_decay_points_int]
-                    plt.scatter(epoch_decay_points_np, decay_vals, c='r', label='lr decay')
-                plt.yscale('log')
-                plt.xlabel('epochs')
-                plt.ylabel('fixed point residual average')
-                plt.legend()
-                plt.savefig('train_losses_over_training.pdf', bbox_inches='tight')
-                plt.clf()

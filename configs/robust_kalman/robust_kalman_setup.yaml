@@ -4,9 +4,10 @@ rho: 2
 gamma: .05
 solve_acc_abs: 1e-4
 solve_acc_rel: 0
-dt: .5
+dt: .5 #.5
 sigma: 20
 p: 1e-8
-divide_state: 10
-N_train: 1000
-N_test: 200
+N_train: 100
+N_test: 20
+noise_var: .1
+B_const: 1

@@ -497,7 +497,7 @@ class L2WSmodel(object):
 
     def short_test_eval(self):
         if self.static_flag:
-            test_loss, test_out, time_per_prob = self.evaluate(self.train_unrolls,
+            test_loss, test_out, time_per_prob = self.static_eval(self.train_unrolls,
                                                                self.test_inputs,
                                                                self.q_mat_test,
                                                                self.w_stars_test)
@@ -513,7 +513,13 @@ class L2WSmodel(object):
         time_per_iter = time_per_prob / self.train_unrolls
         return test_loss, time_per_iter
 
-    def evaluate(self, k, inputs, q, z_stars, tag='test', fixed_ws=False):
+    def evaluate(self, k, inputs, matrix_inv, M, q, z_stars, fixed_ws, tag='test'):
+        if self.static_flag:
+            return self.static_eval(k, inputs, q, z_stars, tag=tag, fixed_ws=fixed_ws)
+        else:
+            return self.dynamic_eval(k, inputs, matrix_inv, M, q, tag=tag, fixed_ws=fixed_ws)
+
+    def static_eval(self, k, inputs, q, z_stars, tag='test', fixed_ws=False):
         if fixed_ws:
             curr_loss_fn = self.loss_fn_fixed_ws
         else:

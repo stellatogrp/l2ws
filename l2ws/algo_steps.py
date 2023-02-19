@@ -31,7 +31,7 @@ def create_projection_fn(cones, n):
 
         # soc_proj_sizes, soc_num_proj are lists
         # need to convert to list so that the item is not a traced object
-        sdp_proj_sizes, sdp_num_proj = count_num_repeated_elements(sdp_cones_array)
+        sdp_row_sizes, sdp_num_proj = count_num_repeated_elements(sdp_cones_array)
         # num_sdp = len(cones['s'])
         # sdp_total = sum(cones['s'])
         # sdp_cones_array = jnp.array(cones['s'])
@@ -40,44 +40,35 @@ def create_projection_fn(cones, n):
         # sdp_proj_single_batch = vmap(sdp_proj_single_dim, in_axes=(0), out_axes=(0))
         # psd_size = sdp_size
         # psd_size = sdp_proj_sizes[0]
-        sdp_size = int(sdp_cones_array[0] * (sdp_cones_array[0]+1) / 2)
+        sdp_matrix_sizes = [int(row_size * (row_size + 1) / 2) for row_size in sdp_row_sizes]
+        psd_sizes = sdp_cones_array.tolist()
     else:
-        psd_size = 0
+        psd_sizes = [0]
         # sdp_total = 0
         # num_sdp = 0
         # sdp_size = 0
         # sdp_proj_single_batch = None
-        sdp_proj_sizes, sdp_num_proj = [], []
-    pdb.set_trace()
+        sdp_row_sizes, sdp_matrix_sizes, sdp_num_proj = [], [], []
+
     projection = partial(proj,
                          n=n,
                          zero_cone_int=int(zero_cone),
                          nonneg_cone_int=int(nonneg_cone),
                          soc_proj_sizes=soc_proj_sizes,
                          soc_num_proj=soc_num_proj,
-                         sdp_proj_sizes=sdp_proj_sizes,
+                         sdp_row_sizes=sdp_row_sizes,
+                         sdp_matrix_sizes=sdp_matrix_sizes,
                          sdp_num_proj=sdp_num_proj,
-                        #  sdp=sdp,
-                        #  sdp_total=sdp_total,
-                        #  num_sdp=num_sdp,
-                        #  sdp_size=sdp_size,
-                        #  sdp_proj_single_batch=sdp_proj_single_batch
                          )
-    return jit(projection), psd_size
+    return jit(projection), psd_sizes
 
-
-# def lin_sys_solve(factor, rhs, static_flag):
-#     if static_flag:
-#         return jsp.linalg.lu_solve(factor, rhs)
-#     else:
-#         return factor @ rhs
 
 def lin_sys_solve(factor, rhs):
     return jsp.linalg.lu_solve(factor, rhs)
 
 
-def proj(input, n, zero_cone_int, nonneg_cone_int, soc_proj_sizes, soc_num_proj, sdp_proj_sizes,
-         sdp_num_proj):
+def proj(input, n, zero_cone_int, nonneg_cone_int, soc_proj_sizes, soc_num_proj, sdp_row_sizes,
+         sdp_matrix_sizes, sdp_num_proj):
     """
     soc_proj_sizes: list of the sizes of the socp projections needed
     soc_num_proj: list of the number of socp projections needed for each size
@@ -97,8 +88,8 @@ def proj(input, n, zero_cone_int, nonneg_cone_int, soc_proj_sizes, soc_num_proj,
     soc_bool = num_soc_blocks > 0
 
     # sdp setup
-    num_sdp_blocks = len(sdp_proj_sizes)
-    sdp_total = sum(i[0] * i[1] for i in zip(sdp_proj_sizes, sdp_num_proj))
+    num_sdp_blocks = len(sdp_row_sizes)
+    sdp_total = sum(i[0] * i[1] for i in zip(sdp_matrix_sizes, sdp_num_proj))
     sdp_bool = num_sdp_blocks > 0
 
     if soc_bool:
@@ -138,16 +129,16 @@ def proj(input, n, zero_cone_int, nonneg_cone_int, soc_proj_sizes, soc_num_proj,
         start = 0
         for i in range(num_sdp_blocks):
             # calculate the end point
-            end = start + sdp_proj_sizes[i] * sdp_num_proj[i]
+            end = start + sdp_matrix_sizes[i] * sdp_num_proj[i]
 
             # extract the right sdp_input
             curr_sdp_input = lax.dynamic_slice(
-                sdp_input, (start,), (sdp_proj_sizes[i] * sdp_num_proj[i],))
+                sdp_input, (start,), (sdp_matrix_sizes[i] * sdp_num_proj[i],))
 
             # reshape so that we vmap all of the sdp projections of the same size together
             curr_sdp_input_reshaped = jnp.reshape(
-                curr_sdp_input, (sdp_num_proj[i], sdp_proj_sizes[i]))
-            curr_sdp_out_reshaped = sdp_proj_batch(curr_sdp_input_reshaped, sdp_proj_sizes[i])
+                curr_sdp_input, (sdp_num_proj[i], sdp_matrix_sizes[i]))
+            curr_sdp_out_reshaped = sdp_proj_batch(curr_sdp_input_reshaped, sdp_row_sizes[i])
             curr_sdp = jnp.ravel(curr_sdp_out_reshaped)
 
             # place in the correct location in the sdp vector

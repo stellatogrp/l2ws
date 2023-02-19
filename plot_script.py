@@ -263,7 +263,7 @@ def plot_eval_iters(example, cfg, train=False):
     naive_ws_datetime = cfg.naive_ws_datetime
     if naive_ws_datetime == '':
         naive_ws_datetime = recover_last_datetime(orig_cwd, example, 'train')
-    
+
     accs = cfg.accuracies
     df_acc = pd.DataFrame()
     df_acc['accuracies'] = np.array(accs)
@@ -272,7 +272,7 @@ def plot_eval_iters(example, cfg, train=False):
         iters_file = "iters_compared_train.csv"
     else:
         iters_file = "iters_compared_test.csv"
-    
+
     '''
     no learning
     '''
@@ -302,7 +302,7 @@ def plot_eval_iters(example, cfg, train=False):
         pretrain_df = read_csv(pretrain_path)
         last_column = pretrain_df['pretrain']
         plt.plot(last_column[:eval_iters], 'r+', label='pretrain')
-    
+
     k_vals = np.zeros(len(datetimes))
     second_derivs = []
     titles = cfg.loss_overlay_titles
