@@ -46,7 +46,7 @@ def robust_pca_plot_eval_iters(cfg):
 @hydra.main(config_path='configs/robust_kalman', config_name='robust_kalman_plot.yaml')
 def robust_kalman_plot_eval_iters(cfg):
     example = 'robust_kalman'
-    plot_eval_iters(example, cfg, train=True)
+    # plot_eval_iters(example, cfg, train=False)
     overlay_training_losses(example, cfg)
 
 
@@ -54,7 +54,7 @@ def robust_kalman_plot_eval_iters(cfg):
 def robust_ls_plot_eval_iters(cfg):
     example = 'robust_ls'
     plot_eval_iters(example, cfg, train=False)
-    # overlay_training_losses(example, cfg)
+    overlay_training_losses(example, cfg)
 
 
 @hydra.main(config_path='configs/all', config_name='plot.yaml')
@@ -186,58 +186,80 @@ def overlay_training_losses(example, cfg):
         all_train_losses.append(train_losses)
         all_test_losses.append(test_losses)
 
-    titles = cfg.loss_overlay_titles
-    for i in range(len(datetimes)):
-        plt.plot(all_train_losses[i], label=f"train: {titles[i]}")
-        plt.plot(all_test_losses[i], label=f"test: {titles[i]}")
-    plt.yscale('log')
-    plt.xlabel('epochs')
-    plt.ylabel('fixed point residual average')
-    plt.legend()
-    plt.savefig('losses_over_epochs.pdf', bbox_inches='tight')
-    plt.clf()
-
-    for i in range(len(datetimes)):
-        plt.plot(all_train_losses[i], label=f"train: {titles[i]}")
-    plt.yscale('log')
-    plt.xlabel('epochs')
-    plt.ylabel('fixed point residual average')
-    plt.legend()
-    plt.savefig('train_losses_over_epochs.pdf', bbox_inches='tight')
-    plt.clf()
-
-    # # batch_losses = np.array(self.l2ws_model.tr_losses_batch)
-    # # te_losses = np.array(self.l2ws_model.te_losses)
-    # num_data_points = batch_losses.size
-    # epoch_axis = np.arange(num_data_points) / \
-    #     self.l2ws_model.num_batches
-    # epoch_test_axis = 1 + np.arange(te_losses.size)
-    # plt.plot(epoch_axis, batch_losses, label='train')
-    # plt.plot(epoch_test_axis, te_losses, label='test')
+    # titles = cfg.loss_overlay_titles
+    # for i in range(len(datetimes)):
+    #     plt.plot(all_train_losses[i], label=f"train: {titles[i]}")
+    #     plt.plot(all_test_losses[i], label=f"test: {titles[i]}")
     # plt.yscale('log')
     # plt.xlabel('epochs')
     # plt.ylabel('fixed point residual average')
     # plt.legend()
-    # plt.savefig('losses_over_training.pdf', bbox_inches='tight')
+    # plt.savefig('losses_over_epochs.pdf', bbox_inches='tight')
     # plt.clf()
 
-    # plt.plot(epoch_axis, batch_losses, label='train')
-
-    # # include when learning rate decays
-    # if len(self.l2ws_model.epoch_decay_points) > 0:
-    #     epoch_decay_points = self.l2ws_model.epoch_decay_points
-    #     epoch_decay_points_np = np.array(epoch_decay_points)
-    #     batch_decay_points = epoch_decay_points_np * self.l2ws_model.num_batches
-
-    #     batch_decay_points_int = batch_decay_points.astype('int')
-    #     decay_vals = batch_losses[batch_decay_points_int]
-    #     plt.scatter(epoch_decay_points_np, decay_vals, c='r', label='lr decay')
+    # for i in range(len(datetimes)):
+    #     plt.plot(all_train_losses[i], label=f"train: {titles[i]}")
     # plt.yscale('log')
     # plt.xlabel('epochs')
     # plt.ylabel('fixed point residual average')
     # plt.legend()
-    # plt.savefig('train_losses_over_training.pdf', bbox_inches='tight')
+    # plt.savefig('train_losses_over_epochs.pdf', bbox_inches='tight')
     # plt.clf()
+
+    """"
+    now create table like
+
+    k                   5       15      50  
+    train reduction
+    test reduction
+    reduction gap
+    """
+    relative_loss_df = pd.DataFrame()
+    relative_loss_df['rows'] = ['relative_train_loss', 'relative_test_loss', 'relative_gap']
+    k_values = []
+    rel_gen_gaps = []
+    rel_tr_losses = []
+    rel_te_losses = []
+    for i in range(len(datetimes)):
+        tr_losses = all_train_losses[i]
+        te_losses = all_test_losses[i]
+        orig_loss = te_losses[0]
+        print(f"tr_losses", tr_losses)
+        print(f"te_losses", te_losses)
+        print(f"orig_loss: {orig_loss}")
+        
+        rel_train_loss = tr_losses[-1:].mean() / orig_loss
+        rel_test_loss = te_losses.iloc[-1] / orig_loss
+        rel_gap = rel_test_loss - rel_train_loss 
+        k = get_k(orig_cwd, example, datetimes[i])
+        k_values.append(k)
+        col = f"k = {k}"
+        row = np.array([rel_train_loss, rel_test_loss, rel_gap])
+        rel_gen_gaps.append(rel_gap)
+        rel_tr_losses.append(rel_train_loss)
+        rel_te_losses.append(rel_test_loss)
+        print(f"row: {row}")
+        relative_loss_df[col] = np.round(row, decimals=3)
+    relative_loss_df.to_csv('relative_losses.csv')
+
+    # now give a plot for the generalization
+    plt.plot(np.array(k_values), np.array(rel_gen_gaps))
+    plt.xlabel('k')
+    plt.ylabel('relative generalization gap')
+    plt.savefig('relative_generalization_gaps.pdf')
+    plt.clf()
+
+    # plot the relative train and test final losses
+    # now give a plot for the generalization
+    plt.plot(np.array(k_values), np.array(rel_tr_losses), label='train')
+    plt.plot(np.array(k_values), np.array(rel_te_losses), label='test')
+    plt.xlabel('k')
+    plt.ylabel('relative final losses')
+    plt.legend()
+    plt.savefig('relative_final_losses.pdf')
+    plt.clf()
+
+
 
 def plot_eval_iters(example, cfg, train=False):
     '''
@@ -288,7 +310,8 @@ def plot_eval_iters(example, cfg, train=False):
     '''
     naive_ws_path = f"{orig_cwd}/outputs/{example}/train_outputs/{naive_ws_datetime}/{iters_file}"
     naive_ws_df = read_csv(naive_ws_path)
-    last_column = naive_ws_df['fixed_ws']
+    # last_column = naive_ws_df['fixed_ws']
+    last_column = naive_ws_df['nearest_neighbor']
     # plt.plot(last_column[:eval_iters], 'm-.', label='naive warm start')
     plt.plot(last_column[:eval_iters], 'm-.', label='nearest neighbor')
     second_derivs_naive_ws = second_derivative_fn(np.log(last_column[:eval_iters]))
@@ -327,7 +350,10 @@ def plot_eval_iters(example, cfg, train=False):
         last_column = df.iloc[:, -1]
         second_derivs.append(second_derivative_fn(np.log(last_column[:eval_iters])))
         # plt.plot(last_column[:250], label=f"train k={k}")
-        plt.plot(last_column[:eval_iters], label=f"train $k={int(k_vals[i])}$, {titles[i]}")
+        if titles == []:
+            plt.plot(last_column[:eval_iters], label=f"train $k={int(k_vals[i])}$")
+        else:
+            plt.plot(last_column[:eval_iters], label=f"train $k={int(k_vals[i])}$, {titles[i]}")
         df_acc = update_acc(df_acc, accs, f"traink{int(k_vals[i])}", last_column[:eval_iters])
 
     plt.yscale('log')

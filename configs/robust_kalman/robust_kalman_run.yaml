@@ -25,24 +25,24 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 30
+train_unrolls: 120
 eval_unrolls: 500
 eval_every_x_epochs: 20
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
-N_train: 1000
-N_test: 200
+N_train: 10000
+N_test: 2000
 num_samples: 200
 angle_anchors: [0]
 supervised: False
 plot_iterates: [0, 10, 20]
 loss_method: 'fixed_k' #'fixed_k' #'constant_sum'
 share_all: False
-num_clusters: 100
+num_clusters: 2000
 pretrain_alpha: False
 normalize_inputs: True
 normalize_alpha: 'other'
 epochs_jit: 10
 accuracies: [.01, .001, .0001]
-iterates_visualize: [0, 30]
+iterates_visualize: [0, 120]
