@@ -57,10 +57,10 @@ def simulate(T, gamma, dt, sigma, p):
     return y, x_true, w_true, v
 
 
-def sample_theta(N, T, sigma, p, gamma, dt, noise_var=1, B_const=1):
+def sample_theta(N, T, sigma, p, gamma, dt, w_noise_var, y_noise_var, B_const=1):
     # generate random input and noise vectors
-    w = noise_var * np.random.randn(N, 2, T)
-    v = noise_var * np.random.randn(N, 2, T)
+    w = w_noise_var * np.random.randn(N, 2, T)
+    v = y_noise_var * np.random.randn(N, 2, T)
     # w = np.random.randn(scale=noise_var, size=(N, 2, T))
     # v = np.random.randn(scale=noise_var, size=(N, 2, T))
 
@@ -307,7 +307,7 @@ def lighten_color(color, amount=0.5):
     >> lighten_color('#F034A3', 0.6)
     >> lighten_color((.3,.55,.1), 0.5)
     """
-    
+
     try:
         c = mc.cnames[color]
     except:
@@ -687,7 +687,8 @@ def setup_probs(setup_cfg):
     # for i in range(N):
     #     thetas_np[i, :] = sample_theta(cfg.T, cfg.sigma, cfg.p, cfg.gamma, cfg.dt)
     rotate = True
-    out = sample_theta(N, cfg.T, cfg.sigma, cfg.p, cfg.gamma, cfg.dt, cfg.noise_var, cfg.B_const)
+    out = sample_theta(N, cfg.T, cfg.sigma, cfg.p, cfg.gamma, cfg.dt,
+                       cfg.w_noise_var, cfg.y_noise_var, cfg.B_const)
     thetas_np, y_mat, x_trues, w_trues, y_mat_rotated, x_trues_rotated, w_trues_rotated, angles = out
     thetas = jnp.array(thetas_np)
 

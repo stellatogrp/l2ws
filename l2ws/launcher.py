@@ -326,7 +326,7 @@ class Workspace:
         self.plot_alphas(alpha, train, col)
 
         # custom visualize
-        if self.has_custom_visualization is not None:
+        if self.has_custom_visualization:
             x_primals = u_all[:, :, :self.l2ws_model.n]
             self.custom_visualize(x_primals, train, col)
 
