@@ -670,7 +670,16 @@ def setup_probs(setup_cfg):
     data = dict(P=P_sparse, A=A_sparse, b=b, c=c)
     tol_abs = cfg.solve_acc_abs
     tol_rel = cfg.solve_acc_rel
-    solver = scs.SCS(data, cones_dict, eps_abs=tol_abs, eps_rel=tol_rel)
+    solver = scs.SCS(data, 
+                     cones_dict, 
+                     normalize=False,
+                     scale=1,
+                     adaptive_scale=False,
+                     rho_x=1,
+                     alpha=1,
+                     acceleration_lookback=0,
+                     eps_abs=tol_abs, 
+                     eps_rel=tol_rel)
     solve_times = np.zeros(N)
     x_stars = jnp.zeros((N, n))
     y_stars = jnp.zeros((N, m))
@@ -808,16 +817,21 @@ def setup_probs(setup_cfg):
 
         x_kalman_rotated_transpose = rotation_single(x_kalman.T, angles[i], clockwise)
         x_kalman_rotated = x_kalman_rotated_transpose.T
-        # pdb.set_trace()
-        plot_state(ts, (x_trues[i, :, :-1], w_trues[i, :, :-1]),
-                   (x_state_mat, x_control_mat), filename=f"states_plots/positions_{i}.pdf")
-        plot_positions([x_trues[i, :, :-1], x_kalman_rotated, y_mat[i, :, :]],
+
+        # plot original
+        plot_positions_overlay([x_trues[i, :, :-1], x_kalman_rotated, y_mat[i, :, :]],
                        ['True', 'KF recovery', 'Noisy'], filename=f"positions_plots/positions_{i}.pdf")
+        # plot_state(ts, (x_trues[i, :, :-1], w_trues[i, :, :-1]),
+        #            (x_state_mat, x_control_mat), filename=f"states_plots/positions_{i}.pdf")
+        # plot_positions([x_trues[i, :, :-1], x_kalman_rotated, y_mat[i, :, :]],
+        #                ['True', 'KF recovery', 'Noisy'], filename=f"positions_plots/positions_{i}.pdf")
 
         # plot rotated
-        plot_state(ts, (x_trues_rotated[i, :, :-1], w_trues_rotated[i, :, :-1]),
-                   (x_state_mat, x_control_mat), filename=f"states_plots/positions_{i}_rotated.pdf")
-        plot_positions([x_trues_rotated[i, :, :-1], x_kalman, y_mat_rotated[i, :, :]],
+        # plot_state(ts, (x_trues_rotated[i, :, :-1], w_trues_rotated[i, :, :-1]),
+        #            (x_state_mat, x_control_mat), filename=f"states_plots/positions_{i}_rotated.pdf")
+        # plot_positions([x_trues_rotated[i, :, :-1], x_kalman, y_mat_rotated[i, :, :]],
+        #                ['True', 'KF recovery', 'Noisy'], filename=f"positions_plots/positions_{i}_rotated.pdf")
+        plot_positions_overlay([x_trues_rotated[i, :, :-1], x_kalman, y_mat_rotated[i, :, :]],
                        ['True', 'KF recovery', 'Noisy'], filename=f"positions_plots/positions_{i}_rotated.pdf")
     pdb.set_trace()
 

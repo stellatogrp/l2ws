@@ -17,6 +17,9 @@ from scipy.spatial import distance_matrix
 from functools import partial
 from l2ws.algo_steps import create_projection_fn
 from utils.generic_utils import sample_plot, setup_permutation
+import scs
+from scipy.sparse import csc_matrix
+from l2ws.algo_steps import lin_sys_solve
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
@@ -132,6 +135,9 @@ class Workspace:
             M_tensor_test = M_tensor[N_train:N, :, :]
             matrix_invs_train = matrix_invs[:N_train, :, :]
             matrix_invs_test = matrix_invs[N_train:N, :, :]
+
+        # save cones
+        self.cones = static_dict['cones_dict']
 
         # alternate -- load it if available (but this is memory-intensive)
         q_mat_train = q_mat[:N_train, :]
@@ -330,7 +336,87 @@ class Workspace:
             x_primals = u_all[:, :, :self.l2ws_model.n]
             self.custom_visualize(x_primals, train, col)
 
+        # solve with scs
+        z0_mat = z_all[:, 0, :]
+        self.solve_scs(z0_mat, train, col)
+
         return out_train
+
+    def solve_scs(self, z0_mat, train, col):
+        # create the path
+        if train:
+            scs_path = 'scs_train'
+        else:
+            scs_path = 'scs_test'
+        if not os.path.exists(scs_path):
+            os.mkdir(scs_path)
+        if not os.path.exists(f"{scs_path}/{col}"):
+            os.mkdir(f"{scs_path}/{col}")
+
+        # assume M doesn't change across problems
+        # extract P, A
+        m, n = self.l2ws_model.m, self.l2ws_model.n
+        P = csc_matrix(self.l2ws_model.static_M[:n, :n])
+        A = csc_matrix(-self.l2ws_model.static_M[n:, :n])
+
+        # set the solver
+        b_zeros, c_zeros = np.zeros(m), np.zeros(n)
+        scs_data = dict(P=P, A=A, b=b_zeros, c=c_zeros)
+        cones_dict = self.cones
+        # solver = scs.SCS(scs_data, cones_dict)
+        solver = scs.SCS(scs_data,
+                         cones_dict,
+                         normalize=False,
+                         scale=1,
+                         adaptive_scale=False,
+                         rho_x=1,
+                         alpha=1,
+                         acceleration_lookback=0,
+                         eps_abs=.001,
+                         eps_rel=0)
+
+        num = 20
+        solve_times = np.zeros(num)
+
+        if train:
+            q_mat = self.l2ws_model.q_mat_train
+        else:
+            q_mat = self.l2ws_model.q_mat_test
+
+        for i in range(num):
+            # get the current q
+            q = q_mat[i, :]
+
+            # set b, c
+            b, c = q_mat[i, n:], q_mat[i, :n]
+            scs_data = dict(P=P, A=A, b=b, c=c)
+            solver.update(b=np.array(b))
+            solver.update(c=np.array(c))
+            self.solver = solver
+
+            # set the warm start
+            x, y, s = self.get_xys_from_z(z0_mat[i, :], q)
+
+            # solve
+            sol = solver.solve(warm_start=True, x=np.array(x), y=np.array(y), s=np.array(s))
+
+            # set the solve time in seconds
+            solve_times[i] = sol['info']['solve_time'] / 1000
+
+        # write the solve times to the csv file
+        scs_df = pd.DataFrame(solve_times)
+        scs_df.to_csv(f"{scs_path}/{col}/scs_solve_times.csv")
+
+    def get_xys_from_z(self, z_init, q):
+        n = self.l2ws_model.n
+        u_tilde = lin_sys_solve(self.l2ws_model.static_algo_factor, z_init - q)
+        u_temp = 2*u_tilde - z_init
+        u = self.proj(u_temp)
+        v = u + z_init - 2*u_tilde
+
+        x, y = u[:n], u[n:]
+        s = v[n:]
+        return x, y, s
 
     def custom_visualize(self, x_primals, train, col):
         """
