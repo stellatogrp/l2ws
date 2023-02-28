@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
 setup(
-    name='code',
+    name='l2ws',
     packages=find_packages(),
 )
