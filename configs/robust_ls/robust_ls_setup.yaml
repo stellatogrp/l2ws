@@ -7,4 +7,4 @@ N_train: 100
 N_test: 20
 seed: 42
 b_nominal: 0
-b_range: 5
+b_range: 2

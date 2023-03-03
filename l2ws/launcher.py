@@ -337,8 +337,8 @@ class Workspace:
             self.custom_visualize(x_primals, train, col)
 
         # solve with scs
-        z0_mat = z_all[:, 0, :]
-        self.solve_scs(z0_mat, train, col)
+        # z0_mat = z_all[:, 0, :]
+        # self.solve_scs(z0_mat, train, col)
 
         return out_train
 
@@ -462,7 +462,7 @@ class Workspace:
         if pretrain_on:
             self.pretrain()
 
-        self.train_full()
+        # self.train_full()
 
         # eval test data to start
         self.test_eval_write()
