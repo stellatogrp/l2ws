@@ -360,6 +360,77 @@ class L2WSmodel(object):
         self.state = state
         return pretrain_losses, pretrain_test_losses
 
+    def train_full(self, factor, proj, k, num_iters, stepsize=.001, method='adam', df_fulltrain=None, batches=1):
+        def fixed_point(z_init, factor, q):
+            u_tilde = lin_sys_solve(factor, z_init - q)
+            u_temp = (2*u_tilde - z_init)
+            u = proj(u_temp)
+            v = u + z_init - 2*u_tilde
+            z = z_init + u - u_tilde
+            return z, u, v
+
+        def loss(params, inputs, factor, q_mat):
+            def predict(params_, input, q):
+                z0 = predict_y(params_, input)
+                iter_losses = jnp.zeros(k)
+
+                def _fp(i, val):
+                    z, loss_vec = val
+                    z_next, u, v = fixed_point(z, factor, q)
+                    diff = jnp.linalg.norm(z_next - z)
+                    loss_vec = loss_vec.at[i].set(diff)
+                    return z_next, loss_vec
+                val = z0, iter_losses
+                out = jax.lax.fori_loop(0, k, _fp, val)
+                z, iter_losses = out
+
+                return z, iter_losses
+            batch_predict = vmap(predict, in_axes=(None, 0, 0), out_axes=(0, 0))
+            z_all, iter_losses = batch_predict(params, inputs, q_mat)
+
+            return iter_losses[:, -1].mean()
+
+        maxiters = int(num_iters / batches)
+
+        if method == 'adam':
+            optimizer_pretrain = OptaxSolver(
+                opt=optax.adam(stepsize), fun=loss, jit=True, maxiter=maxiters)
+        elif method == 'sgd':
+            optimizer_pretrain = OptaxSolver(
+                opt=optax.sgd(stepsize), fun=loss, jit=True, maxiter=maxiters)
+        state = optimizer_pretrain.init_state(self.params)
+        params = self.params
+        train_losses = np.zeros(batches + 1)
+        test_losses = np.zeros(batches + 1)
+
+        curr_pretrain_loss = loss(
+            params, self.train_inputs, factor, self.q_mat_train)
+        curr_pretrain_test_loss = loss(
+            params, self.test_inputs, factor, self.q_mat_test)
+        train_losses[0] = curr_pretrain_loss
+        test_losses[0] = curr_pretrain_test_loss
+
+        for i in range(batches):
+            out = optimizer_pretrain.run(init_params=params,
+                                         inputs=self.train_inputs,
+                                         factor=factor,
+                                         q_mat=self.q_mat_train)
+            params = out.params
+            state = out.state
+            curr_pretrain_test_loss = loss(
+                params, self.test_inputs, factor, self.q_mat_test)
+            train_losses[i + 1] = state.value
+            test_losses[i + 1] = curr_pretrain_test_loss
+            data = np.vstack([train_losses, test_losses])
+            data = data.T
+            df_fulltrain = pd.DataFrame(
+                data, columns=['train_losses', 'test_losses'])
+            df_fulltrain.to_csv('full_train_results.csv')
+
+        self.params = params
+        self.state = state
+        return train_losses, test_losses
+
     def pretrain(self, num_iters, stepsize=.001, method='adam', df_pretrain=None, batches=1):
         # create pretrain function
         def pretrain_loss(params, inputs, targets):
@@ -498,9 +569,9 @@ class L2WSmodel(object):
     def short_test_eval(self):
         if self.static_flag:
             test_loss, test_out, time_per_prob = self.static_eval(self.train_unrolls,
-                                                               self.test_inputs,
-                                                               self.q_mat_test,
-                                                               self.w_stars_test)
+                                                                  self.test_inputs,
+                                                                  self.q_mat_test,
+                                                                  self.w_stars_test)
         else:
             eval_out = self.dynamic_eval(self.train_unrolls,
                                          self.test_inputs,

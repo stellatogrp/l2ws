@@ -462,6 +462,8 @@ class Workspace:
         if pretrain_on:
             self.pretrain()
 
+        self.train_full()
+
         # eval test data to start
         self.test_eval_write()
 
@@ -688,6 +690,32 @@ class Workspace:
             columns=['iterations'])
         self.dual_residuals_df_test['iterations'] = np.arange(
             1, self.eval_unrolls+1)
+
+    def train_full(self):
+        print("Training full...")
+        pretrain_on = True
+        self.full_train_df = pd.DataFrame(
+            columns=['pretrain_loss', 'pretrain_test_loss'])
+        pretrain_out = self.l2ws_model.train_full(self.l2ws_model.static_algo_factor,
+                                                  self.proj,
+                                                  self.train_unrolls,
+                                                  1000,
+                                                  stepsize=1e-4,
+                                                  df_fulltrain=self.full_train_df,
+                                                  batches=10)
+        train_pretrain_losses, test_pretrain_losses = pretrain_out
+        self.evaluate_iters(
+            self.num_samples, 'pretrain', train=True, plot_pretrain=pretrain_on)
+        self.evaluate_iters(
+            self.num_samples, 'pretrain', train=False, plot_pretrain=pretrain_on)
+        plt.plot(train_pretrain_losses, label='train')
+        plt.plot(test_pretrain_losses, label='test')
+        plt.yscale('log')
+        plt.xlabel('iterations')
+        plt.ylabel('full train loss')
+        plt.legend()
+        plt.savefig('losses.pdf')
+        plt.clf()
 
     def pretrain(self):
         print("Pretraining...")
