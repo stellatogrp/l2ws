@@ -1,11 +1,9 @@
 import functools
 import hydra
 import cvxpy as cp
-from l2ws.scs_problem import SCSinstance, scs_jax
+from l2ws.scs_problem import SCSinstance
 import numpy as np
-import pdb
 from l2ws.launcher import Workspace
-from scipy import sparse
 import jax.numpy as jnp
 from scipy.sparse import csc_matrix
 import jax.scipy as jsp
@@ -17,8 +15,7 @@ import logging
 import yaml
 from jax import vmap
 import pandas as pd
-from utils.generic_utils import vec_symm, unvec_symm
-from scipy.spatial import distance_matrix
+from utils.generic_utils import vec_symm
 
 
 plt.rcParams.update(
@@ -52,12 +49,13 @@ def run(run_cfg):
 
     2. and 3. are stored in data files and the run_cfg holds the location
 
-    it will create the l2a_model
+    it will create the l2ws_model
     """
     datetime = run_cfg.data.datetime
     orig_cwd = hydra.utils.get_original_cwd()
     example = "robust_pca"
-    data_yaml_filename = f"{orig_cwd}/outputs/{example}/aggregate_outputs/{datetime}/data_setup_copied.yaml"
+    folder = f"{orig_cwd}/outputs/{example}/aggregate_outputs/{datetime}"
+    data_yaml_filename = f"{folder}/data_setup_copied.yaml"
 
     # read the yaml file
     with open(data_yaml_filename, "r") as stream:
@@ -92,7 +90,7 @@ def run(run_cfg):
     low_2_high_dim
     '''
     cones = static_dict['cones_dict']
-    x_psd_size = cones['s'][0] # TOFIX in general
+    x_psd_size = cones['s'][0]
     y_psd_size = x_psd_size
     full_psd_size = int(x_psd_size * (x_psd_size + 1) / 2)
     n_x_non_psd = n - full_psd_size
@@ -106,7 +104,7 @@ def run(run_cfg):
     where_out = np.where(A_psd < 0)
     x_psd_indices = where_out[1]
 
-    y_psd_indices = n_y_non_psd + jnp.arange(int(y_psd_size * (y_psd_size + 1) / 2))     
+    y_psd_indices = n_y_non_psd + jnp.arange(int(y_psd_size * (y_psd_size + 1) / 2))
 
     low_2_high_dim = functools.partial(low_2_high_dim_prediction,
                                        n_x_low=n_x_low,
@@ -177,7 +175,8 @@ def setup_probs(setup_cfg):
         A_star = None
     B_star = np.random.rand(q, cfg.low_rank)
     for i in range(N):
-        thetas_np[i, :] = sample_theta(p, q, cfg.sparse_frac, cfg.low_rank, A_star=A_star, B_star=B_star)
+        thetas_np[i, :] = sample_theta(
+            p, q, cfg.sparse_frac, cfg.low_rank, A_star=A_star, B_star=B_star)
     thetas = jnp.array(thetas_np)
 
     """
@@ -192,9 +191,6 @@ def setup_probs(setup_cfg):
     t1 = time.time()
     log.info(f"finished static canonicalization - took {t1-t0} seconds")
 
-    M = out_dict["M"]
-    algo_factor = out_dict["algo_factor"]
-    # cones_array = out_dict["cones_array"]
     cones_dict = out_dict["cones_dict"]
     A_sparse, P_sparse = out_dict["A_sparse"], out_dict["P_sparse"]
 
@@ -225,15 +221,15 @@ def setup_probs(setup_cfg):
     tol_abs = cfg.solve_acc_abs
     tol_rel = cfg.solve_acc_rel
     # solver = scs.SCS(data, cones_dict, eps_abs=tol_abs, eps_rel=tol_rel)
-    solver = scs.SCS(data, cones_dict, eps_abs=tol_abs, eps_rel=tol_rel, 
-                verbose=True,
-                normalize=False,
-                max_iters=int(1e5),
-                scale=0.1,
-                adaptive_scale=False,
-                alpha=1.0,
-                rho_x=1e-6,
-                acceleration_lookback=0)
+    solver = scs.SCS(data, cones_dict, eps_abs=tol_abs, eps_rel=tol_rel,
+                     verbose=True,
+                     normalize=False,
+                     max_iters=int(1e5),
+                     scale=0.1,
+                     adaptive_scale=False,
+                     alpha=1.0,
+                     rho_x=1e-6,
+                     acceleration_lookback=0)
     solve_times = np.zeros(N)
     x_stars = jnp.zeros((N, n))
     y_stars = jnp.zeros((N, m))
@@ -285,7 +281,6 @@ def setup_probs(setup_cfg):
         # x_jax, y_jax, s_jax = scs_jax(data, iters=1000)
 
         ############
-        # qq = single_q(x_init_mat[0, :], m, n, cfg.T, cfg.nx, cfg.nu, cfg.state_box, cfg.control_box, Ad)
 
     # resave the data??
     # print('saving final data...', flush=True)
@@ -317,15 +312,10 @@ def setup_probs(setup_cfg):
     plt.savefig("y_stars.pdf")
     plt.clf()
 
-
     # save plot of first 5 parameters
     for i in range(5):
         plt.plot(thetas[i, :])
     plt.savefig("thetas.pdf")
-
-    x_dist = distance_matrix(x_stars, x_stars)
-    y_dist = distance_matrix(y_stars, y_stars)
-    pdb.set_trace()
 
 
 def static_canon(p, q):
@@ -433,8 +423,8 @@ def low_2_high_dim_prediction(nn_output, X_list, Y_list, n_x_low, n_y_low,
     # sum_alpha_Y = jnp.sum([alpha_y * Y_list[i] for i in range(ty)])
     print('sum_alpha_X', sum_alpha_X)
     print('sum_alpha_Y', sum_alpha_Y)
-    X_psd = sum_uuT + sum_alpha_X  #+ 10 * jnp.eye(x_psd_size)
-    Y_psd = sum_vvT + sum_alpha_Y  #+ 10 * jnp.eye(x_psd_size)
+    X_psd = sum_uuT + sum_alpha_X  # + 10 * jnp.eye(x_psd_size)
+    Y_psd = sum_vvT + sum_alpha_Y  # + 10 * jnp.eye(x_psd_size)
     X_vec = vec_symm(X_psd)
     Y_vec = vec_symm(Y_psd)
     print('X_vec', X_vec)
@@ -484,12 +474,3 @@ def single_q(thetas, m, n, p, q):
     qvec = qvec.at[n:].set(b)
 
     return qvec
-
-
-def symmvec(A):
-    # todo
-    return jnp.triu(A)
-
-
-if __name__ == "__main__":
-    test_robust_pca()

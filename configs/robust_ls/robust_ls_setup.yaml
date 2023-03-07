@@ -3,8 +3,8 @@ n_orig: 500
 rho: 1
 solve_acc_abs: 1e-4
 solve_acc_rel: 0
-N_train: 10000
-N_test: 2000
+N_train: 100
+N_test: 20
 seed: 42
 b_nominal: 0
 b_range: 2

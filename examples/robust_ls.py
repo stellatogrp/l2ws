@@ -1,11 +1,10 @@
-import functools
+from functools import partial
 import hydra
 import cvxpy as cp
 from l2ws.scs_problem import SCSinstance, scs_jax
 import numpy as np
 import pdb
 from l2ws.launcher import Workspace
-from scipy import sparse
 import jax.numpy as jnp
 from scipy.sparse import csc_matrix
 import jax.scipy as jsp
@@ -15,7 +14,7 @@ import os
 import scs
 import logging
 import yaml
-from jax import vmap, jit
+from jax import vmap
 import pandas as pd
 
 
@@ -100,7 +99,8 @@ def run(run_cfg):
     datetime = run_cfg.data.datetime
     orig_cwd = hydra.utils.get_original_cwd()
     example = "robust_ls"
-    data_yaml_filename = f"{orig_cwd}/outputs/{example}/aggregate_outputs/{datetime}/data_setup_copied.yaml"
+    folder = f"{orig_cwd}/outputs/{example}/aggregate_outputs/{datetime}"
+    data_yaml_filename = f"{folder}/data_setup_copied.yaml"
 
     # read the yaml file
     with open(data_yaml_filename, "r") as stream:
@@ -129,11 +129,11 @@ def run(run_cfg):
 
     static_dict = static_canon(A, rho)
 
-    get_q_single = functools.partial(single_q,
-                                     rho=setup_cfg['rho'],
-                                     m_orig=setup_cfg['m_orig'],
-                                     n_orig=setup_cfg['n_orig'],
-                                     )
+    get_q_single = partial(single_q,
+                           rho=setup_cfg['rho'],
+                           m_orig=setup_cfg['m_orig'],
+                           n_orig=setup_cfg['n_orig'],
+                           )
 
     get_q = vmap(get_q_single, in_axes=0, out_axes=0)
 
@@ -169,9 +169,9 @@ def setup_probs(setup_cfg):
     t1 = time.time()
     log.info(f"finished static canonicalization - took {t1-t0} seconds")
 
-    M = out_dict["M"]
-    algo_factor = out_dict["algo_factor"]
-    cones_array = out_dict["cones_array"]
+    # M = out_dict["M"]
+    # algo_factor = out_dict["algo_factor"]
+    # cones_array = out_dict["cones_array"]
     cones_dict = out_dict["cones_dict"]
     A_sparse, P_sparse = out_dict["A_sparse"], out_dict["P_sparse"]
 
@@ -246,20 +246,19 @@ def setup_probs(setup_cfg):
         solve_times[i] = scs_instance.solve_time
 
         # check with our jax implementation
-        # P_jax = jnp.array(P_sparse.todense())
-        # A_jax = jnp.array(A_sparse.todense())
-        # c_jax, b_jax = jnp.array(c), jnp.array(b)
-        # data = dict(P=P_jax, A=A_jax, b=b_jax, c=c_jax, cones=cones_dict)
+        P_jax = jnp.array(P_sparse.todense())
+        A_jax = jnp.array(A_sparse.todense())
+        c_jax, b_jax = jnp.array(c), jnp.array(b)
+        data = dict(P=P_jax, A=A_jax, b=b_jax, c=c_jax, cones=cones_dict)
         # disturbance_x = np.random.normal(size=(n))
         # disturbance_x = disturbance_x / np.linalg.norm(disturbance_x) * 1e-2
         # disturbance_y = np.random.normal(size=(m))
         # disturbance_y = disturbance_y / np.linalg.norm(disturbance_y) * 1e-2
         # data['x'] = x_stars[i, :] + disturbance_x
         # data['y'] = y_stars[i, :] + disturbance_y
-        # x_jax, y_jax, s_jax = scs_jax(data, iters=1000)
+        x_jax, y_jax, s_jax = scs_jax(data, iters=1000)
 
         ############
-        # qq = single_q(x_init_mat[0, :], m, n, cfg.T, cfg.nx, cfg.nu, cfg.state_box, cfg.control_box, Ad)
 
     # resave the data??
     # print('saving final data...', flush=True)
@@ -331,9 +330,9 @@ def static_canon(A, rho):
                 s.t. -x + s_1 == 0              (n)
                      -(u, Ax) + s_2 == (-b, 0)  (m, 1)
                      -(v, x) + s_3 == 0         (n, 1)
-                     s_1 \in R^n+
-                     s_2 \in SOC(m, 1)
-                     s_3 \in SOC(n, 1)
+                     s_1 in R^n+
+                     s_2 in SOC(m, 1)
+                     s_3 in SOC(n, 1)
 
     in total:
     m = 2 * m_orig + n_orig + 2 constraints

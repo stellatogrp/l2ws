@@ -202,13 +202,14 @@ def test_kalman():
     solver = scs.SCS(data, cones_dict, eps_abs=tol, eps_rel=tol)
     sol = solver.solve()
     x = sol["x"]
+    print('x', x)
 
-    x3 = x[: T * nx]
-    w3 = x[T * nx: T * (nx + nu)]
-    s3 = x[T * (nx + nu): T * (nx + nu + 1)]
-    v3 = x[T * (nx + nu + 1):-2*T]
-    u3 = x[-T*2:-T]
-    z3 = x[-T:]
+    # x3 = x[: T * nx]
+    # w3 = x[T * nx: T * (nx + nu)]
+    # s3 = x[T * (nx + nu): T * (nx + nu + 1)]
+    # v3 = x[T * (nx + nu + 1):-2*T]
+    # u3 = x[-T*2:-T]
+    # z3 = x[-T:]
 
     # (x_t, w_t, s_t, v_t,  u_t, z_t)
 
@@ -223,12 +224,12 @@ def test_kalman():
     # data['x'], data['y'] = sol['x'], sol['y']
 
     xp, yd, sp = scs_jax(data, iters=1000)
-    x4 = xp[: T * nx]
-    w4 = xp[T * nx: T * (nx + nu)]
-    s4 = xp[T * (nx + nu): T * (nx + nu + 1)]
-    v4 = xp[T * (nx + nu + 1):-2*T]
-    u4 = xp[-T*2:-T]
-    z4 = xp[-T:]
+    # x4 = xp[: T * nx]
+    # w4 = xp[T * nx: T * (nx + nu)]
+    # s4 = xp[T * (nx + nu): T * (nx + nu + 1)]
+    # v4 = xp[T * (nx + nu + 1):-2*T]
+    # u4 = xp[-T*2:-T]
+    # z4 = xp[-T:]
     pdb.set_trace()
 
 
@@ -308,9 +309,9 @@ def lighten_color(color, amount=0.5):
     >> lighten_color((.3,.55,.1), 0.5)
     """
 
-    try:
+    if color in mc.cnames.keys():
         c = mc.cnames[color]
-    except:
+    else:
         c = color
     c = colorsys.rgb_to_hls(*mc.to_rgb(c))
     return colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
@@ -320,24 +321,16 @@ def plot_positions_overlay(traj, labels, axis=None, filename=None):
     '''
     show point clouds for true, observed, and recovered positions
     '''
-    # matplotlib.rcParams.update({'font.size': 14})
     n = len(traj)
 
     colors = ['green', 'red']
-    # pdb.set_trace()
-    for i in range(len(traj) - 2):
-        shade = (i + 1) / (len(traj) - 2)
-        colors.append(lighten_color('blue', shade))
 
-    # fig, ax = plt.subplots(1, n, sharex=True, sharey=True, figsize=(12, 5))
-    # if n == 1:
-    #     ax = [ax]
+    for i in range(n - 2):
+        shade = (i + 1) / (n - 2)
+        colors.append(lighten_color('blue', shade))
 
     for i, x in enumerate(traj):
         plt.plot(x[0, :], x[1, :], 'o', color=colors[i], alpha=.5, label=labels[i])
-        # ax[i].set_title(labels[i])
-        # if axis:
-        #     ax[i].axis(axis)
 
     plt.legend()
 
@@ -442,9 +435,7 @@ def simulate_fwd(w_mat, v_mat, T, gamma, dt, B_const):
 
 def get_x_w_true(theta, T, gamma, dt):
     A, B, C = robust_kalman_setup(gamma, dt)
-    nx, nu, no = 4, 2, 2
-    single_len = nx + nu + no + 3
-    nvars = single_len * T
+    nu, no = 2, 2
 
     # extract (w, v)
 
@@ -454,7 +445,7 @@ def get_x_w_true(theta, T, gamma, dt):
     w = theta[: T * nu]
     v = theta[T * nu:]
     w_mat = jnp.reshape(w, (nu, T))
-    v_mat = jnp.reshape(w, (no, T))
+    v_mat = jnp.reshape(v, (no, T))
     # y_mat = simulate_fwd(w_mat, v_mat, T, gamma, dt)
     x = jnp.zeros((4, T + 1))
     y_mat = jnp.zeros((2, T))
@@ -463,7 +454,7 @@ def get_x_w_true(theta, T, gamma, dt):
     for t in range(T):
         y_mat = y_mat.at[:, t].set(C.dot(x[:, t]) + v_mat[:, t])
         x = x.at[:, t + 1].set(A.dot(x[:, t]) + B.dot(w_mat[:, t]))
-    y = jnp.ravel(y_mat.T)
+    # y = jnp.ravel(y_mat.T)
     return x, w_mat
 
 
@@ -565,7 +556,8 @@ def run(run_cfg):
     datetime = run_cfg.data.datetime
     orig_cwd = hydra.utils.get_original_cwd()
     example = "robust_kalman"
-    data_yaml_filename = f"{orig_cwd}/outputs/{example}/aggregate_outputs/{datetime}/data_setup_copied.yaml"
+    folder = f"{orig_cwd}/outputs/{example}/aggregate_outputs/{datetime}"
+    data_yaml_filename = f"{folder}/data_setup_copied.yaml"
 
     # read the yaml file
     with open(data_yaml_filename, "r") as stream:
@@ -616,7 +608,6 @@ def setup_probs(setup_cfg):
     cfg = setup_cfg
     N_train, N_test = cfg.N_train, cfg.N_test
     N = N_train + N_test
-    nx, nu, no = 4, 2, 2
 
     """
     - canonicalize according to whether we have states or not
@@ -636,22 +627,12 @@ def setup_probs(setup_cfg):
     t1 = time.time()
     log.info(f"finished static canonicalization - took {t1-t0} seconds")
 
-    M = out_dict["M"]
-    algo_factor = out_dict["algo_factor"]
-    cones_array = out_dict["cones_array"]
     cones_dict = out_dict["cones_dict"]
-    Bd = out_dict["Bd"]
-    Ad = out_dict["A_dynamics"]
     A_sparse, P_sparse = out_dict["A_sparse"], out_dict["P_sparse"]
 
-    """
-    if with_states, b is updated
-    if w/out states, c is updated
-    """
     b, c = out_dict["b"], out_dict["c"]
 
     m, n = A_sparse.shape
-    # cones_dict = dict(z=int(cones_array[0]), l=int(cones_array[1]))
 
     """
     save output to output_filename
@@ -670,15 +651,15 @@ def setup_probs(setup_cfg):
     data = dict(P=P_sparse, A=A_sparse, b=b, c=c)
     tol_abs = cfg.solve_acc_abs
     tol_rel = cfg.solve_acc_rel
-    solver = scs.SCS(data, 
-                     cones_dict, 
+    solver = scs.SCS(data,
+                     cones_dict,
                      normalize=False,
                      scale=1,
                      adaptive_scale=False,
                      rho_x=1,
                      alpha=1,
                      acceleration_lookback=0,
-                     eps_abs=tol_abs, 
+                     eps_abs=tol_abs,
                      eps_rel=tol_rel)
     solve_times = np.zeros(N)
     x_stars = jnp.zeros((N, n))
@@ -689,16 +670,9 @@ def setup_probs(setup_cfg):
     """
     sample theta and get y for each problem
     """
-    # x_init_mat initialized uniformly between x_init_box*[-1,1]
-    # x_init_mat = cfg.x_init_box * (2 * np.random.rand(N, cfg.nx) - 1)
-    # thetas_np = np.zeros((N, cfg.T * (nu + no)))
-    # thetas_np = np.zeros((N, cfg.T * no))
-    # for i in range(N):
-    #     thetas_np[i, :] = sample_theta(cfg.T, cfg.sigma, cfg.p, cfg.gamma, cfg.dt)
-    rotate = True
     out = sample_theta(N, cfg.T, cfg.sigma, cfg.p, cfg.gamma, cfg.dt,
                        cfg.w_noise_var, cfg.y_noise_var, cfg.B_const)
-    thetas_np, y_mat, x_trues, w_trues, y_mat_rotated, x_trues_rotated, w_trues_rotated, angles = out
+    thetas_np, y_mat, x_trues, w_trues, y_mat_rotated, x_trues_rotated, w_trues_rot, angles = out
     thetas = jnp.array(thetas_np)
 
     batch_q = vmap(single_q, in_axes=(0, None, None, None, None, None), out_axes=(0))
@@ -710,7 +684,6 @@ def setup_probs(setup_cfg):
     for i in range(N):
         log.info(f"solving problem number {i}")
         print(f"solving problem number {i}")
-        # b[: cfg.nx] = Ad @ x_init_mat[i, :]
 
         # update
         b = np.array(q_mat[i, n:])
@@ -747,7 +720,6 @@ def setup_probs(setup_cfg):
         # x_jax, y_jax, s_jax = scs_jax(data, iters=1000)
 
         ############
-        # qq = single_q(x_init_mat[0, :], m, n, cfg.T, cfg.nx, cfg.nu, cfg.state_box, cfg.control_box, Ad)
         # xx = scs_instance.x_star
         # yy = scs_instance.y_star
 
@@ -802,14 +774,9 @@ def setup_probs(setup_cfg):
     os.mkdir("positions_plots")
     for i in range(5):
         x_state = x_stars[i, :cfg.T * 4]
-        x_control = x_stars[i, cfg.T * 4: cfg.T * 6 - 2]
         x1_kalman = x_state[0::4]
         x2_kalman = x_state[1::4]
         x_kalman = jnp.stack([x1_kalman, x2_kalman])
-
-        x_state_mat = jnp.reshape(x_state, (cfg.T, 4)).T
-        x_control_mat = jnp.reshape(x_control, (cfg.T - 1, 2)).T
-        # y_mat = jnp.reshape(thetas[i, :], (cfg.T, 2)).T
 
         # plot original
         # rotate back the output, x_kalman
@@ -820,28 +787,15 @@ def setup_probs(setup_cfg):
 
         # plot original
         plot_positions_overlay([x_trues[i, :, :-1], x_kalman_rotated, y_mat[i, :, :]],
-                       ['True', 'KF recovery', 'Noisy'], filename=f"positions_plots/positions_{i}.pdf")
-        # plot_state(ts, (x_trues[i, :, :-1], w_trues[i, :, :-1]),
-        #            (x_state_mat, x_control_mat), filename=f"states_plots/positions_{i}.pdf")
-        # plot_positions([x_trues[i, :, :-1], x_kalman_rotated, y_mat[i, :, :]],
-        #                ['True', 'KF recovery', 'Noisy'], filename=f"positions_plots/positions_{i}.pdf")
+                               ['True', 'KF recovery', 'Noisy'],
+                               filename=f"positions_plots/positions_{i}.pdf")
 
-        # plot rotated
-        # plot_state(ts, (x_trues_rotated[i, :, :-1], w_trues_rotated[i, :, :-1]),
-        #            (x_state_mat, x_control_mat), filename=f"states_plots/positions_{i}_rotated.pdf")
-        # plot_positions([x_trues_rotated[i, :, :-1], x_kalman, y_mat_rotated[i, :, :]],
-        #                ['True', 'KF recovery', 'Noisy'], filename=f"positions_plots/positions_{i}_rotated.pdf")
         plot_positions_overlay([x_trues_rotated[i, :, :-1], x_kalman, y_mat_rotated[i, :, :]],
-                       ['True', 'KF recovery', 'Noisy'], filename=f"positions_plots/positions_{i}_rotated.pdf")
-    pdb.set_trace()
+                               ['True', 'KF recovery', 'Noisy'],
+                               filename=f"positions_plots/positions_{i}_rotated.pdf")
 
 
 def custom_visualize_fn(x_primals, x_stars, thetas, iterates, visual_path, T):
-    # ts, delt = np.linspace(0, time_limit, T-1, endpoint=True, retstep=True)
-
-    # plot rotated
-    # plot_state(ts, (x_trues_rotated[i, :, :-1], w_trues_rotated[i, :, :-1]),
-    #             (x_state_mat, x_control_mat), filename=f"states_plots/positions_{i}_rotated.pdf")
     num = 5
     y_mat_rotated = jnp.reshape(thetas[:num, :], (num, T, 2))
     for i in range(5):
@@ -902,9 +856,9 @@ def get_full_x(x0, x_w, y, T, Ad, Bd, rho):
 def static_canon(T, gamma, dt, mu, rho, B_const):
     """
     variables
-    (x_t, w_t, s_t, v_t,  u_t, z_t) \in (nx + nu + no + 3)
+    (x_t, w_t, s_t, v_t,  u_t, z_t) in (nx + nu + no + 3)
     (nx,  nu,  1,   no,   no, 1, 1)
-    min \sum_{i=0}^{T-1} ||w_t||_2^2 + mu (u_t+rho*z_t^2)
+    min sum_{i=0}^{T-1} ||w_t||_2^2 + mu (u_t+rho*z_t^2)
         s.t. x_{t+1} = Ax_t + Bw_t  t=0,...,T-2 (dyn)
              y_t = Cx_t + v_t       t=0,...,T-1 (obs)
              u_t + z_t = s_t        t=0,...,T-1 (aux)
@@ -945,9 +899,6 @@ def static_canon(T, gamma, dt, mu, rho, B_const):
     c[-2 * T: -T] = 2 * mu
 
     # dyn constraints
-    # Ax = sparse.kron(sparse.eye(T), -sparse.eye(nx)) + sparse.kron(
-    #     sparse.eye(T, k=-1), Ad
-    # )
     Ax = sparse.kron(sparse.eye(T), -sparse.eye(nx)) + sparse.kron(
         sparse.eye(T, k=-1), Ad
     )
@@ -957,7 +908,6 @@ def static_canon(T, gamma, dt, mu, rho, B_const):
     Bw = sparse.kron(sparse.eye(T), Bd)
     bw = Bw.todense()
     bw = bw[:(T-1)*nx, :]
-    # A_dyn = np.zeros((T * nx, nvars))
     A_dyn = np.zeros(((T-1) * nx, nvars))
     A_dyn[:, :w_start] = Ax.todense()
 

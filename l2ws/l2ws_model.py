@@ -1,4 +1,3 @@
-import copy
 from jax import jit, vmap
 import jax.numpy as jnp
 import jax
@@ -8,11 +7,9 @@ import time
 from jaxopt import OptaxSolver
 from utils.nn_utils import init_network_params, \
     predict_y, init_matrix_params
-from utils.generic_utils import vec_symm, unvec_symm
-import pickle as pkl
+from utils.generic_utils import unvec_symm
 import numpy as np
 import matplotlib.pyplot as plt
-import pdb
 import pandas as pd
 from jax.config import config
 from scipy.spatial import distance_matrix
@@ -296,7 +293,8 @@ class L2WSmodel(object):
         test_cluster_indices = get_indices(self.u_stars_test, 'test')
         return X_list, Y_list, train_cluster_indices, test_cluster_indices
 
-    def pretrain_alphas(self, num_iters, n_xy_low, share_all=False, stepsize=.001, method='adam', batches=10):
+    def pretrain_alphas(self, num_iters, n_xy_low, share_all=False, stepsize=.001, method='adam',
+                        batches=10):
         def pretrain_loss(params, inputs, targets):
             nn_output = self.batched_predict_y(params, inputs)
             if share_all:
@@ -360,7 +358,8 @@ class L2WSmodel(object):
         self.state = state
         return pretrain_losses, pretrain_test_losses
 
-    def train_full(self, factor, proj, k, num_iters, stepsize=.001, method='adam', df_fulltrain=None, batches=1):
+    def train_full(self, factor, proj, k, num_iters, stepsize=.001, method='adam',
+                   df_fulltrain=None, batches=1):
         def fixed_point(z_init, factor, q):
             u_tilde = lin_sys_solve(factor, z_init - q)
             u_temp = (2*u_tilde - z_init)
@@ -511,8 +510,8 @@ class L2WSmodel(object):
         """
         this method decays the learning rate upon hitting a plateau
             on the training loss
-        self.avg_window_plateau: take the last avg_window number of epochs and compared it against the previous
-            avg_window number of epochs to compare
+        self.avg_window_plateau: take the last avg_window number of epochs and compared it
+            against the previous avg_window number of epochs to compare
         self.plateau_decay_factor: multiplicative factor we decay the learning rate by
         self.plateau_tolerance: the tolerance condition decrease to check if we should decrease
 
@@ -625,7 +624,7 @@ def create_loss_fn(input_dict):
     static_flag = input_dict['static_flag']
     proj = input_dict['proj']
 
-    m, n = input_dict['m'], input_dict['n']
+    n = input_dict['n']
     bypass_nn = input_dict['bypass_nn']
     diff_required = input_dict['diff_required']
     angle_anchors = input_dict['angle_anchors']

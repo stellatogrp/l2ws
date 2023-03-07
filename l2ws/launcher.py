@@ -7,15 +7,12 @@ import pandas as pd
 from l2ws.l2ws_model import L2WSmodel
 import jax.numpy as jnp
 import jax.scipy as jsp
-from jax import jit, vmap
+from jax import jit
 import hydra
-import pdb
 import time
 import jax
-from jax import random
 from scipy.spatial import distance_matrix
-from functools import partial
-from l2ws.algo_steps import create_projection_fn
+from l2ws.algo_steps import create_projection_fn, get_psd_sizes
 from utils.generic_utils import sample_plot, setup_permutation
 import scs
 from scipy.sparse import csc_matrix
@@ -149,55 +146,11 @@ class Workspace:
         self.train_unrolls = cfg.train_unrolls
         eval_unrolls = cfg.train_unrolls
 
-        # zero_cone, nonneg_cone = cones['z'], cones['l']
+        self.proj = create_projection_fn(cones, n)
 
-        # soc = 'q' in cones.keys() and len(cones['q']) > 0
-        # sdp_ = 's' in cones.keys() and len(cones['s']) > 0
+        psd_sizes = get_psd_sizes(cones)
 
-        # zero_cone_int = int(zero_cone)
-        # nonneg_cone_int = int(nonneg_cone)
-        # if soc:
-        #     num_soc = len(cones['q'])
-        #     soc_total = sum(cones['q'])
-        #     soc_cones_array = np.array(cones['q'])
-        #     soc_size = soc_cones_array[0]
-        #     soc_proj_single_batch = vmap(soc_proj_single, in_axes=(0), out_axes=(0))
-        # else:
-        #     soc_total = 0
-        # if sdp_:
-        #     num_sdp = len(cones['s'])
-        #     sdp_total = sum(cones['s'])
-        #     sdp_cones_array = np.array(cones['s'])
-        #     sdp_size = int(sdp_cones_array[0] * (sdp_cones_array[0]+1) / 2)
-        #     sdp_proj_single_dim = partial(sdp_proj_single, dim=sdp_cones_array[0])
-        #     sdp_proj_single_batch = vmap(sdp_proj_single_dim, in_axes=(0), out_axes=(0))
-        #     self.psd_size = sdp_size
-        # else:
-        #     self.psd_size = 0
-
-        # @jit
-        # def proj(input):
-        #     nonneg = jnp.clip(input[n+zero_cone_int:n+zero_cone_int+nonneg_cone_int], a_min=0)
-        #     projection = jnp.concatenate([input[:n+zero_cone_int], nonneg])
-        #     if soc:
-        #         socp = jnp.zeros(soc_total)
-        #         soc_input = input[n+zero_cone_int+nonneg_cone_int:n +
-        #                           zero_cone_int+nonneg_cone_int+soc_total]
-        #         soc_input_reshaped = jnp.reshape(soc_input, (num_soc, soc_size))
-        #         soc_out_reshaped = soc_proj_single_batch(soc_input_reshaped)
-        #         socp = jnp.ravel(soc_out_reshaped)
-        #         projection = jnp.concatenate([projection, socp])
-        #     if sdp_:
-        #         sdp = jnp.zeros(sdp_total)
-        #         sdp_input = input[n + zero_cone_int+nonneg_cone_int+soc_total:]
-        #         sdp_input_reshaped = jnp.reshape(sdp_input, (num_sdp, sdp_size))
-        #         sdp_out_reshaped = sdp_proj_single_batch(sdp_input_reshaped)
-        #         sdp = jnp.ravel(sdp_out_reshaped)
-        #         projection = jnp.concatenate([projection, sdp])
-        #     return projection
-
-        out = create_projection_fn(cones, n)
-        self.proj, psd_sizes = out[0], out[1]
+        # self.proj, psd_sizes = out[0], out[1]
         self.psd_size = psd_sizes[0]
         sdp_bool = self.psd_size > 0
 
@@ -596,7 +549,8 @@ class Workspace:
         self.evaluate_iters(
             self.num_samples, col, train=False, plot_pretrain=pretrain_on)
 
-    def write_train_results(self, loop_size, prev_batches, epoch_train_losses, time_train_per_epoch):
+    def write_train_results(self, loop_size, prev_batches, epoch_train_losses,
+                            time_train_per_epoch):
         for batch in range(loop_size):
             start_window = prev_batches - 10 + batch
             end_window = prev_batches + batch
