@@ -95,17 +95,17 @@ def scs_jax(data, hsde=True, iters=5000, jit=True, plot=False):
     iter_losses = jnp.zeros(iters)
 
     if hsde:
-        z_all = jnp.zeros((iters, m + n + 1))
-        u_tilde_all = jnp.zeros((iters, m + n + 1))
-        u_all = jnp.zeros((iters, m + n + 1))
-        v_all = jnp.zeros((iters, m + n))
+        vec_length = m + n + 1
         r = lin_sys_solve(algo_factor, q)
         fp = partial(fixed_point_hsde, homogeneous=True, r=r, factor=algo_factor, proj=proj)
     else:
-        z_all = jnp.zeros((iters, m + n))
-        u_tilde_all = jnp.zeros((iters, m + n))
-        u_all = jnp.zeros((iters, m + n))
+        vec_length = m + n
         fp = partial(fixed_point, q=q, factor=algo_factor, proj=proj)
+
+    z_all = jnp.zeros((iters, vec_length))
+    u_tilde_all = jnp.zeros((iters, vec_length))
+    u_all = jnp.zeros((iters, vec_length))
+    v_all = jnp.zeros((iters, vec_length))
 
     def body_fn(i, val):
         z, iter_losses, z_all, u_all, u_tilde_all, v_all = val
@@ -119,38 +119,39 @@ def scs_jax(data, hsde=True, iters=5000, jit=True, plot=False):
         val = z_next, iter_losses, z_all, u_all, u_tilde_all, v_all
         return val
 
-    # first step: iteration 0
-    # we set homogeneous = False for the first iteration
-    #   to match the SCS code which has the global variable FEASIBLE_ITERS
-    #   which is set to 1
-    z_next, u, u_tilde, v = fixed_point_hsde(z, False, r, algo_factor, proj)
-    z_all = z_all.at[0, :].set(z)
-    u_all = u_all.at[0, :].set(u)
-    u_tilde_all = u_tilde_all.at[0, :].set(u_tilde)
-    iter_losses = iter_losses.at[0].set(jnp.linalg.norm(z_next - z))
-    z = z_next
+    if hsde:
+        # first step: iteration 0
+        # we set homogeneous = False for the first iteration
+        #   to match the SCS code which has the global variable FEASIBLE_ITERS
+        #   which is set to 1
+        z_next, u, u_tilde, v = fixed_point_hsde(z, False, r, algo_factor, proj)
+        z_all = z_all.at[0, :].set(z)
+        u_all = u_all.at[0, :].set(u)
+        u_tilde_all = u_tilde_all.at[0, :].set(u_tilde)
+        v_all = v_all.at[0, :].set(v)
+        iter_losses = iter_losses.at[0].set(jnp.linalg.norm(z_next - z))
+        z = z_next
 
-    # fori_loop for iterations 1, ..., iters - 1
+    # fori_loop for iterations start, ..., iters - 1
     # for the rest of the iterations, we set homogeneous = False
     #   which forces us to use the root_calc function
+    start = 1 if hsde else 0
     init_val = z, iter_losses, z_all, u_all, u_tilde_all, v_all
     if jit:
-        val = jax.lax.fori_loop(1, iters, body_fn, init_val)
+        val = jax.lax.fori_loop(start, iters, body_fn, init_val)
     else:
-        val = fori_loop(1, iters, body_fn, init_val)
+        val = fori_loop(start, iters, body_fn, init_val)
 
     z, iter_losses, z_all, u_all, u_tilde_all, v_all = val
 
-    # # one more fixed point iteration
-    # z_next, u, v = fp(z)
-    z, u, v = z_all[-1, :], u_all[-1, :], v_all[-1, :]
+    u_final, v_final = u_all[-1, :], v_all[-1, :]
 
     # extract the primal and dual variables
     if hsde:
-        tao = u[-1]
-        x, y, s = u[:n] / tao, u[n:-1] / tao, v[n:] / tao
+        tao = u_final[-1]
+        x, y, s = u_final[:n] / tao, u_final[n:-1] / tao, v_final[n:-1] / tao
     else:
-        x, y, s = u[:n], u[n:], v[n:]
+        x, y, s = u_final[:n], u_final[n:], v_final[n:]
 
     if plot:
         plt.plot(iter_losses, label='fixed point residuals')
@@ -160,7 +161,7 @@ def scs_jax(data, hsde=True, iters=5000, jit=True, plot=False):
 
     # populate the sol dictionary
     sol = {}
-    sol['fp_residuals'] = iter_losses
+    sol['fixed_point_residuals'] = iter_losses
     sol['x'], sol['y'], sol['s'] = x, y, s
     return sol
 

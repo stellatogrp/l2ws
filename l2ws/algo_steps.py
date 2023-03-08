@@ -161,9 +161,6 @@ def fixed_point_hsde(z_init, homogeneous, r, factor, proj):
     w = proj(w_temp)
     tao = jnp.clip(2 * tao_tilde - eta, a_min=0)
 
-    # for s extraction - not needed for algorithm
-    v = w + mu - 2 * w_tilde
-
     # mu, eta update
     mu = mu + w - w_tilde
     eta = eta + tao - tao_tilde
@@ -172,6 +169,9 @@ def fixed_point_hsde(z_init, homogeneous, r, factor, proj):
     z = jnp.concatenate([mu, jnp.array([eta])])
     u = jnp.concatenate([w, jnp.array([tao])])
     u_tilde = jnp.concatenate([w_tilde, jnp.array([tao_tilde])])
+
+    # for s extraction - not needed for algorithm
+    v = u + z_init - 2 * u_tilde
 
     # z and u have size (m + n + 1)
     # v has shape (m + n)
