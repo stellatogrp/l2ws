@@ -124,7 +124,6 @@ def run(run_cfg):
     rho = setup_cfg['rho']
 
     # create the nominal matrix A
-    # A = np.random.normal(size=(m_orig, n_orig))
     A = (np.random.rand(m_orig, n_orig) * 2) - 1
 
     static_dict = static_canon(A, rho)
@@ -315,8 +314,6 @@ def setup_probs(setup_cfg):
     plt.savefig("thetas.pdf")
     plt.clf()
 
-    pdb.set_trace()
-
 
 def static_canon(A, rho):
     """
@@ -335,7 +332,7 @@ def static_canon(A, rho):
                      s_3 in SOC(n, 1)
 
     in total:
-    m = 2 * m_orig + n_orig + 2 constraints
+    m = 2 * n_orig + m_orig + 2 constraints
     n = n_orig + 2 vars
 
     Assume that A is fixed from problem to problem
@@ -344,7 +341,7 @@ def static_canon(A, rho):
     c = (0, 1, rho)
     """
     m_orig, n_orig = A.shape
-    m, n = 2 * m_orig + n_orig + 2, n_orig + 2
+    m, n = 2 * n_orig + m_orig + 2, n_orig + 2
     A_dense = np.zeros((m, n))
     b = np.zeros(m)
 
@@ -407,5 +404,18 @@ def static_canon(A, rho):
     )
     return out_dict
 
-# if __name__ == "__main__":
-#     test_kalman()
+
+def random_robust_ls(m_orig, n_orig, rho, b_center, b_range, seed=42):
+    """
+    given dimensions, returns a random robust least squares problem
+    """
+    A = (np.random.rand(m_orig, n_orig) * 2) - 1
+    out = static_canon(A, rho)
+    c, b = out['c'], out['b']
+    P_sparse, A_sparse = out['P_sparse'], out['A_sparse']
+    P, A = jnp.array(P_sparse.todense()), jnp.array(A_sparse.todense())
+    cones = out['cones_dict']
+
+    b_rand_np = (2 * np.random.rand(m_orig) - 1) * b_range + b_center
+    b[n_orig:m_orig + n_orig] = np.array(b_rand_np)
+    return P, A, jnp.array(c), jnp.array(b), cones

@@ -63,7 +63,7 @@ class SCSinstance(object):
                 self.prob.solution.attr['solver_specific_stats']['s'])
 
 
-def scs_jax(data, hsde=True, iters=5000):
+def scs_jax(data, hsde=True, iters=5000, plot=False):
     P, A = data['P'], data['A']
     c, b = data['c'], data['b']
     cones = data['cones']
@@ -77,16 +77,14 @@ def scs_jax(data, hsde=True, iters=5000):
     proj = create_projection_fn(cones, n)
 
     key = random.PRNGKey(0)
-    if 'x' in data.keys() and 'y' in data.keys():
+    if 'x' in data.keys() and 'y' in data.keys() and 's' in data.keys():
         # warm start with u = (x, y)
-        u = jnp.concatenate([data['x'], data['y']])
+        z = jnp.concatenate([data['x'], data['y'] + data['s']])
         if hsde:
-            mu = M @ u + u + q
+            # mu = M @ u + u + q
 
             # we pick eta = 1 for feasibility of warm-start
-            z = jnp.concatenate([mu, jnp.array([1])])
-        else:
-            z = M @ u + u + q
+            z = jnp.concatenate([z, jnp.array([1])])
     else:
         if hsde:
             mu = 1 * random.normal(key, (m + n,))
@@ -97,39 +95,82 @@ def scs_jax(data, hsde=True, iters=5000):
     iter_losses = jnp.zeros(iters)
 
     if hsde:
+        z_all = jnp.zeros((iters, m + n + 1))
+        u_tilde_all = jnp.zeros((iters, m + n + 1))
+        u_all = jnp.zeros((iters, m + n + 1))
+        p_all = jnp.zeros((iters, m + n))
         r = lin_sys_solve(algo_factor, q)
-        fp = partial(fixed_point_hsde, r=r, factor=algo_factor, proj=proj)
+        fp = partial(fixed_point_hsde, root_plus_calc=True, r=r, factor=algo_factor, proj=proj)
     else:
+        z_all = jnp.zeros((iters, m + n))
+        u_tilde_all = jnp.zeros((iters, m + n))
+        u_all = jnp.zeros((iters, m + n))
         fp = partial(fixed_point, q=q, factor=algo_factor, proj=proj)
+    print('z0', z)
 
     def body_fn(i, val):
-        z, iter_losses = val
-        z_next, u, v = fp(z)
+        z, iter_losses, z_all, u_all, u_tilde_all, p_all = val
+        # z = z_init / jnp.linalg.norm(z_init)
+        z_next, u, u_tilde, v, p = fp(z)
         diff = jnp.linalg.norm(z_next - z)
         iter_losses = iter_losses.at[i].set(diff)
-        val = z_next, iter_losses
+        z_all = z_all.at[i, :].set(z_next)
+        u_all = u_all.at[i, :].set(u)
+        u_tilde_all = u_tilde_all.at[i, :].set(u_tilde)
+        p_all = p_all.at[i, :].set(p)
+        val = z_next, iter_losses, z_all, u_all, u_tilde_all, p_all
         return val
+    # import pdb
+    # pdb.set_trace()
 
-    init_val = z, iter_losses
-    val = jax.lax.fori_loop(0, iters, body_fn, init_val)
-    z, iter_losses = val
+    # first step
+    z, u, u_tilde, v, p = fixed_point_hsde(z, False, r, algo_factor, proj)
+    z_all = z_all.at[0, :].set(z)
+    u_all = u_all.at[0, :].set(u)
+    u_tilde_all = u_tilde_all.at[0, :].set(u_tilde)
+    print('u', u)
+    print('u_tilde', u_tilde)
+    print('z', z)
+
+    init_val = z, iter_losses, z_all, u_all, u_tilde_all, p_all
+
+    # jax loop
+    # val = jax.lax.fori_loop(1, iters, body_fn, init_val)
+
+    # non jit loop
+    def fori_loop(lower, upper, body_fun, init_val):
+        val = init_val
+        for i in range(lower, upper):
+            val = body_fun(i, val)
+        return val
+    val = fori_loop(1, iters, body_fn, init_val)
+
+    z, iter_losses, z_all, u_all, u_tilde_all, p_all = val
+    print('z_all', z_all)
+    print('u_tilde_all', u_tilde_all)
+    print('u_all', u_all)
+    print('p_all', p_all)
 
     # one more fixed point iteration
-    z_next, u, v = fp(z, q)
+    z_next, u, v = fp(z)
 
     # extract the primal and dual variables
     if hsde:
         tao = u[-1]
-        x, y, s = u[:n] / tao, u[n:] / tao, v[n:] / tao
+        x, y, s = u[:n] / tao, u[n:-1] / tao, v[n:] / tao
     else:
         x, y, s = u[:n], u[n:], v[n:]
 
-    plt.plot(iter_losses, label='fixed point residuals')
-    plt.yscale('log')
-    plt.legend()
-    plt.show()
+    if plot:
+        plt.plot(iter_losses, label='fixed point residuals')
+        plt.yscale('log')
+        plt.legend()
+        plt.show()
+    sol = {}
+    sol['fp_residuals'] = iter_losses
+    sol['x'], sol['y'], sol['s'] = x, y, s
 
-    return iter_losses, x, y, s
+    return sol
 
 
 def ruiz_equilibrate(M, num_passes=20):

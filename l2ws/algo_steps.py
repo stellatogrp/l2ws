@@ -94,9 +94,13 @@ def root_plus(mu, eta, p, r):
     the result is a closed-form solution involving the quadratic formula
         we take the positive root
     """
-    a = 1 + r @ r
-    b = r @ mu - 2 * r @ p - eta
+    TAU_FACTOR = 10
+    a = TAU_FACTOR + r @ r
+    b = r @ mu - 2 * r @ p - eta * TAU_FACTOR
     c = p @ (p - mu)
+    print('a', a)
+    print('b', b)
+    print('c', c)
     return (-b + jnp.sqrt(b ** 2 - 4 * a * c)) / (2 * a)
 
 
@@ -112,7 +116,7 @@ def fixed_point(z_init, q, factor, proj):
     return z, u, v
 
 
-def fixed_point_hsde(z_init, r, factor, proj):
+def fixed_point_hsde(z_init, root_plus_calc, r, factor, proj):
     """
     implements 1 iteration of algorithm 5.1 in https://arxiv.org/pdf/2004.02177.pdf
 
@@ -134,12 +138,17 @@ def fixed_point_hsde(z_init, r, factor, proj):
     r = (I + M)^{-1} q
     requires the inital eta > 0
     """
+    if root_plus_calc:
+        z_init = z_init / jnp.linalg.norm(z_init) * jnp.sqrt(z_init.size)
     # z = (mu, eta)
     mu, eta = z_init[:-1], z_init[-1]
 
     # u_tilde, tao_tilde update
     p = lin_sys_solve(factor, mu)
-    tao_tilde = root_plus(mu, eta, p, r)
+    if root_plus_calc:
+        tao_tilde = root_plus(mu, eta, p, r)
+    else:
+        tao_tilde = 1.0
     w_tilde = p - r * tao_tilde
 
     # u, tao update
@@ -157,10 +166,11 @@ def fixed_point_hsde(z_init, r, factor, proj):
     # concatenate for z, u
     z = jnp.concatenate([mu, jnp.array([eta])])
     u = jnp.concatenate([w, jnp.array([tao])])
+    u_tilde = jnp.concatenate([w_tilde, jnp.array([tao_tilde])])
 
     # z and u have size (m + n + 1)
     # v has shape (m + n)
-    return z, u, v
+    return z, u, u_tilde, v, p
 
 
 def create_M(P, A):
