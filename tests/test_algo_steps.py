@@ -68,7 +68,7 @@ def test_c_vs_jax():
     print('m, n', m, n)
     # return
 
-    max_iters = 2
+    max_iters = 10
 
     # fix warm start
     x_ws = np.ones(n)
