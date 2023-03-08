@@ -1,13 +1,9 @@
 import numpy as np
-import pdb
 from scipy import sparse
 import jax.numpy as jnp
 from scipy.sparse import csc_matrix
 import jax.scipy as jsp
-import matplotlib.pyplot as plt
 import logging
-from scipy import sparse
-from jax import jit, vmap
 
 log = logging.getLogger(__name__)
 
@@ -45,18 +41,11 @@ def static_canon(T, nx, nu, state_box, control_box,
     else:
         R = np.diag(R_val)
 
-    q = np.zeros(nx)  # np.random.normal(size=(nx))#
+    q = np.zeros(nx)
     qT = np.zeros(nx)
-    # Ad = np.random.normal(size=(nx, nx))
-    # Bd = np.random.normal(size=(nx, nu))
     if Ad is None and Bd is None:
         Ad = .1 * np.random.normal(size=(nx, nx))
         Bd = .1 * np.random.normal(size=(nx, nu))
-
-    '''
-    umin = xmin = -1
-    umax = xmax = +1
-    '''
 
     # Quadratic objective
     P_sparse = sparse.block_diag(
@@ -79,28 +68,12 @@ def static_canon(T, nx, nu, state_box, control_box,
     Aeq = sparse.hstack([Ax, Bu])
 
     beq = np.zeros(T * nx)
-    # update the first nx entries of beq to be A@x_init
 
     '''
     top block for (x, u) <= (xmax, umax)
     bottom block for (x, u) >= (xmin, umin)
     i.e. (-x, -u) <= (-xmin, -umin)
     '''
-    # if delta_control_box is None:
-    #     A_ineq = sparse.vstack(
-    #         [sparse.eye(T * nx + T * nu),
-    #          -sparse.eye(T * nx + T * nu)]
-    #     )
-    # else:
-    #     A_delta_u = sparse.kron(sparse.eye(T), -sparse.eye(nu)) + sparse.kron(
-    #         sparse.eye(T, k=-1), sparse.eye(nu)
-    #     )
-    #     A_ineq = sparse.vstack(
-    #         [sparse.eye(T * nx + T * nu),
-    #          -sparse.eye(T * nx + T * nu),
-    #          A_delta_u,
-    #          -A_delta_u]
-    #     )
     if state_box == np.inf:
         zero_states = csc_matrix((T * nu, T * nx))
         block1 = sparse.hstack([zero_states, sparse.eye(T * nu)])

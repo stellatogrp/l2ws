@@ -1,24 +1,17 @@
 import matplotlib.pyplot as plt
 from pandas import read_csv
 import sys
-import jax.numpy as jnp
-import pdb
 import yaml
 import os
-from pathlib import Path
 import hydra
 import numpy as np
-import pandas as pd
-import math
-from utils.data_utils import recover_last_datetime
+from l2ws.utils.data_utils import recover_last_datetime
 import imageio
-from utils.data_utils import copy_data_file, recover_last_datetime
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
     "font.size": 16,
 })
-
 
 
 def markowitz_gif(cfg):
@@ -32,6 +25,7 @@ def osc_mass_gif(cfg):
 def vehicle_gif(cfg):
     pass
 
+
 @hydra.main(config_path='configs/robust_pca', config_name='robust_pca_gif.yaml')
 def robust_pca_gif(cfg):
     angle_prob_nums = cfg.angle_prob_nums
@@ -40,7 +34,6 @@ def robust_pca_gif(cfg):
     # if cfg.gradient:
     #     eval_iters_gif('robust_pca', cfg, gradient=True)
     # eval_iters_gif('robust_pca', cfg)
-
 
 
 def get_data(example, datetime, eval_iters):
@@ -74,7 +67,7 @@ def get_epochs_per_eval(orig_cwd, example, datetime):
 
 def angles_gif(example, cfg, prob_num):
     '''
-    first plot 
+    first plot
     '''
     orig_cwd = hydra.utils.get_original_cwd()
     datetimes = cfg.datetimes
@@ -139,7 +132,6 @@ def angles_gif(example, cfg, prob_num):
         for i in range(len(datetimes)):
             print('j', j)
             datetime = datetimes[i]
-            
             if labels[i] == 'default':
                 label = f"learned: k={ks[i]}"
             else:
@@ -175,9 +167,7 @@ def angles_gif(example, cfg, prob_num):
 
 
 def eval_iters_gif(example, cfg, gradient=False):
-    '''
-    first plot 
-    '''
+    # first plot
     orig_cwd = hydra.utils.get_original_cwd()
     datetimes = cfg.datetimes
     labels = cfg.labels
@@ -210,7 +200,7 @@ def eval_iters_gif(example, cfg, gradient=False):
 
         k = get_k(orig_cwd, example, datetime)
         ks.append(k)
-        
+
         count = 0
         for col in df:
             if col not in exclude:
@@ -234,7 +224,7 @@ def eval_iters_gif(example, cfg, gradient=False):
     for j in range(cfg.gif_length):
         for i in range(len(datetimes)):
             datetime = datetimes[i]
-            
+
             if labels[i] == 'default':
                 label = f"learned: k={ks[i]}"
             else:

@@ -15,7 +15,7 @@ import logging
 import yaml
 from jax import vmap
 import pandas as pd
-from utils.generic_utils import vec_symm
+from l2ws.utils.generic_utils import vec_symm
 
 
 plt.rcParams.update(

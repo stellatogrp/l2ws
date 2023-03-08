@@ -65,8 +65,6 @@ def test_c_vs_jax():
     b_center, b_range = 1, 1
     P, A, c, b, cones = random_robust_ls(m_orig, n_orig, rho, b_center, b_range)
     m, n = A.shape
-    print('m, n', m, n)
-    # return
 
     max_iters = 10
 

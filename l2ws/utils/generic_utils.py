@@ -55,6 +55,7 @@ def unvec_symm(x, dim, triu_indices=None):
     """
 
     X = jnp.zeros((dim, dim))
+
     # triu_indices gets indices of upper triangular matrix in row-major order
     if triu_indices is None:
         col_idx, row_idx = jnp.triu_indices(dim)
@@ -64,7 +65,6 @@ def unvec_symm(x, dim, triu_indices=None):
 
     if x.ndim > 1:
         for i in range(x.size):
-            # z[i] = x[i][0, 0]
             z = z.at[i].set(x[i][0, 0])
     else:
         z = x
@@ -75,3 +75,11 @@ def unvec_symm(x, dim, triu_indices=None):
     X /= jnp.sqrt(2)
     X = X.at[jnp.diag_indices(dim)].set(jnp.diagonal(X) * jnp.sqrt(2) / 2)
     return X
+
+
+# non jit loop
+def fori_loop(lower, upper, body_fun, init_val):
+    val = init_val
+    for i in range(lower, upper):
+        val = body_fun(i, val)
+    return val

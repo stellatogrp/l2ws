@@ -13,7 +13,7 @@ import time
 import jax
 from scipy.spatial import distance_matrix
 from l2ws.algo_steps import create_projection_fn, get_psd_sizes
-from utils.generic_utils import sample_plot, setup_permutation
+from l2ws.utils.generic_utils import sample_plot, setup_permutation
 import scs
 from scipy.sparse import csc_matrix
 from l2ws.algo_steps import lin_sys_solve

@@ -5,9 +5,9 @@ from jax import random
 import optax
 import time
 from jaxopt import OptaxSolver
-from utils.nn_utils import init_network_params, \
+from l2ws.utils.nn_utils import init_network_params, \
     predict_y, init_matrix_params
-from utils.generic_utils import unvec_symm
+from l2ws.utils.generic_utils import unvec_symm
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd

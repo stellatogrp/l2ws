@@ -1,8 +1,9 @@
 import jax.numpy as jnp
 from jax import lax, vmap, jit
-from utils.generic_utils import vec_symm, unvec_symm
+from l2ws.utils.generic_utils import vec_symm, unvec_symm
 from functools import partial
 import jax.scipy as jsp
+TAU_FACTOR = 10
 
 
 def create_projection_fn(cones, n):
@@ -94,13 +95,9 @@ def root_plus(mu, eta, p, r):
     the result is a closed-form solution involving the quadratic formula
         we take the positive root
     """
-    TAU_FACTOR = 10
     a = TAU_FACTOR + r @ r
     b = r @ mu - 2 * r @ p - eta * TAU_FACTOR
     c = p @ (p - mu)
-    print('a', a)
-    print('b', b)
-    print('c', c)
     return (-b + jnp.sqrt(b ** 2 - 4 * a * c)) / (2 * a)
 
 
@@ -113,10 +110,10 @@ def fixed_point(z_init, q, factor, proj):
     u = proj(u_temp)
     v = u + z_init - 2*u_tilde
     z = z_init + u - u_tilde
-    return z, u, v
+    return z, u, u_tilde, v
 
 
-def fixed_point_hsde(z_init, root_plus_calc, r, factor, proj):
+def fixed_point_hsde(z_init, homogeneous, r, factor, proj):
     """
     implements 1 iteration of algorithm 5.1 in https://arxiv.org/pdf/2004.02177.pdf
 
@@ -137,15 +134,23 @@ def fixed_point_hsde(z_init, root_plus_calc, r, factor, proj):
 
     r = (I + M)^{-1} q
     requires the inital eta > 0
+
+    if homogeneous, we normalize z s.t. ||z|| = sqrt(m + n + 1)
+        and we do the root_plus calculation for tao_tilde
+    else
+        no normalization
+        tao_tilde = 1 (bias towards feasibility)
     """
-    if root_plus_calc:
+
+    if homogeneous:
         z_init = z_init / jnp.linalg.norm(z_init) * jnp.sqrt(z_init.size)
+
     # z = (mu, eta)
     mu, eta = z_init[:-1], z_init[-1]
 
     # u_tilde, tao_tilde update
     p = lin_sys_solve(factor, mu)
-    if root_plus_calc:
+    if homogeneous:
         tao_tilde = root_plus(mu, eta, p, r)
     else:
         tao_tilde = 1.0
@@ -170,7 +175,7 @@ def fixed_point_hsde(z_init, root_plus_calc, r, factor, proj):
 
     # z and u have size (m + n + 1)
     # v has shape (m + n)
-    return z, u, u_tilde, v, p
+    return z, u, u_tilde, v
 
 
 def create_M(P, A):

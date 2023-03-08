@@ -3,7 +3,6 @@ import hydra
 import cvxpy as cp
 from l2ws.scs_problem import SCSinstance, scs_jax
 import numpy as np
-import pdb
 from l2ws.launcher import Workspace
 import jax.numpy as jnp
 from scipy.sparse import csc_matrix
