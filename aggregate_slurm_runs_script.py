@@ -14,7 +14,7 @@ import examples.robust_ls as robust_ls
 import yaml
 import numpy as np
 import time
-from utils.data_utils import recover_last_datetime
+from l2ws.utils.data_utils import recover_last_datetime
 # from l2ws.scs_problem import SCSinstance, scs_jax
 
 
@@ -462,7 +462,7 @@ def save_aggregate(static_flag, M, datetimes, example, get_q):
     q_mat_list = []
     x_stars_list = []
     y_stars_list = []
-    matrix_invs_list = []
+    # matrix_invs_list = []
     M_tensor_list = []
 
     for datetime in datetimes:

@@ -8,7 +8,7 @@ import examples.robust_ls as robust_ls
 import hydra
 import pdb
 import yaml
-from utils.data_utils import copy_data_file, recover_last_datetime
+from l2ws.utils.data_utils import copy_data_file, recover_last_datetime
 
 
 @hydra.main(config_path='configs/markowitz', config_name='markowitz_run.yaml')

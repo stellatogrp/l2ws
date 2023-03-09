@@ -84,7 +84,7 @@ class L2WSmodel(object):
 
         self.nn_cfg = dict['nn_cfg']
         input_size = self.train_inputs.shape[1]
-        # self.prediction_variable = dict['prediction_variable']
+
         self.batched_predict_y = vmap(predict_y, in_axes=(None, 0))
 
         if self.share_all:
@@ -100,8 +100,7 @@ class L2WSmodel(object):
                 output_size = n_x_low + n_y_low + self.tx + self.ty
             else:
                 output_size = self.n + self.m
-            # elif self.prediction_variable == 'x':
-            #     output_size = self.n
+
         layer_sizes = [input_size] + \
             self.nn_cfg['intermediate_layer_sizes'] + [output_size]
 
@@ -143,7 +142,6 @@ class L2WSmodel(object):
                            'unrolls': self.train_unrolls,
                            'm': self.m,
                            'n': self.n,
-                           #    'prediction_variable': self.prediction_variable,
                            'bypass_nn': False,
                            'M_static': self.static_M,
                            'factor_static': self.static_algo_factor,
@@ -168,7 +166,6 @@ class L2WSmodel(object):
                           'unrolls': self.eval_unrolls,
                           'm': self.m,
                           'n': self.n,
-                          #   'prediction_variable': self.prediction_variable,
                           'bypass_nn': False,
                           'M_static': self.static_M,
                           'factor_static': self.static_algo_factor,
@@ -193,7 +190,6 @@ class L2WSmodel(object):
                          'unrolls': self.eval_unrolls,
                          'm': self.m,
                          'n': self.n,
-                         #  'prediction_variable': 'x',
                          'bypass_nn': True,
                          'M_static': self.static_M,
                          'factor_static': self.static_algo_factor,
@@ -317,9 +313,7 @@ class L2WSmodel(object):
         pretrain_losses = np.zeros(batches + 1)
         pretrain_test_losses = np.zeros(batches + 1)
 
-        '''
-        do a 1-hot encoding - assume given vector of indices
-        '''
+        # do a 1-hot encoding - assume given vector of indices
         if share_all:
             train_targets = jax.nn.one_hot(self.train_cluster_indices, self.num_clusters)
             test_targets = jax.nn.one_hot(self.test_cluster_indices, self.num_clusters)
@@ -358,82 +352,9 @@ class L2WSmodel(object):
         self.state = state
         return pretrain_losses, pretrain_test_losses
 
-    def train_full(self, factor, proj, k, num_iters, stepsize=.001, method='adam',
-                   df_fulltrain=None, batches=1):
-        def fixed_point(z_init, factor, q):
-            u_tilde = lin_sys_solve(factor, z_init - q)
-            u_temp = (2*u_tilde - z_init)
-            u = proj(u_temp)
-            v = u + z_init - 2*u_tilde
-            z = z_init + u - u_tilde
-            return z, u, v
-
-        def loss(params, inputs, factor, q_mat):
-            def predict(params_, input, q):
-                z0 = predict_y(params_, input)
-                iter_losses = jnp.zeros(k)
-
-                def _fp(i, val):
-                    z, loss_vec = val
-                    z_next, u, v = fixed_point(z, factor, q)
-                    diff = jnp.linalg.norm(z_next - z)
-                    loss_vec = loss_vec.at[i].set(diff)
-                    return z_next, loss_vec
-                val = z0, iter_losses
-                out = jax.lax.fori_loop(0, k, _fp, val)
-                z, iter_losses = out
-
-                return z, iter_losses
-            batch_predict = vmap(predict, in_axes=(None, 0, 0), out_axes=(0, 0))
-            z_all, iter_losses = batch_predict(params, inputs, q_mat)
-
-            return iter_losses[:, -1].mean()
-
-        maxiters = int(num_iters / batches)
-
-        if method == 'adam':
-            optimizer_pretrain = OptaxSolver(
-                opt=optax.adam(stepsize), fun=loss, jit=True, maxiter=maxiters)
-        elif method == 'sgd':
-            optimizer_pretrain = OptaxSolver(
-                opt=optax.sgd(stepsize), fun=loss, jit=True, maxiter=maxiters)
-        state = optimizer_pretrain.init_state(self.params)
-        params = self.params
-        train_losses = np.zeros(batches + 1)
-        test_losses = np.zeros(batches + 1)
-
-        curr_pretrain_loss = loss(
-            params, self.train_inputs, factor, self.q_mat_train)
-        curr_pretrain_test_loss = loss(
-            params, self.test_inputs, factor, self.q_mat_test)
-        train_losses[0] = curr_pretrain_loss
-        test_losses[0] = curr_pretrain_test_loss
-
-        for i in range(batches):
-            out = optimizer_pretrain.run(init_params=params,
-                                         inputs=self.train_inputs,
-                                         factor=factor,
-                                         q_mat=self.q_mat_train)
-            params = out.params
-            state = out.state
-            curr_pretrain_test_loss = loss(
-                params, self.test_inputs, factor, self.q_mat_test)
-            train_losses[i + 1] = state.value
-            test_losses[i + 1] = curr_pretrain_test_loss
-            data = np.vstack([train_losses, test_losses])
-            data = data.T
-            df_fulltrain = pd.DataFrame(
-                data, columns=['train_losses', 'test_losses'])
-            df_fulltrain.to_csv('full_train_results.csv')
-
-        self.params = params
-        self.state = state
-        return train_losses, test_losses
-
     def pretrain(self, num_iters, stepsize=.001, method='adam', df_pretrain=None, batches=1):
         # create pretrain function
         def pretrain_loss(params, inputs, targets):
-            # if self.tx + self.ty == -1:
             if self.tx is None or self.ty is None:
                 nn_output = self.batched_predict_y(params, inputs)
                 uu = nn_output
@@ -450,8 +371,6 @@ class L2WSmodel(object):
                 batch_predict = vmap(predict, in_axes=(None, 0), out_axes=(0))
                 uu = batch_predict(params, inputs)
 
-            # z = M @ uu + uu + q
-            # pretrain_loss = jnp.mean(jnp.sum((z - targets)**2, axis=1))
             pretrain_loss = jnp.mean(jnp.sum((uu - targets)**2, axis=1))
             return pretrain_loss
 
@@ -464,18 +383,10 @@ class L2WSmodel(object):
             optimizer_pretrain = OptaxSolver(
                 opt=optax.sgd(stepsize), fun=pretrain_loss, jit=True, maxiter=maxiters)
         state = optimizer_pretrain.init_state(self.params)
-        params = self.params  # self.nn_params
+        params = self.params
         pretrain_losses = np.zeros(batches + 1)
         pretrain_test_losses = np.zeros(batches + 1)
 
-        # if self.prediction_variable == 'w':
-        #     # train_targets = self.u_stars_train
-        #     # test_targets = self.u_stars_test
-        #     train_targets = self.w_stars_train
-        #     test_targets = self.w_stars_test
-        # elif self.prediction_variable == 'x':
-        #     train_targets = self.x_stars_train
-        #     test_targets = self.x_stars_test
         train_targets = self.w_stars_train
         test_targets = self.w_stars_test
 
@@ -631,9 +542,8 @@ def create_loss_fn(input_dict):
     supervised = input_dict['supervised']
     num_nn_params = input_dict['num_nn_params']
     tx, ty = input_dict['tx'], input_dict['ty']
-    low_2_high_dim = input_dict['low_2_high_dim']
-    learn_XY = input_dict['learn_XY']
-    X_list_fixed, Y_list_fixed = input_dict['X_list_fixed'], input_dict['Y_list_fixed']
+    # low_2_high_dim = input_dict['low_2_high_dim']
+
     loss_method = input_dict['loss_method']
     share_all = input_dict['share_all']
     Z_shared = input_dict['Z_shared']
@@ -644,7 +554,7 @@ def create_loss_fn(input_dict):
 
     def fixed_point(z_init, factor, q):
         u_tilde = lin_sys_solve(factor, z_init - q)
-        u_temp = (2*u_tilde - z_init)
+        u_temp = 2*u_tilde - z_init
         u = proj(u_temp)
         v = u + z_init - 2*u_tilde
         z = z_init + u - u_tilde
@@ -654,7 +564,7 @@ def create_loss_fn(input_dict):
         P, A = M[:n, :n], -M[n:, :n]
         b, c = q[n:], q[:n]
         alpha = None
-        # if prediction_variable == 'w':
+
         if bypass_nn:
             z = input
             u_ws = input
@@ -679,13 +589,8 @@ def create_loss_fn(input_dict):
                 else:
                     nn_params = params[:num_nn_params]
                     nn_output = predict_y(nn_params, input)
-                    if learn_XY:
-                        X_list = params[num_nn_params:num_nn_params + tx]
-                        Y_list = params[num_nn_params + tx:]
-                    else:
-                        X_list = X_list_fixed
-                        Y_list = Y_list_fixed
-                    u_ws = low_2_high_dim(nn_output, X_list, Y_list)
+
+                    # u_ws = low_2_high_dim(nn_output, X_list, Y_list)
 
                 # z = M @ u_ws + u_ws + q
                 z = u_ws

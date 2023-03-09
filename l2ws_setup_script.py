@@ -6,10 +6,6 @@ import examples.robust_kalman as robust_kalman
 import examples.robust_pca as robust_pca
 import examples.robust_ls as robust_ls
 import hydra
-import pdb
-import cvxpy as cp
-import scipy
-import numpy as np
 
 
 @hydra.main(config_path='configs/markowitz', config_name='markowitz_setup.yaml')
