@@ -3,7 +3,7 @@ import jax.scipy as jsp
 import jax.numpy as jnp
 import cvxpy as cp
 from matplotlib import pyplot as plt
-from jax import random
+from jax import random, lax
 import jax
 from l2ws.algo_steps import create_M, create_projection_fn, lin_sys_solve, fixed_point, \
     fixed_point_hsde, extract_sol, k_steps_eval
@@ -98,67 +98,9 @@ def scs_jax(data, hsde=True, iters=5000, jit=True, plot=False):
         q_r = q
 
     eval_out = k_steps_eval(iters, z, q_r, algo_factor, proj, P, A, c, b, jit, hsde)
-    z_final2, iter_losses2, primal_residuals, dual_residuals, all_z_plus_1, all_u2, all_v2 = eval_out
+    z_final, iter_losses, primal_residuals, dual_residuals, z_all_plus_1, u_all, v_all = eval_out
 
-
-
-
-    iter_losses = jnp.zeros(iters)
-
-    if hsde:
-        vec_length = m + n + 1
-        r = lin_sys_solve(algo_factor, q)
-        fp = partial(fixed_point_hsde, homogeneous=True, r=r, factor=algo_factor, proj=proj)
-    else:
-        vec_length = m + n
-        fp = partial(fixed_point, q=q, factor=algo_factor, proj=proj)
-
-    z_all = jnp.zeros((iters, vec_length))
-    u_tilde_all = jnp.zeros((iters, vec_length))
-    u_all = jnp.zeros((iters, vec_length))
-    v_all = jnp.zeros((iters, vec_length))
-
-    def body_fn(i, val):
-        z, iter_losses, z_all, u_all, u_tilde_all, v_all = val
-        z_next, u, u_tilde, v = fp(z)
-        diff = jnp.linalg.norm(z_next - z)
-        iter_losses = iter_losses.at[i].set(diff)
-        z_all = z_all.at[i, :].set(z_next)
-        u_all = u_all.at[i, :].set(u)
-        u_tilde_all = u_tilde_all.at[i, :].set(u_tilde)
-        v_all = v_all.at[i, :].set(v)
-        val = z_next, iter_losses, z_all, u_all, u_tilde_all, v_all
-        return val
-
-    if hsde:
-        # first step: iteration 0
-        # we set homogeneous = False for the first iteration
-        #   to match the SCS code which has the global variable FEASIBLE_ITERS
-        #   which is set to 1
-        z_next, u, u_tilde, v = fixed_point_hsde(z, False, r, algo_factor, proj)
-        z_all = z_all.at[0, :].set(z)
-        u_all = u_all.at[0, :].set(u)
-        u_tilde_all = u_tilde_all.at[0, :].set(u_tilde)
-        v_all = v_all.at[0, :].set(v)
-        iter_losses = iter_losses.at[0].set(jnp.linalg.norm(z_next - z))
-        z = z_next
-
-    # fori_loop for iterations start, ..., iters - 1
-    # for the rest of the iterations, we set homogeneous = False
-    #   which forces us to use the root_calc function
-    start = 1 if hsde else 0
-    init_val = z, iter_losses, z_all, u_all, u_tilde_all, v_all
-    if jit:
-        val = jax.lax.fori_loop(start, iters, body_fn, init_val)
-    else:
-        val = python_fori_loop(start, iters, body_fn, init_val)
-
-    z, iter_losses, z_all, u_all, u_tilde_all, v_all = val
-
-
-
-
-    u_final, v_final = all_u2[-1, :], all_v2[-1, :]
+    u_final, v_final = u_all[-1, :], v_all[-1, :]
 
     # extract the primal and dual variables
     x, y, s = extract_sol(u_final, v_final, n, hsde)

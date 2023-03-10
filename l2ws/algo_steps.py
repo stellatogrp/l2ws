@@ -4,7 +4,7 @@ from l2ws.utils.generic_utils import vec_symm, unvec_symm
 from functools import partial
 import jax.scipy as jsp
 from l2ws.utils.generic_utils import python_fori_loop
-TAU_FACTOR = 1
+TAU_FACTOR = 10
 
 
 def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous):
