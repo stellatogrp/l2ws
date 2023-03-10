@@ -161,10 +161,10 @@ class L2WSmodel(object):
 
         if self.nn_cfg.method == 'adam':
             self.optimizer = OptaxSolver(opt=optax.adam(
-                self.lr), fun=self.loss_fn_train, has_aux=True)
+                self.lr), fun=self.loss_fn_train, has_aux=False)
         elif self.nn_cfg.method == 'sgd':
             self.optimizer = OptaxSolver(opt=optax.sgd(
-                self.lr), fun=self.loss_fn_train, has_aux=True)
+                self.lr), fun=self.loss_fn_train, has_aux=False)
 
         # self.input_dict = dict
         self.tr_losses = None
@@ -392,10 +392,10 @@ class L2WSmodel(object):
                 # update the optimizer (restart) and reset the state
                 if self.nn_cfg.method == 'adam':
                     self.optimizer = OptaxSolver(opt=optax.adam(
-                        self.lr), fun=self.loss_fn_train, has_aux=True)
+                        self.lr), fun=self.loss_fn_train, has_aux=False)
                 elif self.nn_cfg.method == 'sgd':
                     self.optimizer = OptaxSolver(opt=optax.sgd(
-                        self.lr), fun=self.loss_fn_train, has_aux=True)
+                        self.lr), fun=self.loss_fn_train, has_aux=False)
                 self.state = self.optimizer.init_state(self.params)
                 logging.info(f"the decay rate is now {self.lr}")
 
@@ -503,25 +503,26 @@ class L2WSmodel(object):
             primal_residuals, dual_residuals = jnp.zeros(iters), jnp.zeros(iters)
 
             # suppose iters = 500
-            # then we store
-            #   u_1, ..., u_500
-            #   z_0, z_1, ..., z_500
+            # then we store u_1, ..., u_500 and z_0, z_1, ..., z_500
             all_u, all_z = jnp.zeros((iters, z.size)), jnp.zeros((iters, z.size))
             all_z_ = jnp.zeros((iters + 1, z.size))
             all_z_ = all_z_.at[0, :].set(z)
 
             if diff_required:
-                def fp_train(i, val):
-                    z, loss_vec = val
-                    z_next, u, u_tilde, v = partial_fixed_point(z, q, factor)
-                    if supervised:
-                        diff = jnp.linalg.norm(z - z_star)
-                    else:
-                        diff = jnp.linalg.norm(z_next - z)
-                    loss_vec = loss_vec.at[i].set(diff)
-                    return z_next, loss_vec
+                # def fp_train(i, val):
+                #     z, loss_vec = val
+                #     z_next, u, u_tilde, v = partial_fixed_point(z, q, factor)
+                #     if supervised:
+                #         diff = jnp.linalg.norm(z - z_star)
+                #     else:
+                #         diff = jnp.linalg.norm(z_next - z)
+                #     loss_vec = loss_vec.at[i].set(diff)
+                #     return z_next, loss_vec
+
+                fp_train_partial = partial(fp_train, q=q, factor=factor,
+                                           supervised=supervised, z_star=z_star, proj=proj)
                 val = z, iter_losses
-                out = jax.lax.fori_loop(0, iters, fp_train, val)
+                out = jax.lax.fori_loop(0, iters, fp_train_partial, val)
                 z_final, iter_losses = out
             else:
                 def fp_eval(i, val):
@@ -551,7 +552,7 @@ class L2WSmodel(object):
             loss = final_loss(loss_method, z_final, iter_losses, supervised, z0, z_star)
             out = all_z_, z_final, alpha, all_u
             if diff_required:
-                return loss, iter_losses, out
+                return loss
             else:
                 return loss, iter_losses, angles, primal_residuals, dual_residuals, out
         loss_fn = predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
@@ -590,7 +591,6 @@ def final_loss(loss_method, z_last, iter_losses, supervised, z0, z_star):
         elif loss_method == 'constant_sum':
             loss = iter_losses.sum()
         elif loss_method == 'fixed_k':
-            # loss = jnp.linalg.norm(z_last - z_penultimate)
             loss = iter_losses[-1]
         elif loss_method == 'first_2_last':
             loss = jnp.linalg.norm(z_last - z0)
@@ -616,21 +616,24 @@ def normalize_alpha_fn(alpha, normalize_alpha):
 
 def predict_2_loss(predict, static_flag, diff_required, factor_static, M_static):
     """
-    given the predict fn this returns the loss fn which is differentiated through
-        the predict fn includes the Douglas-Rachford iterations
+    given the predict fn this returns the loss fn
 
-    diff_required used for training, but not evaluation
+    basically breaks the prediction fn into multiple cases
+        - diff_required used for training, but not evaluation
+        - static_flag is True if the matrices (P, A) are the same for each problem
+            factor_static and M_static are shared for all problems and passed in
 
-    static_flag is True if the matrices (P, A) are the same for each problem
-        factor_static and M_static are shared for all problems and passed in
+    for the evaluation, we store a lot more information
+    for the training, we store nothing - just return the loss
+        this could be changed - need to turn the boolean has_aux=True
+            in self.optimizer = OptaxSolver(opt=optax.adam(
+                self.lr), fun=self.loss_fn_train, has_aux=False)
 
     in all forward passes, the number of iterations is static
     """
     if diff_required:
-        # out_axes for
-        #   (loss, iter_losses, out)
-        #   out = (all_z_, z_next, alpha, all_u)
-        out_axes = (0, 0, (0, 0, 0, 0))
+        # out_axes for (loss)
+        out_axes = (0)
     else:
         # out_axes for
         #   (loss, iter_losses, angles, primal_residuals, dual_residuals, out)
@@ -647,15 +650,14 @@ def predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
         @partial(jit, static_argnums=(3,))
         def loss_fn(params, inputs, q, iters, z_stars):
             if diff_required:
-                losses, iter_losses, out = batch_predict(
-                    params, inputs, q, iters, z_stars)
-                loss_out = out, losses, iter_losses
+                losses = batch_predict(params, inputs, q, iters, z_stars)
+                return losses.mean()
             else:
                 predict_out = batch_predict(
                     params, inputs, q, iters, z_stars)
                 losses, iter_losses, angles, primal_residuals, dual_residuals, out = predict_out
                 loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
-            return losses.mean(), loss_out
+                return losses.mean(), loss_out
     else:
         batch_predict = vmap(predict, in_axes=(
             None, 0, 0, None, 0, 0), out_axes=out_axes)
@@ -663,13 +665,23 @@ def predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
         @partial(jax.jit, static_argnums=(5,))
         def loss_fn(params, inputs, factor, M, q, iters):
             if diff_required:
-                losses, iter_losses, out = batch_predict(
-                    params, inputs, q, iters, factor, M)
-                loss_out = out, losses, iter_losses
+                losses = batch_predict(params, inputs, q, iters, factor, M)
+                return losses.mean()
             else:
                 predict_out = batch_predict(
                     params, inputs, q, iters, factor, M)
                 losses, iter_losses, angles, primal_residuals, dual_residuals, out = predict_out
                 loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
-            return losses.mean(), loss_out
+                return losses.mean(), loss_out
     return loss_fn
+
+
+def fp_train(i, val, q, factor, supervised, z_star, proj):
+    z, loss_vec = val
+    z_next, u, u_tilde, v = fixed_point(z, q, factor, proj)
+    if supervised:
+        diff = jnp.linalg.norm(z - z_star)
+    else:
+        diff = jnp.linalg.norm(z_next - z)
+    loss_vec = loss_vec.at[i].set(diff)
+    return z_next, loss_vec
