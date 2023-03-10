@@ -14,13 +14,14 @@ import pandas as pd
 from jax.config import config
 from scipy.spatial import distance_matrix
 import logging
-from l2ws.algo_steps import fp_train, fp_eval
+from l2ws.algo_steps import fp_train, fp_eval, k_steps_train, k_steps_eval, lin_sys_solve
 from functools import partial
 config.update("jax_enable_x64", True)
 
 
 class L2WSmodel(object):
     def __init__(self, dict):
+        self.hsde = True
         self.proj = dict['proj']
         self.static_flag = dict['static_flag']
         self.batch_size = dict['nn_cfg'].batch_size
@@ -479,48 +480,38 @@ class L2WSmodel(object):
         M_static, factor_static = self.static_M, self.static_algo_factor
         share_all, Z_shared = self.share_all, self.Z_shared
         loss_method, static_flag = self.loss_method, self.static_flag
+        hsde, jit = self.hsde, True
 
         def predict(params, input, q, iters, z_star, factor, M):
             P, A = M[:n, :n], -M[n:, :n]
             b, c = q[n:], q[:n]
-            z0, alpha = predict_warm_start(params, input, bypass_nn,
+            z0, alpha = predict_warm_start(params, input, bypass_nn, self.hsde,
                                            share_all, Z_shared, normalize_alpha)
-            iter_losses = jnp.zeros(iters)
-            primal_residuals, dual_residuals = jnp.zeros(iters), jnp.zeros(iters)
-
-            # if iters = 500 we store u_1, ..., u_500 and z_0, z_1, ..., z_500
-            all_u, all_z = jnp.zeros((iters, z0.size)), jnp.zeros((iters, z0.size))
-            all_z_ = jnp.zeros((iters + 1, z0.size))
-            all_z_ = all_z_.at[0, :].set(z0)
+            if hsde:
+                q_r = lin_sys_solve(factor, q)
+            else:
+                q_r = q
 
             if diff_required:
-                # given z0, problem_data
-                # return losses
-                fp_train_partial = partial(fp_train, q=q, factor=factor,
-                                           supervised=supervised, z_star=z_star, proj=proj)
-                val = z0, iter_losses
-                out = jax.lax.fori_loop(0, iters, fp_train_partial, val)
-                z_final, iter_losses = out
+                z_final, iter_losses = k_steps_train(
+                    iters, z0, q_r, factor, supervised, z_star, proj, jit, hsde)
             else:
-                # given z0, problem_data
-                # return losses, iter_losses, angles, primal_res, dual_res, etc
-
-                fp_eval_partial = partial(fp_eval, q=q, factor=factor,
-                                          proj=proj, P=P, A=A, c=c, b=b)
-                val = z0, z0, iter_losses, all_z, all_u, primal_residuals, dual_residuals
-                out = jax.lax.fori_loop(0, iters, fp_eval_partial, val)
-                z_final, z_penult, iter_losses, all_z, all_u, primal_residuals, dual_residuals = out
-                all_z_ = all_z_.at[1:, :].set(all_z)
+                k_eval_out = k_steps_eval(
+                    iters, z0, q_r, factor, proj, P, A, c, b, jit, hsde)
+                z_final, iter_losses = k_eval_out[0], k_eval_out[1]
+                primal_residuals, dual_residuals = k_eval_out[2], k_eval_out[3]
+                all_z_plus_1, all_u = k_eval_out[4], k_eval_out[5]
 
                 # compute angle(z^{k+1} - z^k, z^k - z^{k-1})
-                diffs = jnp.diff(all_z_, axis=0)
+                diffs = jnp.diff(all_z_plus_1, axis=0)
                 angles = batch_angle(diffs[:-1], diffs[1:])
 
             loss = final_loss(loss_method, z_final, iter_losses, supervised, z0, z_star)
-            out = all_z_, z_final, alpha, all_u
+
             if diff_required:
                 return loss
             else:
+                out = all_z_plus_1, z_final, alpha, all_u
                 return loss, iter_losses, angles, primal_residuals, dual_residuals, out
         loss_fn = predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
         return loss_fn
@@ -598,6 +589,14 @@ def predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
 
     in all forward passes, the number of iterations is static
     """
+    if static_flag:
+        loss_fn = create_static_loss_fn(predict, diff_required, factor_static, M_static)
+    else:
+        loss_fn = create_dynamic_loss_fn(predict, diff_required)
+    return loss_fn
+
+
+def get_out_axes_shape(diff_required):
     if diff_required:
         # out_axes for (loss)
         out_axes = (0)
@@ -606,44 +605,52 @@ def predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
         #   (loss, iter_losses, angles, primal_residuals, dual_residuals, out)
         #   out = (all_z_, z_next, alpha, all_u)
         out_axes = (0, 0, 0, 0, 0, (0, 0, 0, 0))
-    if static_flag:
-        predict_final = partial(predict,
-                                factor=factor_static,
-                                M=M_static
-                                )
-        batch_predict = vmap(predict_final, in_axes=(
-            None, 0, 0, None, 0), out_axes=out_axes)
+    return out_axes
 
-        @partial(jit, static_argnums=(3,))
-        def loss_fn(params, inputs, q, iters, z_stars):
-            if diff_required:
-                losses = batch_predict(params, inputs, q, iters, z_stars)
-                return losses.mean()
-            else:
-                predict_out = batch_predict(
-                    params, inputs, q, iters, z_stars)
-                losses, iter_losses, angles, primal_residuals, dual_residuals, out = predict_out
-                loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
-                return losses.mean(), loss_out
-    else:
-        batch_predict = vmap(predict, in_axes=(
-            None, 0, 0, None, 0, 0), out_axes=out_axes)
 
-        @partial(jax.jit, static_argnums=(5,))
-        def loss_fn(params, inputs, factor, M, q, iters):
-            if diff_required:
-                losses = batch_predict(params, inputs, q, iters, factor, M)
-                return losses.mean()
-            else:
-                predict_out = batch_predict(
-                    params, inputs, q, iters, factor, M)
-                losses, iter_losses, angles, primal_residuals, dual_residuals, out = predict_out
-                loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
-                return losses.mean(), loss_out
+def create_static_loss_fn(predict, diff_required, factor_static, M_static):
+    out_axes = get_out_axes_shape(diff_required)
+    predict_final = partial(predict,
+                            factor=factor_static,
+                            M=M_static
+                            )
+    batch_predict = vmap(predict_final, in_axes=(
+        None, 0, 0, None, 0), out_axes=out_axes)
+
+    @partial(jit, static_argnums=(3,))
+    def loss_fn(params, inputs, q, iters, z_stars):
+        if diff_required:
+            losses = batch_predict(params, inputs, q, iters, z_stars)
+            return losses.mean()
+        else:
+            predict_out = batch_predict(
+                params, inputs, q, iters, z_stars)
+            losses, iter_losses, angles, primal_residuals, dual_residuals, out = predict_out
+            loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
+            return losses.mean(), loss_out
     return loss_fn
 
 
-def predict_warm_start(params, input, bypass_nn, share_all, Z_shared, normalize_alpha):
+def create_dynamic_loss_fn(predict, diff_required):
+    out_axes = get_out_axes_shape(diff_required)
+    batch_predict = vmap(predict, in_axes=(
+        None, 0, 0, None, 0, 0), out_axes=out_axes)
+
+    @partial(jax.jit, static_argnums=(5,))
+    def loss_fn(params, inputs, factor, M, q, iters):
+        if diff_required:
+            losses = batch_predict(params, inputs, q, iters, factor, M)
+            return losses.mean()
+        else:
+            predict_out = batch_predict(
+                params, inputs, q, iters, factor, M)
+            losses, iter_losses, angles, primal_residuals, dual_residuals, out = predict_out
+            loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
+            return losses.mean(), loss_out
+    return loss_fn
+
+
+def predict_warm_start(params, input, bypass_nn, hsde, share_all, Z_shared, normalize_alpha):
     """
     gets the warm-start
     bypass_nn means we ignore the neural network and set z0=input
@@ -659,4 +666,9 @@ def predict_warm_start(params, input, bypass_nn, share_all, Z_shared, normalize_
         else:
             nn_output = predict_y(params, input)
             z0 = nn_output
-    return z0, alpha
+    if hsde:
+        z0_full = jnp.ones(z0.size + 1)
+        z0_full = z0_full.at[:z0.size].set(z0)
+    else:
+        z0_full = z0
+    return z0_full, alpha

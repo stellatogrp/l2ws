@@ -3,13 +3,22 @@ from jax import lax, vmap, jit
 from l2ws.utils.generic_utils import vec_symm, unvec_symm
 from functools import partial
 import jax.scipy as jsp
-from jax.lax import fori_loop as jax_fori_loop
+from l2ws.utils.generic_utils import python_fori_loop
 TAU_FACTOR = 10
 
 
-def fp_train(i, val, q, factor, supervised, z_star, proj):
+def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous):
+    """
+    q_r = r if hsde else q_r = q
+    homogeneous tells us if we set tau = 1.0 or use the root_plus method
+    """
     z, loss_vec = val
-    z_next, u, u_tilde, v = fixed_point(z, q, factor, proj)
+    if hsde:
+        r = q_r
+        z_next, u, u_tilde, v = fixed_point_hsde(z, homogeneous, r, factor, proj)
+    else:
+        q = q_r
+        z_next, u, u_tilde, v = fixed_point(z, q, factor, proj)
     if supervised:
         diff = jnp.linalg.norm(z - z_star)
     else:
@@ -18,45 +27,83 @@ def fp_train(i, val, q, factor, supervised, z_star, proj):
     return z_next, loss_vec
 
 
-def k_steps_train():
-    pass
+def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, lightweight=True):
+    """
+    q_r = r if hsde else q_r = q
+    homogeneous tells us if we set tau = 1.0 or use the root_plus method
+    """
+    m, n = A.shape
+    z, z_prev, loss_vec, all_z, all_u, all_v, primal_residuals, dual_residuals = val
 
-
-def extract_sol(u, v, n, hsde):
     if hsde:
-        tao = u[-1]
-        x, y, s = u[:n] / tao, u[n:-1] / tao, v[n:-1] / tao
+        r = q_r
+        z_next, u, u_tilde, v = fixed_point_hsde(z, homogeneous, r, factor, proj)
     else:
-        x, y, s = u[:n], u[n:], v[n:]
-    return x, y, s
+        q = q_r
+        z_next, u, u_tilde, v = fixed_point(z, q, factor, proj)
 
-
-
-def k_steps_eval(z0, k, q, factor, proj, P, A, c, b, hsde):
-    fp_eval_partial = partial(fp_eval, q=q, factor=factor,
-                              proj=proj, P=P, A=A, c=c, b=b)
-    val = z0, z0, iter_losses, all_z, all_u, primal_residuals, dual_residuals
-    out = jax_fori_loop(0, k, fp_eval_partial, val)
-    z_final, z_penult, iter_losses, all_z, all_u, primal_residuals, dual_residuals = out
-    all_z_ = all_z_.at[1:, :].set(all_z)
-
-
-def fp_eval(i, val, q, factor, proj, P, A, c, b):
-    n = c.size
-    z, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals = val
-    z_next, u, u_tilde, v = fixed_point(z, q, factor, proj)
     diff = jnp.linalg.norm(z_next - z)
     loss_vec = loss_vec.at[i].set(diff)
 
     # primal and dual residuals
-    pr = jnp.linalg.norm(A @ u[:n] + v[n:] - b)
-    dr = jnp.linalg.norm(A.T @ u[n:] + P @ u[:n] + c)
-    primal_residuals = primal_residuals.at[i].set(pr)
-    dual_residuals = dual_residuals.at[i].set(dr)
+    if not lightweight:
+        pr = jnp.linalg.norm(A @ u[:n] + v[n:] - b)
+        dr = jnp.linalg.norm(A.T @ u[n:] + P @ u[:n] + c)
+        primal_residuals = primal_residuals.at[i].set(pr)
+        dual_residuals = dual_residuals.at[i].set(dr)
 
     all_z = all_z.at[i, :].set(z)
     all_u = all_u.at[i, :].set(u)
-    return z_next, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals
+    all_v = all_v.at[i, :].set(v)
+    return z_next, z_prev, loss_vec, all_z, all_u, all_v, primal_residuals, dual_residuals
+
+
+def k_steps_train(k, z0, q_r, factor, supervised, z_star, proj, jit, hsde):
+    iter_losses = jnp.zeros(k)
+    fp_train_partial = partial(fp_train, q_r=q_r, factor=factor,
+                               supervised=supervised, z_star=z_star, proj=proj, hsde=hsde,
+                               homogeneous=True)
+    val = z0, iter_losses
+    if jit:
+        out = lax.fori_loop(0, k, fp_train_partial, val)
+    else:
+        out = python_fori_loop(0, k, fp_train_partial, val)
+    z_final, iter_losses = out
+    return z_final, iter_losses
+
+
+def k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit, hsde):
+    """
+    if k = 500 we store u_1, ..., u_500 and z_0, z_1, ..., z_500
+        which is why we have all_z_plus_1
+    """
+    all_u, all_z = jnp.zeros((k, z0.size)), jnp.zeros((k, z0.size))
+    all_z_plus_1 = jnp.zeros((k + 1, z0.size))
+    all_z_plus_1 = all_z_plus_1.at[0, :].set(z0)
+    all_v = jnp.zeros((k, z0.size))
+    iter_losses = jnp.zeros(k)
+    primal_residuals, dual_residuals = jnp.zeros(k), jnp.zeros(k)
+
+    fp_eval_partial = partial(fp_eval, q_r=q_r, factor=factor,
+                              proj=proj, P=P, A=A, c=c, b=b, hsde=hsde,
+                              homogeneous=True)
+    val = z0, z0, iter_losses, all_z, all_u, all_v, primal_residuals, dual_residuals
+    if jit:
+        out = lax.fori_loop(0, k, fp_eval_partial, val)
+    else:
+        out = python_fori_loop(0, k, fp_eval_partial, val)
+    z_final, z_penult, iter_losses, all_z, all_u, all_v, primal_residuals, dual_residuals = out
+    all_z_plus_1 = all_z_plus_1.at[1:, :].set(all_z)
+    return z_final, iter_losses, primal_residuals, dual_residuals, all_z_plus_1, all_u, all_v
+
+
+def extract_sol(u, v, n, hsde):
+    if hsde:
+        tau = u[-1]
+        x, y, s = u[:n] / tau, u[n:-1] / tau, v[n:-1] / tau
+    else:
+        x, y, s = u[:n], u[n:], v[n:]
+    return x, y, s
 
 
 def create_projection_fn(cones, n):
@@ -134,14 +181,14 @@ def root_plus(mu, eta, p, r):
     eta is a scalar
 
     A step that solves the linear system
-    (I + M)z + q tao = mu^k
-    tao^2 - tao(eta^k + z^Tq) - z^T M z = 0
-    where z in reals^d and tao > 0
+    (I + M)z + q tau = mu^k
+    tau^2 - tau(eta^k + z^Tq) - z^T M z = 0
+    where z in reals^d and tau > 0
 
     Since M is monotone, z^T M z >= 0
     Quadratic equation will have one non-negative root and one non-positive root
 
-    solve by substituting z = p^k - r tao
+    solve by substituting z = p^k - r tau
         where r = (I + M)^{-1} q
         and p^k = (I + M)^{-1} mu^k
 
@@ -173,26 +220,26 @@ def fixed_point_hsde(z_init, homogeneous, r, factor, proj):
     the names of the variables are a bit different compared with that paper
 
     we have
-    u_tilde = (w_tilde, tao_tilde)
-    u = (w, tao)
+    u_tilde = (w_tilde, tau_tilde)
+    u = (w, tau)
     z = (mu, eta)
 
     they have
-    u_tilde = (z_tilde, tao_tilde)
-    u = (z, tao)
+    u_tilde = (z_tilde, tau_tilde)
+    u = (z, tau)
     w = (mu, eta)
 
-    tao_tilde, tao, eta are all scalars
+    tau_tilde, tau, eta are all scalars
     w_tilde, w, mu all have size (m + n)
 
     r = (I + M)^{-1} q
     requires the inital eta > 0
 
     if homogeneous, we normalize z s.t. ||z|| = sqrt(m + n + 1)
-        and we do the root_plus calculation for tao_tilde
+        and we do the root_plus calculation for tau_tilde
     else
         no normalization
-        tao_tilde = 1 (bias towards feasibility)
+        tau_tilde = 1 (bias towards feasibility)
     """
 
     if homogeneous:
@@ -201,27 +248,27 @@ def fixed_point_hsde(z_init, homogeneous, r, factor, proj):
     # z = (mu, eta)
     mu, eta = z_init[:-1], z_init[-1]
 
-    # u_tilde, tao_tilde update
+    # u_tilde, tau_tilde update
     p = lin_sys_solve(factor, mu)
     if homogeneous:
-        tao_tilde = root_plus(mu, eta, p, r)
+        tau_tilde = root_plus(mu, eta, p, r)
     else:
-        tao_tilde = 1.0
-    w_tilde = p - r * tao_tilde
+        tau_tilde = 1.0
+    w_tilde = p - r * tau_tilde
 
-    # u, tao update
+    # u, tau update
     w_temp = 2 * w_tilde - mu
     w = proj(w_temp)
-    tao = jnp.clip(2 * tao_tilde - eta, a_min=0)
+    tau = jnp.clip(2 * tau_tilde - eta, a_min=0)
 
     # mu, eta update
     mu = mu + w - w_tilde
-    eta = eta + tao - tao_tilde
+    eta = eta + tau - tau_tilde
 
     # concatenate for z, u
     z = jnp.concatenate([mu, jnp.array([eta])])
-    u = jnp.concatenate([w, jnp.array([tao])])
-    u_tilde = jnp.concatenate([w_tilde, jnp.array([tao_tilde])])
+    u = jnp.concatenate([w, jnp.array([tau])])
+    u_tilde = jnp.concatenate([w_tilde, jnp.array([tau_tilde])])
 
     # for s extraction - not needed for algorithm
     v = u + z_init - 2 * u_tilde

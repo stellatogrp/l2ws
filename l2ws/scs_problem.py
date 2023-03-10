@@ -7,7 +7,7 @@ from jax import random
 import jax
 from l2ws.algo_steps import create_M, create_projection_fn, lin_sys_solve, fixed_point, \
     fixed_point_hsde, extract_sol
-from l2ws.utils.generic_utils import fori_loop
+from l2ws.utils.generic_utils import python_fori_loop
 
 
 class SCSinstance(object):
@@ -140,7 +140,7 @@ def scs_jax(data, hsde=True, iters=5000, jit=True, plot=False):
     if jit:
         val = jax.lax.fori_loop(start, iters, body_fn, init_val)
     else:
-        val = fori_loop(start, iters, body_fn, init_val)
+        val = python_fori_loop(start, iters, body_fn, init_val)
 
     z, iter_losses, z_all, u_all, u_tilde_all, v_all = val
 
@@ -148,11 +148,6 @@ def scs_jax(data, hsde=True, iters=5000, jit=True, plot=False):
 
     # extract the primal and dual variables
     x, y, s = extract_sol(u_final, v_final, n, hsde)
-    # if hsde:
-    #     tao = u_final[-1]
-    #     x, y, s = u_final[:n] / tao, u_final[n:-1] / tao, v_final[n:-1] / tao
-    # else:
-    #     x, y, s = u_final[:n], u_final[n:], v_final[n:]
 
     if plot:
         plt.plot(iter_losses, label='fixed point residuals')

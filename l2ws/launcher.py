@@ -36,7 +36,6 @@ class Workspace:
         static_dict holds the data that doesn't change from problem to problem
         '''
         self.cfg = cfg
-        self.itr = 0
         self.eval_unrolls = cfg.eval_unrolls
         self.eval_every_x_epochs = cfg.eval_every_x_epochs
         self.save_every_x_epochs = cfg.save_every_x_epochs
@@ -107,8 +106,6 @@ class Workspace:
             static_M = static_dict['M']
 
             static_algo_factor = static_dict['algo_factor']
-            # cones_array = static_dict['cones_array']
-            # cones = dict(z=int(cones_array[0]), l=int(cones_array[1]))
             cones = static_dict['cones_dict']
 
             # call get_q_mat
@@ -139,7 +136,6 @@ class Workspace:
         # alternate -- load it if available (but this is memory-intensive)
         q_mat_train = q_mat[:N_train, :]
         q_mat_test = q_mat[N_train:N, :]
-        print('q_mat_train', q_mat_train[0, :])
 
         self.M = static_M
 
@@ -278,7 +274,7 @@ class Workspace:
         # plot the warm-start predictions
         u_all = out_train[0][3]
         z_all = out_train[0][0]
-        self.plot_warm_starts(u_all, z_all, train, col)
+        # self.plot_warm_starts(u_all, z_all, train, col)
 
         # plot the alpha coefficients
         alpha = out_train[0][2]
@@ -290,7 +286,7 @@ class Workspace:
             self.custom_visualize(x_primals, train, col)
 
         # solve with scs
-        # z0_mat = z_all[:, 0, :]
+        z0_mat = z_all[:, 0, :]
         # self.solve_scs(z0_mat, train, col)
 
         return out_train
@@ -316,7 +312,7 @@ class Workspace:
         b_zeros, c_zeros = np.zeros(m), np.zeros(n)
         scs_data = dict(P=P, A=A, b=b_zeros, c=c_zeros)
         cones_dict = self.cones
-        # solver = scs.SCS(scs_data, cones_dict)
+
         solver = scs.SCS(scs_data,
                          cones_dict,
                          normalize=False,
@@ -363,9 +359,9 @@ class Workspace:
     def get_xys_from_z(self, z_init, q):
         n = self.l2ws_model.n
         u_tilde = lin_sys_solve(self.l2ws_model.static_algo_factor, z_init - q)
-        u_temp = 2*u_tilde - z_init
+        u_temp = 2 * u_tilde - z_init
         u = self.proj(u_temp)
-        v = u + z_init - 2*u_tilde
+        v = u + z_init - 2 * u_tilde
 
         x, y = u[:n], u[n:]
         s = v[n:]
@@ -414,8 +410,6 @@ class Workspace:
         # pretrain evaluation
         if pretrain_on:
             self.pretrain()
-
-        # self.train_full()
 
         # eval test data to start
         self.test_eval_write()
@@ -475,8 +469,7 @@ class Workspace:
 
             # reset the global (params, state)
             self.l2ws_model.epoch += self.epochs_jit
-            self.l2ws_model.params = params
-            self.l2ws_model.state = state
+            self.l2ws_model.params, self.l2ws_model.state = params, state
 
             prev_batches = len(self.l2ws_model.tr_losses_batch)
             self.l2ws_model.tr_losses_batch = self.l2ws_model.tr_losses_batch + \
@@ -865,11 +858,6 @@ class Workspace:
         # plotting subsequent vectors in polar form
         for i in range(5):
             fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
-            # curr_r = r[i, :-1]
-            # theta = np.zeros(curr_r.size)
-
-            # theta[1:] = angles[i, -1, 1:]
-            # theta[1:] = angles[i, 1:]
             radii = r[i, 1:] / r[i, :-1]
             theta = angles[i, :]
             ax.plot(theta, radii)
@@ -924,10 +912,16 @@ class Workspace:
             os.mkdir(ws_path)
         if not os.path.exists(f"{ws_path}/{col}"):
             os.mkdir(f"{ws_path}/{col}")
+        m, n = self.l2ws_model.m, self.l2ws_model.n
         for i in range(5):
+            if self.l2ws_model.hsde:
+                x_hats, y_hats = u_all[i, :, :n], u_all[i, :, n:]
+            else:
+                x_hats, y_hats = u_all[i, :, :n], u_all[i, :, n:]
+
             # plot for x
             for j in self.plot_iterates:
-                plt.plot(u_all[i, j, :self.l2ws_model.n], label=f"prediction_{j}")
+                plt.plot(u_all[i, j, :n], label=f"prediction_{j}")
             if train:
                 plt.plot(self.x_stars_train[i, :], label='optimal')
             else:
@@ -937,7 +931,7 @@ class Workspace:
             plt.clf()
 
             for j in self.plot_iterates:
-                plt.plot(u_all[i, j, :self.l2ws_model.n] -
+                plt.plot(u_all[i, j, :n] -
                          self.x_stars_train[i, :], label=f"prediction_{j}")
             plt.legend()
             plt.title('diffs to optimal')
@@ -945,8 +939,9 @@ class Workspace:
             plt.clf()
 
             # plot for y
+            
             for j in self.plot_iterates:
-                plt.plot(u_all[i, j, self.l2ws_model.n:], label=f"prediction_{j}")
+                plt.plot(u_all[i, j, n:n + m], label=f"prediction_{j}")
             if train:
                 plt.plot(self.y_stars_train[i, :], label='optimal')
             else:
@@ -956,7 +951,7 @@ class Workspace:
             plt.clf()
 
             for j in self.plot_iterates:
-                plt.plot(u_all[i, j, self.l2ws_model.n:] -
+                plt.plot(u_all[i, j, n:m + n] -
                          self.y_stars_train[i, :], label=f"prediction_{j}")
             plt.legend()
             plt.title('diffs to optimal')

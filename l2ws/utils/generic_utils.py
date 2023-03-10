@@ -78,7 +78,7 @@ def unvec_symm(x, dim, triu_indices=None):
 
 
 # non jit loop
-def fori_loop(lower, upper, body_fun, init_val):
+def python_fori_loop(lower, upper, body_fun, init_val):
     val = init_val
     for i in range(lower, upper):
         val = body_fun(i, val)
