@@ -6,6 +6,35 @@ import jax.scipy as jsp
 TAU_FACTOR = 10
 
 
+def fp_train(i, val, q, factor, supervised, z_star, proj):
+    z, loss_vec = val
+    z_next, u, u_tilde, v = fixed_point(z, q, factor, proj)
+    if supervised:
+        diff = jnp.linalg.norm(z - z_star)
+    else:
+        diff = jnp.linalg.norm(z_next - z)
+    loss_vec = loss_vec.at[i].set(diff)
+    return z_next, loss_vec
+
+
+def fp_eval(i, val, q, factor, proj, P, A, c, b):
+    n = c.size
+    z, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals = val
+    z_next, u, u_tilde, v = fixed_point(z, q, factor, proj)
+    diff = jnp.linalg.norm(z_next - z)
+    loss_vec = loss_vec.at[i].set(diff)
+
+    # primal and dual residuals
+    pr = jnp.linalg.norm(A @ u[:n] + v[n:] - b)
+    dr = jnp.linalg.norm(A.T @ u[n:] + P @ u[:n] + c)
+    primal_residuals = primal_residuals.at[i].set(pr)
+    dual_residuals = dual_residuals.at[i].set(dr)
+
+    all_z = all_z.at[i, :].set(z)
+    all_u = all_u.at[i, :].set(u)
+    return z_next, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals
+
+
 def create_projection_fn(cones, n):
     """
     cones is a dict with keys

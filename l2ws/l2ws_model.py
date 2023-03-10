@@ -14,7 +14,7 @@ import pandas as pd
 from jax.config import config
 from scipy.spatial import distance_matrix
 import logging
-from l2ws.algo_steps import lin_sys_solve, fixed_point, fixed_point_hsde
+from l2ws.algo_steps import fp_train, fp_eval
 from functools import partial
 config.update("jax_enable_x64", True)
 
@@ -166,7 +166,6 @@ class L2WSmodel(object):
             self.optimizer = OptaxSolver(opt=optax.sgd(
                 self.lr), fun=self.loss_fn_train, has_aux=False)
 
-        # self.input_dict = dict
         self.tr_losses = None
         self.te_losses = None
 
@@ -296,7 +295,6 @@ class L2WSmodel(object):
         return pretrain_losses, pretrain_test_losses
 
     def pretrain(self, num_iters, stepsize=.001, method='adam', df_pretrain=None, batches=1):
-        # create pretrain function
         def pretrain_loss(params, inputs, targets):
             if self.tx is None or self.ty is None:
                 nn_output = self.batched_predict_y(params, inputs)
@@ -481,63 +479,35 @@ class L2WSmodel(object):
         M_static, factor_static = self.static_M, self.static_algo_factor
         share_all, Z_shared = self.share_all, self.Z_shared
         loss_method, static_flag = self.loss_method, self.static_flag
-        # partial_fixed_point = partial(fixed_point, proj=proj)
 
         def predict(params, input, q, iters, z_star, factor, M):
             P, A = M[:n, :n], -M[n:, :n]
             b, c = q[n:], q[:n]
-            alpha = None
-
-            if bypass_nn:
-                z = input
-            else:
-                if share_all:
-                    alpha_raw = predict_y(params, input)
-                    alpha = normalize_alpha_fn(alpha_raw, normalize_alpha)
-                    z = Z_shared @ alpha
-                else:
-                    nn_output = predict_y(params, input)
-                    z = nn_output
-            z0 = z
+            z0, alpha = predict_warm_start(params, input, bypass_nn,
+                                           share_all, Z_shared, normalize_alpha)
             iter_losses = jnp.zeros(iters)
             primal_residuals, dual_residuals = jnp.zeros(iters), jnp.zeros(iters)
 
-            # suppose iters = 500
-            # then we store u_1, ..., u_500 and z_0, z_1, ..., z_500
-            all_u, all_z = jnp.zeros((iters, z.size)), jnp.zeros((iters, z.size))
-            all_z_ = jnp.zeros((iters + 1, z.size))
-            all_z_ = all_z_.at[0, :].set(z)
+            # if iters = 500 we store u_1, ..., u_500 and z_0, z_1, ..., z_500
+            all_u, all_z = jnp.zeros((iters, z0.size)), jnp.zeros((iters, z0.size))
+            all_z_ = jnp.zeros((iters + 1, z0.size))
+            all_z_ = all_z_.at[0, :].set(z0)
 
             if diff_required:
                 fp_train_partial = partial(fp_train, q=q, factor=factor,
                                            supervised=supervised, z_star=z_star, proj=proj)
-                val = z, iter_losses
+                val = z0, iter_losses
                 out = jax.lax.fori_loop(0, iters, fp_train_partial, val)
                 z_final, iter_losses = out
             else:
-                # def fp_eval(i, val):
-                #     z, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals = val
-                #     z_next, u, u_tilde, v = partial_fixed_point(z, q, factor)
-                #     diff = jnp.linalg.norm(z_next - z)
-                #     loss_vec = loss_vec.at[i].set(diff)
-
-                #     # primal and dual residuals
-                #     pr = jnp.linalg.norm(A @ u[:n] + v[n:] - b)
-                #     dr = jnp.linalg.norm(A.T @ u[n:] + P @ u[:n] + c)
-                #     primal_residuals = primal_residuals.at[i].set(pr)
-                #     dual_residuals = dual_residuals.at[i].set(dr)
-
-                #     all_z = all_z.at[i, :].set(z)
-                #     all_u = all_u.at[i, :].set(u)
-                #     return z_next, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals
                 fp_eval_partial = partial(fp_eval, q=q, factor=factor,
                                           proj=proj, P=P, A=A, c=c, b=b)
-                val = z, z, iter_losses, all_z, all_u, primal_residuals, dual_residuals
+                val = z0, z0, iter_losses, all_z, all_u, primal_residuals, dual_residuals
                 out = jax.lax.fori_loop(0, iters, fp_eval_partial, val)
                 z_final, z_penult, iter_losses, all_z, all_u, primal_residuals, dual_residuals = out
                 all_z_ = all_z_.at[1:, :].set(all_z)
 
-                # do the angle(z^{k+1} - z^k, z^k - z^{k-1})
+                # compute angle(z^{k+1} - z^k, z^k - z^{k-1})
                 diffs = jnp.diff(all_z_, axis=0)
                 angles = batch_angle(diffs[:-1], diffs[1:])
 
@@ -668,30 +638,20 @@ def predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
     return loss_fn
 
 
-def fp_train(i, val, q, factor, supervised, z_star, proj):
-    z, loss_vec = val
-    z_next, u, u_tilde, v = fixed_point(z, q, factor, proj)
-    if supervised:
-        diff = jnp.linalg.norm(z - z_star)
+def predict_warm_start(params, input, bypass_nn, share_all, Z_shared, normalize_alpha):
+    """
+    gets the warm-start
+    bypass_nn means we ignore the neural network and set z0=input
+    """
+    alpha = None
+    if bypass_nn:
+        z0 = input
     else:
-        diff = jnp.linalg.norm(z_next - z)
-    loss_vec = loss_vec.at[i].set(diff)
-    return z_next, loss_vec
-
-
-def fp_eval(i, val, q, factor, proj, P, A, c, b):
-    n = c.size
-    z, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals = val
-    z_next, u, u_tilde, v = fixed_point(z, q, factor, proj)
-    diff = jnp.linalg.norm(z_next - z)
-    loss_vec = loss_vec.at[i].set(diff)
-
-    # primal and dual residuals
-    pr = jnp.linalg.norm(A @ u[:n] + v[n:] - b)
-    dr = jnp.linalg.norm(A.T @ u[n:] + P @ u[:n] + c)
-    primal_residuals = primal_residuals.at[i].set(pr)
-    dual_residuals = dual_residuals.at[i].set(dr)
-
-    all_z = all_z.at[i, :].set(z)
-    all_u = all_u.at[i, :].set(u)
-    return z_next, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals
+        if share_all:
+            alpha_raw = predict_y(params, input)
+            alpha = normalize_alpha_fn(alpha_raw, normalize_alpha)
+            z0 = Z_shared @ alpha
+        else:
+            nn_output = predict_y(params, input)
+            z0 = nn_output
+    return z0, alpha
