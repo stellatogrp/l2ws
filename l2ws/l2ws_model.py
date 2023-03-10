@@ -477,26 +477,11 @@ class L2WSmodel(object):
         bypass_nn = input_dict['bypass_nn']
         diff_required = input_dict['diff_required']
         supervised = input_dict['supervised']
-
-        proj = self.proj
-        n = self.n
-        normalize_alpha = self.normalize_alpha
-        static_flag = self.static_flag
+        proj, n, normalize_alpha = self.proj, self.n, self.normalize_alpha
         M_static, factor_static = self.static_M, self.static_algo_factor
         share_all, Z_shared = self.share_all, self.Z_shared
-        loss_method = self.loss_method
-
-        # to deprecate
-        # tx, ty = self.tx, self.ty
-
-        # def fixed_point(z_init, factor, q):
-        #     u_tilde = lin_sys_solve(factor, z_init - q)
-        #     u_temp = 2 * u_tilde - z_init
-        #     u = proj(u_temp)
-        #     v = u + z_init - 2*u_tilde
-        #     z = z_init + u - u_tilde
-        #     return z, u, v
-        partial_fixed_point = partial(fixed_point, proj=self.proj)
+        loss_method, static_flag = self.loss_method, self.static_flag
+        partial_fixed_point = partial(fixed_point, proj=proj)
 
         def predict(params, input, q, iters, z_star, factor, M):
             P, A = M[:n, :n], -M[n:, :n]
@@ -507,45 +492,27 @@ class L2WSmodel(object):
                 z = input
             else:
                 if share_all:
-                    alpha = predict_y(params, input)
-                    if normalize_alpha == 'conic':
-                        alpha = jnp.maximum(0, alpha)
-                    elif normalize_alpha == 'sum':
-                        alpha = alpha / alpha.sum()
-                    elif normalize_alpha == 'convex':
-                        alpha = jnp.maximum(0, alpha)
-                        alpha = alpha / alpha.sum()
-                    elif normalize_alpha == 'softmax':
-                        alpha = jax.nn.softmax(alpha)
+                    alpha_raw = predict_y(params, input)
+                    alpha = normalize_alpha_fn(alpha_raw, normalize_alpha)
                     z = Z_shared @ alpha
                 else:
-                    # if tx is None or ty is None:
                     nn_output = predict_y(params, input)
-                    # u_ws = nn_output
-                    # else:
-                    # POSSIBLE TODO
-                    # nn_params = params[:num_nn_params]
-                    # nn_output = predict_y(nn_params, input)
-
-                    # u_ws = low_2_high_dim(nn_output, X_list, Y_list)
-
-                    # z = M @ u_ws + u_ws + q
                     z = nn_output
-
             z0 = z
             iter_losses = jnp.zeros(iters)
-            primal_residuals = jnp.zeros(iters)
-            dual_residuals = jnp.zeros(iters)
+            primal_residuals, dual_residuals = jnp.zeros(iters), jnp.zeros(iters)
 
-            all_u = jnp.zeros((iters, z.size))
-            all_z = jnp.zeros((iters, z.size))
+            # suppose iters = 500
+            # then we store
+            #   u_1, ..., u_500
+            #   z_0, z_1, ..., z_500
+            all_u, all_z = jnp.zeros((iters, z.size)), jnp.zeros((iters, z.size))
             all_z_ = jnp.zeros((iters + 1, z.size))
             all_z_ = all_z_.at[0, :].set(z)
 
             if diff_required:
-                def _fp(i, val):
+                def fp_train(i, val):
                     z, loss_vec = val
-                    # z_next, u, v = fixed_point(z, factor, q)
                     z_next, u, u_tilde, v = partial_fixed_point(z, q, factor)
                     if supervised:
                         diff = jnp.linalg.norm(z - z_star)
@@ -554,17 +521,16 @@ class L2WSmodel(object):
                     loss_vec = loss_vec.at[i].set(diff)
                     return z_next, loss_vec
                 val = z, iter_losses
-                out = jax.lax.fori_loop(0, iters, _fp, val)
-                z, iter_losses = out
-                angles = None
+                out = jax.lax.fori_loop(0, iters, fp_train, val)
+                z_final, iter_losses = out
             else:
-                def _fp_(i, val):
+                def fp_eval(i, val):
                     z, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals = val
-                    # z_next, u, v = fixed_point(z, factor, q)
                     z_next, u, u_tilde, v = partial_fixed_point(z, q, factor)
                     diff = jnp.linalg.norm(z_next - z)
                     loss_vec = loss_vec.at[i].set(diff)
 
+                    # primal and dual residuals
                     pr = jnp.linalg.norm(A @ u[:n] + v[n:] - b)
                     dr = jnp.linalg.norm(A.T @ u[n:] + P @ u[:n] + c)
                     primal_residuals = primal_residuals.at[i].set(pr)
@@ -574,54 +540,78 @@ class L2WSmodel(object):
                     all_u = all_u.at[i, :].set(u)
                     return z_next, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals
                 val = z, z, iter_losses, all_z, all_u, primal_residuals, dual_residuals
-                out = jax.lax.fori_loop(0, iters, _fp_, val)
-                z, z_prev, iter_losses, all_z, all_u, primal_residuals, dual_residuals = out
+                out = jax.lax.fori_loop(0, iters, fp_eval, val)
+                z_final, z_penult, iter_losses, all_z, all_u, primal_residuals, dual_residuals = out
                 all_z_ = all_z_.at[1:, :].set(all_z)
 
                 # do the angle(z^{k+1} - z^k, z^k - z^{k-1})
                 diffs = jnp.diff(all_z_, axis=0)
+                angles = batch_angle(diffs[:-1], diffs[1:])
 
-                def compute_angle(d1, d2):
-                    cos = d1 @ d2 / (jnp.linalg.norm(d1) * jnp.linalg.norm(d2))
-                    angle = jnp.arccos(cos)
-                    return angle
-                batch_angle = vmap(compute_angle, in_axes=(0, 0), out_axes=(0))
-                curr_angles = batch_angle(diffs[:-1], diffs[1:])
-
-                angles = curr_angles
-
-            # unroll 1 more time for the loss
-            u_tilde = lin_sys_solve(factor, z - q)
-            u_temp = 2 * u_tilde - z
-            u = proj(u_temp)
-            z_next = z + u - u_tilde
-
-            if supervised:
-                if loss_method == 'constant_sum':
-                    loss = iter_losses.sum()
-                elif loss_method == 'fixed_k':
-                    loss = jnp.linalg.norm(z_next - z_star)
-            else:
-                if loss_method == 'increasing_sum':
-                    weights = (1+jnp.arange(iter_losses.size))
-                    loss = iter_losses @ weights
-                elif loss_method == 'constant_sum':
-                    loss = iter_losses.sum()
-                elif loss_method == 'fixed_k':
-                    loss = jnp.linalg.norm(z_next - z)
-                elif loss_method == 'first_2_last':
-                    loss = jnp.linalg.norm(z_next - z0)
-
-            out = all_z_, z_next, alpha, all_u
-
+            loss = final_loss(loss_method, z_final, iter_losses, supervised, z0, z_star)
+            out = all_z_, z_final, alpha, all_u
             if diff_required:
-                return loss, iter_losses, angles, out
+                return loss, iter_losses, out
             else:
                 return loss, iter_losses, angles, primal_residuals, dual_residuals, out
-
         loss_fn = predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
-
         return loss_fn
+
+
+def compute_angle(d1, d2):
+    cos = d1 @ d2 / (jnp.linalg.norm(d1) * jnp.linalg.norm(d2))
+    angle = jnp.arccos(cos)
+    return angle
+
+
+batch_angle = vmap(compute_angle, in_axes=(0, 0), out_axes=(0))
+
+
+def final_loss(loss_method, z_last, iter_losses, supervised, z0, z_star):
+    """
+    encodes several possible loss functions
+
+    z_last is the last iterate from DR splitting
+    z_penultimate is the second to last iterate from DR splitting
+
+    z_star is only used if supervised
+
+    z0 is only used if the loss_method is first_2_last
+    """
+    if supervised:
+        if loss_method == 'constant_sum':
+            loss = iter_losses.sum()
+        elif loss_method == 'fixed_k':
+            loss = jnp.linalg.norm(z_last - z_star)
+    else:
+        if loss_method == 'increasing_sum':
+            weights = (1+jnp.arange(iter_losses.size))
+            loss = iter_losses @ weights
+        elif loss_method == 'constant_sum':
+            loss = iter_losses.sum()
+        elif loss_method == 'fixed_k':
+            # loss = jnp.linalg.norm(z_last - z_penultimate)
+            loss = iter_losses[-1]
+        elif loss_method == 'first_2_last':
+            loss = jnp.linalg.norm(z_last - z0)
+    return loss
+
+
+def normalize_alpha_fn(alpha, normalize_alpha):
+    """
+    normalizes the alpha vector according to the method prescribed
+        in the normalize_alpha input
+    """
+    if normalize_alpha == 'conic':
+        alpha = jnp.maximum(0, alpha)
+    elif normalize_alpha == 'sum':
+        alpha = alpha / alpha.sum()
+    elif normalize_alpha == 'convex':
+        alpha = jnp.maximum(0, alpha)
+        alpha = alpha / alpha.sum()
+    elif normalize_alpha == 'softmax':
+        alpha = jax.nn.softmax(alpha)
+    return alpha
 
 
 def predict_2_loss(predict, static_flag, diff_required, factor_static, M_static):
@@ -637,8 +627,14 @@ def predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
     in all forward passes, the number of iterations is static
     """
     if diff_required:
-        out_axes = (0, 0, 0, (0, 0, 0, 0))
+        # out_axes for
+        #   (loss, iter_losses, out)
+        #   out = (all_z_, z_next, alpha, all_u)
+        out_axes = (0, 0, (0, 0, 0, 0))
     else:
+        # out_axes for
+        #   (loss, iter_losses, angles, primal_residuals, dual_residuals, out)
+        #   out = (all_z_, z_next, alpha, all_u)
         out_axes = (0, 0, 0, 0, 0, (0, 0, 0, 0))
     if static_flag:
         predict_final = partial(predict,
@@ -651,15 +647,14 @@ def predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
         @partial(jit, static_argnums=(3,))
         def loss_fn(params, inputs, q, iters, z_stars):
             if diff_required:
-                losses, iter_losses, angles, out = batch_predict(
+                losses, iter_losses, out = batch_predict(
                     params, inputs, q, iters, z_stars)
-                loss_out = out, losses, iter_losses, angles
+                loss_out = out, losses, iter_losses
             else:
                 predict_out = batch_predict(
                     params, inputs, q, iters, z_stars)
                 losses, iter_losses, angles, primal_residuals, dual_residuals, out = predict_out
                 loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
-
             return losses.mean(), loss_out
     else:
         batch_predict = vmap(predict, in_axes=(
@@ -668,14 +663,13 @@ def predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
         @partial(jax.jit, static_argnums=(5,))
         def loss_fn(params, inputs, factor, M, q, iters):
             if diff_required:
-                losses, iter_losses, angles, out = batch_predict(
+                losses, iter_losses, out = batch_predict(
                     params, inputs, q, iters, factor, M)
-                loss_out = out, losses, iter_losses, angles
+                loss_out = out, losses, iter_losses
             else:
                 predict_out = batch_predict(
                     params, inputs, q, iters, factor, M)
                 losses, iter_losses, angles, primal_residuals, dual_residuals, out = predict_out
                 loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
             return losses.mean(), loss_out
-
     return loss_fn
