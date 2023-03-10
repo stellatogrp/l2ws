@@ -745,6 +745,10 @@ class Workspace:
     def update_eval_csv(self, iter_losses_mean, primal_residuals, dual_residuals, train, col):
         """
         update the eval csv files
+            fixed point residuals
+            primal residuals
+            dual residuals
+        returns the new dataframes
         """
         if train:
             self.iters_df_train[col] = iter_losses_mean
@@ -816,6 +820,9 @@ class Workspace:
         plt.clf()
 
     def plot_alphas(self, alpha, train, col):
+        """
+        in the shared solution method, this plots the alpha coefficients predicted
+        """
         if train:
             alpha_path = 'alphas_train'
         else:
@@ -829,6 +836,9 @@ class Workspace:
             plt.clf()
 
     def plot_losses_over_examples(self, losses_over_examples, train, col):
+        """
+        plots the fixed point residuals over eval steps for each individual problem
+        """
         if train:
             loe_folder = 'losses_over_examples_train'
         else:
@@ -852,52 +862,18 @@ class Workspace:
         if not os.path.exists(f"{polar_path}/{col}"):
             os.mkdir(f"{polar_path}/{col}")
 
-        num_angles = len(self.angle_anchors)
+        # plotting subsequent vectors in polar form
         for i in range(5):
             fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
-            for j in range(num_angles):
-                angle = self.angle_anchors[j]
-                curr_r = r[i, angle:-1]
-                theta = np.zeros(curr_r.size)
-                theta[1:] = angles[i, j, angle+1:]
-                ax.plot(theta, curr_r, label=f"anchor={angle}")
-                ax.plot(theta[self.train_unrolls-angle], curr_r[self.train_unrolls-angle], 'r+')
-            ax.grid(True)
-            ax.set_rscale('symlog')
-            ax.set_title("Magnitude", va='bottom')
-            plt.legend()
-            plt.savefig(f"{polar_path}/{col}/prob_{i}_mag.pdf")
-            plt.clf()
+            # curr_r = r[i, :-1]
+            # theta = np.zeros(curr_r.size)
 
-        for i in range(5):
-            fig2, ax2 = plt.subplots(subplot_kw={'projection': 'polar'})
-            for j in range(num_angles):
-                angle = self.angle_anchors[j]
-                curr_r = r[i, angle:-1]
-                theta = np.zeros(curr_r.size)
-                theta[1:] = angles[i, j, angle+1:]
-                num_iters = np.max([100, self.train_unrolls + 5])
-                r2 = num_iters - np.arange(num_iters)
-                ax2.plot(theta[:num_iters], r2, label=f"anchor={angle}")
-                ax2.plot(theta[self.train_unrolls-angle], r2[self.train_unrolls-angle], 'r+')
-            ax2.grid(True)
-            ax2.set_title("Iterations", va='bottom')
-            plt.legend()
-            plt.savefig(f"{polar_path}/{col}/prob_{i}_iters.pdf")
-            plt.clf()
-
-        '''
-        plotting subsequent vectors in polar form
-        '''
-        num_angles = len(self.angle_anchors)
-        for i in range(5):
-            fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
-            curr_r = r[i, :-1]
-            theta = np.zeros(curr_r.size)
-
-            theta[1:] = angles[i, -1, 1:]
-            ax.plot(theta, curr_r, label=f"anchor={angle}")
-            ax.plot(theta[self.train_unrolls-angle], curr_r[self.train_unrolls-angle], 'r+')
+            # theta[1:] = angles[i, -1, 1:]
+            # theta[1:] = angles[i, 1:]
+            radii = r[i, 1:] / r[i, :-1]
+            theta = angles[i, :]
+            ax.plot(theta, radii)
+            ax.plot(theta[self.train_unrolls], radii[self.train_unrolls], 'r+')
             ax.grid(True)
             ax.set_rscale('symlog')
             ax.set_title("Magnitude", va='bottom')
@@ -905,41 +881,41 @@ class Workspace:
             plt.savefig(f"{polar_path}/{col}/prob_{i}_subseq_mag.pdf")
             plt.clf()
 
-        for i in range(5):
-            fig2, ax2 = plt.subplots(subplot_kw={'projection': 'polar'})
-            for j in range(num_angles):
-                curr_r = r[i, :-1]
-                theta = np.zeros(curr_r.size)
-                theta[1:] = angles[i, -1, 1:]
-                num_iters = np.max([100, self.train_unrolls + 5])
-                r2 = num_iters - np.arange(num_iters)
-                ax2.plot(theta[:num_iters], r2, label=f"anchor={angle}")
-                ax2.plot(theta[self.train_unrolls], r2[self.train_unrolls], 'r+')
-            ax2.grid(True)
-            ax2.set_title("Iterations", va='bottom')
-            plt.legend()
-            plt.savefig(f"{polar_path}/{col}/prob_{i}_subseq_iters.pdf")
-            plt.clf()
-
-        '''
-        save the angle data (or the cos(angle) data) for subseq.
-        - new csv file for each
-        - put
-        '''
-        subsequent_angles = angles[:, -1, 1:]
+        # save the angle data (or the cos(angle) data) for subseq.
+        # new csv file for each
+        subsequent_angles = angles
         angles_df = pd.DataFrame(subsequent_angles)
         angles_df.to_csv(f"{polar_path}/{col}/angle_data.csv")
 
         # also plot the angles for the first 5 problems
         for i in range(5):
-            plt.plot(angles[i, -1, 2:])
+            plt.plot(angles[i, :])
             plt.ylabel('angle')
             plt.xlabel('eval iters')
-            plt.hlines(0, 0, angles[i, -1, 2:].size, 'r')
+            plt.hlines(0, 0, angles[i, :].size, 'r')
             plt.savefig(f"{polar_path}/{col}/prob_{i}_angles.pdf")
             plt.clf()
 
     def plot_warm_starts(self, u_all, z_all, train, col):
+        """
+        plots the warm starts for the given method
+
+        we give plots for
+            x: primal variable
+            y: dual variable
+            z: base Douglas-Rachford iterate (dual of primal-dual variable)
+
+        train is a boolean
+
+        plots the first 5 problems and
+
+        self.plot_iterates is a list
+            e.g. [0, 10, 20]
+            tells us to plot
+                (z^0, z^10, z^20, z_opt) for each of the first 5 problems
+                AND do a separate plot for
+                (z^0 - z_opt, z^10 - z_opt, z^20 - z_opt) for each of the first 5 problems
+        """
         if train:
             ws_path = 'warm-starts_train'
         else:

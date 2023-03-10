@@ -14,14 +14,14 @@ import pandas as pd
 from jax.config import config
 from scipy.spatial import distance_matrix
 import logging
-from l2ws.algo_steps import lin_sys_solve
+from l2ws.algo_steps import lin_sys_solve, fixed_point, fixed_point_hsde
 from functools import partial
 config.update("jax_enable_x64", True)
 
 
 class L2WSmodel(object):
     def __init__(self, dict):
-        proj = dict['proj']
+        self.proj = dict['proj']
         self.static_flag = dict['static_flag']
         self.batch_size = dict['nn_cfg'].batch_size
         self.epochs = dict['nn_cfg'].epochs
@@ -60,7 +60,7 @@ class L2WSmodel(object):
         self.dx, self.dy = dict.get('dx', 0), dict.get('dy', 0)
         self.psd_size = dict.get('psd_size')
         self.low_2_high_dim = dict.get('low_2_high_dim')
-        self.learn_XY = dict.get('learn_XY')
+
         self.num_clusters = dict.get('num_clusters')
         self.x_psd_indices = dict.get('x_psd_indices')
         self.y_psd_indices = dict.get('y_psd_indices')
@@ -90,7 +90,6 @@ class L2WSmodel(object):
         if self.share_all:
             output_size = self.num_clusters
         else:
-            # if self.prediction_variable == 'w':
             if self.psd:
                 n_x_non_psd = self.n - int(self.psd_size * (self.psd_size + 1) / 2)
                 n_y_non_psd = self.m - int(self.psd_size * (self.psd_size + 1) / 2)
@@ -108,7 +107,7 @@ class L2WSmodel(object):
         key = 0
         if self.share_all:
             out = self.cluster_z()
-            Z_shared = out[0]
+            self.Z_shared = out[0]
             self.train_cluster_indices, self.test_cluster_indices = out[1], out[2]
             self.X_list, self.Y_list = [], []
             self.params = self.nn_params
@@ -116,7 +115,7 @@ class L2WSmodel(object):
                 self.pretrain_alphas(1000, None, share_all=True)
 
         else:
-            Z_shared = None
+            self.Z_shared = None
             if self.psd and self.tx + self.ty > 0:
                 if self.learn_XY:
                     self.X_list = init_matrix_params(self.tx, self.psd_size, random.PRNGKey(key))
@@ -136,85 +135,29 @@ class L2WSmodel(object):
 
         self.epoch = 0
 
-        train_loss_dict = {'static_flag': self.static_flag,
-                           'lin_sys_solve': lin_sys_solve,
-                           'proj': proj,
+        train_loss_dict = {'diff_required': True,
                            'unrolls': self.train_unrolls,
-                           'm': self.m,
-                           'n': self.n,
                            'bypass_nn': False,
-                           'M_static': self.static_M,
-                           'factor_static': self.static_algo_factor,
-                           'diff_required': True,
-                           'angle_anchors': self.angle_anchors,
-                           'supervised': self.supervised,
-                           'num_nn_params': len(self.nn_params),
-                           'tx': self.tx,
-                           'ty': self.ty,
-                           'low_2_high_dim': self.low_2_high_dim,
-                           'X_list_fixed': self.X_list,
-                           'Y_list_fixed': self.Y_list,
-                           'learn_XY': self.learn_XY,
-                           'loss_method': self.loss_method,
-                           'share_all': self.share_all,
-                           'Z_shared': Z_shared,
-                           'normalize_alpha': self.normalize_alpha
+                           'supervised': self.supervised
                            }
-        eval_loss_dict = {'static_flag': self.static_flag,
-                          'lin_sys_solve': lin_sys_solve,
-                          'proj': proj,
+        eval_loss_dict = {'diff_required': False,
                           'unrolls': self.eval_unrolls,
-                          'm': self.m,
-                          'n': self.n,
                           'bypass_nn': False,
-                          'M_static': self.static_M,
-                          'factor_static': self.static_algo_factor,
-                          'diff_required': False,
-                          'angle_anchors': self.angle_anchors,
-                          'supervised': False,
-                          'num_nn_params': len(self.nn_params),
-                          'tx': self.tx,
-                          'ty': self.ty,
-                          'low_2_high_dim': self.low_2_high_dim,
-                          'X_list_fixed': self.X_list,
-                          'Y_list_fixed': self.Y_list,
-                          'learn_XY': self.learn_XY,
-                          'loss_method': self.loss_method,
-                          'share_all': self.share_all,
-                          'Z_shared': Z_shared,
-                          'normalize_alpha': self.normalize_alpha
+                          'supervised': False
                           }
-        fixed_ws_dict = {'static_flag': self.static_flag,
-                         'lin_sys_solve': lin_sys_solve,
-                         'proj': proj,
+        fixed_ws_dict = {'diff_required': False,
                          'unrolls': self.eval_unrolls,
-                         'm': self.m,
-                         'n': self.n,
                          'bypass_nn': True,
-                         'M_static': self.static_M,
-                         'factor_static': self.static_algo_factor,
-                         'diff_required': False,
-                         'angle_anchors': self.angle_anchors,
-                         'supervised': False,
-                         'num_nn_params': len(self.nn_params),
-                         'tx': self.tx,
-                         'ty': self.ty,
-                         'low_2_high_dim': self.low_2_high_dim,
-                         'X_list_fixed': self.X_list,
-                         'Y_list_fixed': self.Y_list,
-                         'learn_XY': self.learn_XY,
-                         'loss_method': self.loss_method,
-                         'share_all': self.share_all,
-                         'Z_shared': Z_shared,
-                         'normalize_alpha': self.normalize_alpha
-                         }
-        self.loss_fn_train = create_loss_fn(train_loss_dict)
-        self.loss_fn_eval = create_loss_fn(eval_loss_dict)
+                         'supervised': False}
 
-        # added fixed warm start eval
-        self.loss_fn_fixed_ws = create_loss_fn(fixed_ws_dict)
+        # loss fn for training
+        self.loss_fn_train = self.create_loss_fn(train_loss_dict)
 
-        self.loss_fn_tests = {}
+        # loss fn for evaluation
+        self.loss_fn_eval = self.create_loss_fn(eval_loss_dict)
+
+        # added fixed warm start eval - bypasses neural network
+        self.loss_fn_fixed_ws = self.create_loss_fn(fixed_ws_dict)
 
         if self.nn_cfg.method == 'adam':
             self.optimizer = OptaxSolver(opt=optax.adam(
@@ -223,7 +166,7 @@ class L2WSmodel(object):
             self.optimizer = OptaxSolver(opt=optax.sgd(
                 self.lr), fun=self.loss_fn_train, has_aux=True)
 
-        self.input_dict = dict
+        # self.input_dict = dict
         self.tr_losses = None
         self.te_losses = None
 
@@ -530,179 +473,222 @@ class L2WSmodel(object):
 
         return loss, out, time_per_prob
 
+    def create_loss_fn(self, input_dict):
+        bypass_nn = input_dict['bypass_nn']
+        diff_required = input_dict['diff_required']
+        supervised = input_dict['supervised']
 
-def create_loss_fn(input_dict):
-    static_flag = input_dict['static_flag']
-    proj = input_dict['proj']
+        proj = self.proj
+        n = self.n
+        normalize_alpha = self.normalize_alpha
+        static_flag = self.static_flag
+        M_static, factor_static = self.static_M, self.static_algo_factor
+        share_all, Z_shared = self.share_all, self.Z_shared
+        loss_method = self.loss_method
 
-    n = input_dict['n']
-    bypass_nn = input_dict['bypass_nn']
-    diff_required = input_dict['diff_required']
-    angle_anchors = input_dict['angle_anchors']
-    supervised = input_dict['supervised']
-    num_nn_params = input_dict['num_nn_params']
-    tx, ty = input_dict['tx'], input_dict['ty']
-    # low_2_high_dim = input_dict['low_2_high_dim']
+        # to deprecate
+        # tx, ty = self.tx, self.ty
 
-    loss_method = input_dict['loss_method']
-    share_all = input_dict['share_all']
-    Z_shared = input_dict['Z_shared']
-    normalize_alpha = input_dict['normalize_alpha']
+        def fixed_point(z_init, factor, q):
+            u_tilde = lin_sys_solve(factor, z_init - q)
+            u_temp = 2 * u_tilde - z_init
+            u = proj(u_temp)
+            v = u + z_init - 2*u_tilde
+            z = z_init + u - u_tilde
+            return z, u, v
 
-    # if dynamic, the next 2 set to None
-    M_static, factor_static = input_dict['M_static'], input_dict['factor_static']
+        def predict(params, input, q, iters, z_star, factor, M):
+            P, A = M[:n, :n], -M[n:, :n]
+            b, c = q[n:], q[:n]
+            alpha = None
 
-    def fixed_point(z_init, factor, q):
-        u_tilde = lin_sys_solve(factor, z_init - q)
-        u_temp = 2*u_tilde - z_init
-        u = proj(u_temp)
-        v = u + z_init - 2*u_tilde
-        z = z_init + u - u_tilde
-        return z, u, v
-
-    def predict(params, input, q, iters, z_star, factor, M):
-        P, A = M[:n, :n], -M[n:, :n]
-        b, c = q[n:], q[:n]
-        alpha = None
-
-        if bypass_nn:
-            z = input
-            u_ws = input
-        else:
-            if share_all:
-                alpha = predict_y(params, input)
-                if normalize_alpha == 'conic':
-                    alpha = jnp.maximum(0, alpha)
-                elif normalize_alpha == 'sum':
-                    alpha = alpha / alpha.sum()
-                elif normalize_alpha == 'convex':
-                    alpha = jnp.maximum(0, alpha)
-                    alpha = alpha / alpha.sum()
-                elif normalize_alpha == 'softmax':
-                    alpha = jax.nn.softmax(alpha)
-                z = Z_shared @ alpha
-                u_ws = z
+            if bypass_nn:
+                z = input
+                # u_ws = input
             else:
-                if tx is None or ty is None:
-                    nn_output = predict_y(params, input)
-                    u_ws = nn_output
+                if share_all:
+                    alpha = predict_y(params, input)
+                    if normalize_alpha == 'conic':
+                        alpha = jnp.maximum(0, alpha)
+                    elif normalize_alpha == 'sum':
+                        alpha = alpha / alpha.sum()
+                    elif normalize_alpha == 'convex':
+                        alpha = jnp.maximum(0, alpha)
+                        alpha = alpha / alpha.sum()
+                    elif normalize_alpha == 'softmax':
+                        alpha = jax.nn.softmax(alpha)
+                    z = Z_shared @ alpha
+                    # u_ws = z
                 else:
-                    nn_params = params[:num_nn_params]
-                    nn_output = predict_y(nn_params, input)
+                    # if tx is None or ty is None:
+                    nn_output = predict_y(params, input)
+                    # u_ws = nn_output
+                    # else:
+                    # POSSIBLE TODO
+                    # nn_params = params[:num_nn_params]
+                    # nn_output = predict_y(nn_params, input)
 
                     # u_ws = low_2_high_dim(nn_output, X_list, Y_list)
 
-                # z = M @ u_ws + u_ws + q
-                z = u_ws
-        # elif prediction_variable == 'x':
-        #     z = input
-        #     u_ws = input
-        z0 = z
-        iter_losses = jnp.zeros(iters)
-        primal_residuals = jnp.zeros(iters)
-        dual_residuals = jnp.zeros(iters)
+                    # z = M @ u_ws + u_ws + q
+                    z = nn_output
 
-        angles = jnp.zeros((len(angle_anchors) + 1, iters-1))
-        all_u = jnp.zeros((iters, z.size))
-        all_z = jnp.zeros((iters, z.size))
-        all_z_ = jnp.zeros((iters, z.size))
-        all_z_ = all_z_.at[0, :].set(z)
+            z0 = z
+            iter_losses = jnp.zeros(iters)
+            primal_residuals = jnp.zeros(iters)
+            dual_residuals = jnp.zeros(iters)
 
-        if diff_required:
-            def _fp(i, val):
-                z, loss_vec = val
-                z_next, u, v = fixed_point(z, factor, q)
-                if supervised:
-                    diff = jnp.linalg.norm(z - z_star)
-                else:
+            all_u = jnp.zeros((iters, z.size))
+            all_z = jnp.zeros((iters, z.size))
+            all_z_ = jnp.zeros((iters + 1, z.size))
+            all_z_ = all_z_.at[0, :].set(z)
+
+            if diff_required:
+                def _fp(i, val):
+                    z, loss_vec = val
+                    z_next, u, v = fixed_point(z, factor, q)
+                    if supervised:
+                        diff = jnp.linalg.norm(z - z_star)
+                    else:
+                        diff = jnp.linalg.norm(z_next - z)
+                    loss_vec = loss_vec.at[i].set(diff)
+                    return z_next, loss_vec
+                val = z, iter_losses
+                out = jax.lax.fori_loop(0, iters, _fp, val)
+                z, iter_losses = out
+                angles = None
+            else:
+                def _fp_(i, val):
+                    z, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals = val
+                    z_next, u, v = fixed_point(z, factor, q)
                     diff = jnp.linalg.norm(z_next - z)
-                loss_vec = loss_vec.at[i].set(diff)
-                return z_next, loss_vec
-            val = z, iter_losses
-            out = jax.lax.fori_loop(0, iters, _fp, val)
-            z, iter_losses = out
-        else:
-            def _fp_(i, val):
-                z, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals = val
-                z_next, u, v = fixed_point(z, factor, q)
-                diff = jnp.linalg.norm(z_next - z)
-                loss_vec = loss_vec.at[i].set(diff)
+                    loss_vec = loss_vec.at[i].set(diff)
 
-                pr = jnp.linalg.norm(A @ u[:n] + v[n:] - b)
-                dr = jnp.linalg.norm(A.T @ u[n:] + P @ u[:n] + c)
-                primal_residuals = primal_residuals.at[i].set(pr)
-                dual_residuals = dual_residuals.at[i].set(dr)
+                    pr = jnp.linalg.norm(A @ u[:n] + v[n:] - b)
+                    dr = jnp.linalg.norm(A.T @ u[n:] + P @ u[:n] + c)
+                    primal_residuals = primal_residuals.at[i].set(pr)
+                    dual_residuals = dual_residuals.at[i].set(dr)
 
-                all_z = all_z.at[i, :].set(z)
-                all_u = all_u.at[i, :].set(u)
-                return z_next, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals
-            val = z, z, iter_losses, all_z, all_u, primal_residuals, dual_residuals
-            out = jax.lax.fori_loop(0, iters, _fp_, val)
-            z, z_prev, iter_losses, all_z, all_u, primal_residuals, dual_residuals = out
+                    all_z = all_z.at[i, :].set(z)
+                    all_u = all_u.at[i, :].set(u)
+                    return z_next, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals
+                val = z, z, iter_losses, all_z, all_u, primal_residuals, dual_residuals
+                out = jax.lax.fori_loop(0, iters, _fp_, val)
+                z, z_prev, iter_losses, all_z, all_u, primal_residuals, dual_residuals = out
+                all_z_ = all_z_.at[1:, :].set(all_z)
 
-            # do angles
-            diffs = jnp.diff(all_z, axis=0)
+                # do the angle(z^{k+1} - z^k, z^k - z^{k-1})
+                diffs = jnp.diff(all_z_, axis=0)
 
-            for j in range(len(angle_anchors)):
-                d1 = diffs[angle_anchors[j], :]
-
-                def compute_angle(d2):
+                def compute_angle(d1, d2):
                     cos = d1 @ d2 / (jnp.linalg.norm(d1) * jnp.linalg.norm(d2))
                     angle = jnp.arccos(cos)
                     return angle
-                batch_angle = vmap(compute_angle, in_axes=(0), out_axes=(0))
-                curr_angles = batch_angle(diffs)
-                angles = angles.at[j, :].set(curr_angles)
+                batch_angle = vmap(compute_angle, in_axes=(0, 0), out_axes=(0))
+                curr_angles = batch_angle(diffs[:-1], diffs[1:])
 
-            # do the angle(z^{k+1} - z^k, z^k - z^{k-1})
-            diffs = jnp.diff(all_z, axis=0)
+                angles = curr_angles
 
-            def compute_angle(d1, d2):
-                cos = d1 @ d2 / (jnp.linalg.norm(d1) * jnp.linalg.norm(d2))
-                angle = jnp.arccos(cos)
-                return angle
-            batch_angle = vmap(compute_angle, in_axes=(0, 0), out_axes=(0))
-            curr_angles = batch_angle(diffs[:-1], diffs[1:])
+            # unroll 1 more time for the loss
+            u_tilde = lin_sys_solve(factor, z - q)
+            u_temp = 2 * u_tilde - z
+            u = proj(u_temp)
+            z_next = z + u - u_tilde
 
-            angles = angles.at[-1, :-1].set(curr_angles)
+            if supervised:
+                if loss_method == 'constant_sum':
+                    loss = iter_losses.sum()
+                elif loss_method == 'fixed_k':
+                    loss = jnp.linalg.norm(z_next - z_star)
+            else:
+                if loss_method == 'increasing_sum':
+                    weights = (1+jnp.arange(iter_losses.size))
+                    loss = iter_losses @ weights
+                elif loss_method == 'constant_sum':
+                    loss = iter_losses.sum()
+                elif loss_method == 'fixed_k':
+                    loss = jnp.linalg.norm(z_next - z)
+                elif loss_method == 'first_2_last':
+                    loss = jnp.linalg.norm(z_next-z0)
 
-        # unroll 1 more time for the loss
-        u_tilde = lin_sys_solve(factor, z - q)
-        u_temp = 2*u_tilde - z
-        u = proj(u_temp)
-        z_next = z + u - u_tilde
+            out = all_z_, z_next, alpha, all_u
 
-        # out = x_primal, z_next, u, all_x_primals
-        all_z_ = all_z_.at[1:, :].set(all_z[:-1, :])
+            if diff_required:
+                return loss, iter_losses, angles, out
+            else:
+                return loss, iter_losses, angles, primal_residuals, dual_residuals, out
 
-        if supervised:
-            if loss_method == 'constant_sum':
-                loss = iter_losses.sum()
-            elif loss_method == 'fixed_k':
-                loss = jnp.linalg.norm(z_next - z_star)
-        else:
-            if loss_method == 'increasing_sum':
-                weights = (1+jnp.arange(iter_losses.size))
-                loss = iter_losses @ weights
-            elif loss_method == 'constant_sum':
-                loss = iter_losses.sum()
-            elif loss_method == 'fixed_k':
-                loss = jnp.linalg.norm(z_next - z)
-            elif loss_method == 'first_2_last':
-                loss = jnp.linalg.norm(z_next-z0)
+        loss_fn = predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
 
-        out = all_z_, z_next, alpha, all_u
+        # create the loss function
+        #   different possibilities based on
+        #   1. static
+        #   2. diff_required
+        # inputs are
+        #   1. diff_required
+        #   2. predict (fn)
+        #   3. static_flag
+        # if diff_required:
+        #     out_axes = (0, 0, 0, (0, 0, 0, 0))
+        # else:
+        #     out_axes = (0, 0, 0, 0, 0, (0, 0, 0, 0))
+        # if static_flag:
+        #     predict_final = partial(predict,
+        #                             factor=factor_static,
+        #                             M=M_static
+        #                             )
+        #     batch_predict = vmap(predict_final, in_axes=(
+        #         None, 0, 0, None, 0), out_axes=out_axes)
 
-        if diff_required:
-            return loss, iter_losses, angles, out
-        else:
-            return loss, iter_losses, angles, primal_residuals, dual_residuals, out
+        #     @partial(jit, static_argnums=(3,))
+        #     def loss_fn(params, inputs, q, iters, z_stars):
+        #         if diff_required:
+        #             losses, iter_losses, angles, out = batch_predict(
+        #                 params, inputs, q, iters, z_stars)
+        #             loss_out = out, losses, iter_losses, angles
+        #         else:
+        #             predict_out = batch_predict(
+        #                 params, inputs, q, iters, z_stars)
+        #             losses, iter_losses, angles, primal_residuals, dual_residuals, out = predict_out
+        #             loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
 
+        #         return losses.mean(), loss_out
+        # else:
+        #     batch_predict = vmap(predict, in_axes=(
+        #         None, 0, 0, None, 0, 0), out_axes=out_axes)
+
+        #     @partial(jax.jit, static_argnums=(5,))
+        #     def loss_fn(params, inputs, factor, M, q, iters):
+        #         if diff_required:
+        #             losses, iter_losses, angles, out = batch_predict(
+        #                 params, inputs, q, iters, factor, M)
+        #             loss_out = out, losses, iter_losses, angles
+        #         else:
+        #             predict_out = batch_predict(
+        #                 params, inputs, q, iters, factor, M)
+        #             losses, iter_losses, angles, primal_residuals, dual_residuals, out = predict_out
+        #             loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
+        #         return losses.mean(), loss_out
+
+        return loss_fn
+
+
+def predict_2_loss(predict, static_flag, diff_required, factor_static, M_static):
+    """
+    given the predict fn this returns the loss fn which is differentiated through
+        the predict fn includes the Douglas-Rachford iterations
+
+    diff_required used for training, but not evaluation
+
+    static_flag is True if the matrices (P, A) are the same for each problem
+        factor_static and M_static are shared for all problems and passed in
+
+    in all forward passes, the number of iterations is static
+    """
     if diff_required:
         out_axes = (0, 0, 0, (0, 0, 0, 0))
     else:
         out_axes = (0, 0, 0, 0, 0, (0, 0, 0, 0))
-
     if static_flag:
         predict_final = partial(predict,
                                 factor=factor_static,
@@ -718,8 +704,9 @@ def create_loss_fn(input_dict):
                     params, inputs, q, iters, z_stars)
                 loss_out = out, losses, iter_losses, angles
             else:
-                losses, iter_losses, angles, primal_residuals, dual_residuals, out = batch_predict(
+                predict_out = batch_predict(
                     params, inputs, q, iters, z_stars)
+                losses, iter_losses, angles, primal_residuals, dual_residuals, out = predict_out
                 loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
 
             return losses.mean(), loss_out
@@ -734,8 +721,9 @@ def create_loss_fn(input_dict):
                     params, inputs, q, iters, factor, M)
                 loss_out = out, losses, iter_losses, angles
             else:
-                losses, iter_losses, angles, primal_residuals, dual_residuals, out = batch_predict(
+                predict_out = batch_predict(
                     params, inputs, q, iters, factor, M)
+                losses, iter_losses, angles, primal_residuals, dual_residuals, out = predict_out
                 loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
             return losses.mean(), loss_out
 
