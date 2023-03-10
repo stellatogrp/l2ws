@@ -14,7 +14,7 @@ import pandas as pd
 from jax.config import config
 from scipy.spatial import distance_matrix
 import logging
-from l2ws.algo_steps import fp_train, fp_eval, k_steps_train, k_steps_eval, lin_sys_solve
+from l2ws.algo_steps import k_steps_train, k_steps_eval, lin_sys_solve
 from functools import partial
 config.update("jax_enable_x64", True)
 
@@ -25,33 +25,27 @@ class L2WSmodel(object):
         self.proj = dict['proj']
         self.static_flag = dict['static_flag']
         self.batch_size = dict['nn_cfg'].batch_size
-        self.epochs = dict['nn_cfg'].epochs
-        self.lr = dict['nn_cfg'].lr
-        self.decay_lr = dict['nn_cfg'].decay_lr
-        self.min_lr = dict['nn_cfg'].min_lr
+        self.epochs, self.lr = dict['nn_cfg'].epochs, dict['nn_cfg'].lr
+        self.decay_lr, self.min_lr = dict['nn_cfg'].decay_lr, dict['nn_cfg'].min_lr
 
         self.eval_unrolls = dict['eval_unrolls']
         self.train_unrolls = dict['train_unrolls']
 
-        self.train_inputs = dict['train_inputs']
-        self.test_inputs = dict['test_inputs']
+        self.train_inputs, self.test_inputs = dict['train_inputs'], dict['test_inputs']
 
         self.N_train, _ = self.train_inputs.shape
         self.N_test, _ = self.test_inputs.shape
         self.batch_size = min([self.batch_size, self.N_train])
         self.num_batches = int(self.N_train/self.batch_size)
 
-        self.y_stars_train = dict['y_stars_train']
-        self.y_stars_test = dict['y_stars_test']
-        self.x_stars_train = dict['x_stars_train']
-        self.x_stars_test = dict['x_stars_test']
+        self.y_stars_train, self.y_stars_test = dict['y_stars_train'], dict['y_stars_test']
+        self.x_stars_train, self.x_stars_test = dict['x_stars_train'], dict['x_stars_test']
         self.w_stars_train = jnp.array(dict['w_stars_train'])
         self.w_stars_test = jnp.array(dict['w_stars_test'])
         self.u_stars_train = jnp.hstack([self.x_stars_train, self.y_stars_train])
         self.u_stars_test = jnp.hstack([self.x_stars_test, self.y_stars_test])
 
-        self.q_mat_train = dict['q_mat_train']
-        self.q_mat_test = dict['q_mat_test']
+        self.q_mat_train, self.q_mat_test = dict['q_mat_train'], dict['q_mat_test']
 
         self.angle_anchors = dict['angle_anchors']
         self.supervised = dict['supervised']
@@ -137,19 +131,11 @@ class L2WSmodel(object):
         self.epoch = 0
 
         train_loss_dict = {'diff_required': True,
-                           'unrolls': self.train_unrolls,
-                           'bypass_nn': False,
-                           'supervised': self.supervised
-                           }
+                           'bypass_nn': False}
         eval_loss_dict = {'diff_required': False,
-                          'unrolls': self.eval_unrolls,
-                          'bypass_nn': False,
-                          'supervised': False
-                          }
+                          'bypass_nn': False}
         fixed_ws_dict = {'diff_required': False,
-                         'unrolls': self.eval_unrolls,
-                         'bypass_nn': True,
-                         'supervised': False}
+                         'bypass_nn': True}
 
         # loss fn for training
         self.loss_fn_train = self.create_loss_fn(train_loss_dict)
@@ -475,7 +461,8 @@ class L2WSmodel(object):
     def create_loss_fn(self, input_dict):
         bypass_nn = input_dict['bypass_nn']
         diff_required = input_dict['diff_required']
-        supervised = input_dict['supervised']
+        supervised = self.supervised and diff_required
+        
         proj, n, normalize_alpha = self.proj, self.n, self.normalize_alpha
         M_static, factor_static = self.static_M, self.static_algo_factor
         share_all, Z_shared = self.share_all, self.Z_shared

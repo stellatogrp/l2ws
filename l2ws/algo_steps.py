@@ -4,7 +4,7 @@ from l2ws.utils.generic_utils import vec_symm, unvec_symm
 from functools import partial
 import jax.scipy as jsp
 from l2ws.utils.generic_utils import python_fori_loop
-TAU_FACTOR = 10
+TAU_FACTOR = 1
 
 
 def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous):
@@ -84,14 +84,28 @@ def k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit, hsde):
     iter_losses = jnp.zeros(k)
     primal_residuals, dual_residuals = jnp.zeros(k), jnp.zeros(k)
 
+    if hsde:
+        # first step: iteration 0
+        # we set homogeneous = False for the first iteration
+        #   to match the SCS code which has the global variable FEASIBLE_ITERS
+        #   which is set to 1
+        homogeneous = False
+        z_next, u, u_tilde, v = fixed_point_hsde(z0, homogeneous, q_r, factor, proj)
+        all_z = all_z.at[0, :].set(z_next)
+        all_u = all_u.at[0, :].set(u)
+        all_v = all_v.at[0, :].set(v)
+        iter_losses = iter_losses.at[0].set(jnp.linalg.norm(z_next - z0))
+        z0 = z_next
+
     fp_eval_partial = partial(fp_eval, q_r=q_r, factor=factor,
                               proj=proj, P=P, A=A, c=c, b=b, hsde=hsde,
                               homogeneous=True)
     val = z0, z0, iter_losses, all_z, all_u, all_v, primal_residuals, dual_residuals
+    start_iter = 1 if hsde else 0
     if jit:
-        out = lax.fori_loop(0, k, fp_eval_partial, val)
+        out = lax.fori_loop(start_iter, k, fp_eval_partial, val)
     else:
-        out = python_fori_loop(0, k, fp_eval_partial, val)
+        out = python_fori_loop(start_iter, k, fp_eval_partial, val)
     z_final, z_penult, iter_losses, all_z, all_u, all_v, primal_residuals, dual_residuals = out
     all_z_plus_1 = all_z_plus_1.at[1:, :].set(all_z)
     return z_final, iter_losses, primal_residuals, dual_residuals, all_z_plus_1, all_u, all_v
