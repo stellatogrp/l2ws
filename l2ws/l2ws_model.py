@@ -481,7 +481,7 @@ class L2WSmodel(object):
         M_static, factor_static = self.static_M, self.static_algo_factor
         share_all, Z_shared = self.share_all, self.Z_shared
         loss_method, static_flag = self.loss_method, self.static_flag
-        partial_fixed_point = partial(fixed_point, proj=proj)
+        # partial_fixed_point = partial(fixed_point, proj=proj)
 
         def predict(params, input, q, iters, z_star, factor, M):
             P, A = M[:n, :n], -M[n:, :n]
@@ -509,39 +509,31 @@ class L2WSmodel(object):
             all_z_ = all_z_.at[0, :].set(z)
 
             if diff_required:
-                # def fp_train(i, val):
-                #     z, loss_vec = val
-                #     z_next, u, u_tilde, v = partial_fixed_point(z, q, factor)
-                #     if supervised:
-                #         diff = jnp.linalg.norm(z - z_star)
-                #     else:
-                #         diff = jnp.linalg.norm(z_next - z)
-                #     loss_vec = loss_vec.at[i].set(diff)
-                #     return z_next, loss_vec
-
                 fp_train_partial = partial(fp_train, q=q, factor=factor,
                                            supervised=supervised, z_star=z_star, proj=proj)
                 val = z, iter_losses
                 out = jax.lax.fori_loop(0, iters, fp_train_partial, val)
                 z_final, iter_losses = out
             else:
-                def fp_eval(i, val):
-                    z, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals = val
-                    z_next, u, u_tilde, v = partial_fixed_point(z, q, factor)
-                    diff = jnp.linalg.norm(z_next - z)
-                    loss_vec = loss_vec.at[i].set(diff)
+                # def fp_eval(i, val):
+                #     z, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals = val
+                #     z_next, u, u_tilde, v = partial_fixed_point(z, q, factor)
+                #     diff = jnp.linalg.norm(z_next - z)
+                #     loss_vec = loss_vec.at[i].set(diff)
 
-                    # primal and dual residuals
-                    pr = jnp.linalg.norm(A @ u[:n] + v[n:] - b)
-                    dr = jnp.linalg.norm(A.T @ u[n:] + P @ u[:n] + c)
-                    primal_residuals = primal_residuals.at[i].set(pr)
-                    dual_residuals = dual_residuals.at[i].set(dr)
+                #     # primal and dual residuals
+                #     pr = jnp.linalg.norm(A @ u[:n] + v[n:] - b)
+                #     dr = jnp.linalg.norm(A.T @ u[n:] + P @ u[:n] + c)
+                #     primal_residuals = primal_residuals.at[i].set(pr)
+                #     dual_residuals = dual_residuals.at[i].set(dr)
 
-                    all_z = all_z.at[i, :].set(z)
-                    all_u = all_u.at[i, :].set(u)
-                    return z_next, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals
+                #     all_z = all_z.at[i, :].set(z)
+                #     all_u = all_u.at[i, :].set(u)
+                #     return z_next, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals
+                fp_eval_partial = partial(fp_eval, q=q, factor=factor,
+                                          proj=proj, P=P, A=A, c=c, b=b)
                 val = z, z, iter_losses, all_z, all_u, primal_residuals, dual_residuals
-                out = jax.lax.fori_loop(0, iters, fp_eval, val)
+                out = jax.lax.fori_loop(0, iters, fp_eval_partial, val)
                 z_final, z_penult, iter_losses, all_z, all_u, primal_residuals, dual_residuals = out
                 all_z_ = all_z_.at[1:, :].set(all_z)
 
@@ -685,3 +677,21 @@ def fp_train(i, val, q, factor, supervised, z_star, proj):
         diff = jnp.linalg.norm(z_next - z)
     loss_vec = loss_vec.at[i].set(diff)
     return z_next, loss_vec
+
+
+def fp_eval(i, val, q, factor, proj, P, A, c, b):
+    n = c.size
+    z, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals = val
+    z_next, u, u_tilde, v = fixed_point(z, q, factor, proj)
+    diff = jnp.linalg.norm(z_next - z)
+    loss_vec = loss_vec.at[i].set(diff)
+
+    # primal and dual residuals
+    pr = jnp.linalg.norm(A @ u[:n] + v[n:] - b)
+    dr = jnp.linalg.norm(A.T @ u[n:] + P @ u[:n] + c)
+    primal_residuals = primal_residuals.at[i].set(pr)
+    dual_residuals = dual_residuals.at[i].set(dr)
+
+    all_z = all_z.at[i, :].set(z)
+    all_u = all_u.at[i, :].set(u)
+    return z_next, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals
