@@ -494,12 +494,17 @@ class L2WSmodel(object):
             all_z_ = all_z_.at[0, :].set(z0)
 
             if diff_required:
+                # given z0, problem_data
+                # return losses
                 fp_train_partial = partial(fp_train, q=q, factor=factor,
                                            supervised=supervised, z_star=z_star, proj=proj)
                 val = z0, iter_losses
                 out = jax.lax.fori_loop(0, iters, fp_train_partial, val)
                 z_final, iter_losses = out
             else:
+                # given z0, problem_data
+                # return losses, iter_losses, angles, primal_res, dual_res, etc
+
                 fp_eval_partial = partial(fp_eval, q=q, factor=factor,
                                           proj=proj, P=P, A=A, c=c, b=b)
                 val = z0, z0, iter_losses, all_z, all_u, primal_residuals, dual_residuals

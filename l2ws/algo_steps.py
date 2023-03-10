@@ -3,6 +3,7 @@ from jax import lax, vmap, jit
 from l2ws.utils.generic_utils import vec_symm, unvec_symm
 from functools import partial
 import jax.scipy as jsp
+from jax.lax import fori_loop as jax_fori_loop
 TAU_FACTOR = 10
 
 
@@ -15,6 +16,29 @@ def fp_train(i, val, q, factor, supervised, z_star, proj):
         diff = jnp.linalg.norm(z_next - z)
     loss_vec = loss_vec.at[i].set(diff)
     return z_next, loss_vec
+
+
+def k_steps_train():
+    pass
+
+
+def extract_sol(u, v, n, hsde):
+    if hsde:
+        tao = u[-1]
+        x, y, s = u[:n] / tao, u[n:-1] / tao, v[n:-1] / tao
+    else:
+        x, y, s = u[:n], u[n:], v[n:]
+    return x, y, s
+
+
+
+def k_steps_eval(z0, k, q, factor, proj, P, A, c, b, hsde):
+    fp_eval_partial = partial(fp_eval, q=q, factor=factor,
+                              proj=proj, P=P, A=A, c=c, b=b)
+    val = z0, z0, iter_losses, all_z, all_u, primal_residuals, dual_residuals
+    out = jax_fori_loop(0, k, fp_eval_partial, val)
+    z_final, z_penult, iter_losses, all_z, all_u, primal_residuals, dual_residuals = out
+    all_z_ = all_z_.at[1:, :].set(all_z)
 
 
 def fp_eval(i, val, q, factor, proj, P, A, c, b):

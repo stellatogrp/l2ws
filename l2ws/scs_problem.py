@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 from jax import random
 import jax
 from l2ws.algo_steps import create_M, create_projection_fn, lin_sys_solve, fixed_point, \
-    fixed_point_hsde
+    fixed_point_hsde, extract_sol
 from l2ws.utils.generic_utils import fori_loop
 
 
@@ -147,11 +147,12 @@ def scs_jax(data, hsde=True, iters=5000, jit=True, plot=False):
     u_final, v_final = u_all[-1, :], v_all[-1, :]
 
     # extract the primal and dual variables
-    if hsde:
-        tao = u_final[-1]
-        x, y, s = u_final[:n] / tao, u_final[n:-1] / tao, v_final[n:-1] / tao
-    else:
-        x, y, s = u_final[:n], u_final[n:], v_final[n:]
+    x, y, s = extract_sol(u_final, v_final, n, hsde)
+    # if hsde:
+    #     tao = u_final[-1]
+    #     x, y, s = u_final[:n] / tao, u_final[n:-1] / tao, v_final[n:-1] / tao
+    # else:
+    #     x, y, s = u_final[:n], u_final[n:], v_final[n:]
 
     if plot:
         plt.plot(iter_losses, label='fixed point residuals')
