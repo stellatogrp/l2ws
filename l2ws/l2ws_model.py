@@ -489,13 +489,14 @@ class L2WSmodel(object):
         # to deprecate
         # tx, ty = self.tx, self.ty
 
-        def fixed_point(z_init, factor, q):
-            u_tilde = lin_sys_solve(factor, z_init - q)
-            u_temp = 2 * u_tilde - z_init
-            u = proj(u_temp)
-            v = u + z_init - 2*u_tilde
-            z = z_init + u - u_tilde
-            return z, u, v
+        # def fixed_point(z_init, factor, q):
+        #     u_tilde = lin_sys_solve(factor, z_init - q)
+        #     u_temp = 2 * u_tilde - z_init
+        #     u = proj(u_temp)
+        #     v = u + z_init - 2*u_tilde
+        #     z = z_init + u - u_tilde
+        #     return z, u, v
+        partial_fixed_point = partial(fixed_point, proj=self.proj)
 
         def predict(params, input, q, iters, z_star, factor, M):
             P, A = M[:n, :n], -M[n:, :n]
@@ -504,7 +505,6 @@ class L2WSmodel(object):
 
             if bypass_nn:
                 z = input
-                # u_ws = input
             else:
                 if share_all:
                     alpha = predict_y(params, input)
@@ -518,7 +518,6 @@ class L2WSmodel(object):
                     elif normalize_alpha == 'softmax':
                         alpha = jax.nn.softmax(alpha)
                     z = Z_shared @ alpha
-                    # u_ws = z
                 else:
                     # if tx is None or ty is None:
                     nn_output = predict_y(params, input)
@@ -546,7 +545,8 @@ class L2WSmodel(object):
             if diff_required:
                 def _fp(i, val):
                     z, loss_vec = val
-                    z_next, u, v = fixed_point(z, factor, q)
+                    # z_next, u, v = fixed_point(z, factor, q)
+                    z_next, u, u_tilde, v = partial_fixed_point(z, q, factor)
                     if supervised:
                         diff = jnp.linalg.norm(z - z_star)
                     else:
@@ -560,7 +560,8 @@ class L2WSmodel(object):
             else:
                 def _fp_(i, val):
                     z, z_prev, loss_vec, all_z, all_u, primal_residuals, dual_residuals = val
-                    z_next, u, v = fixed_point(z, factor, q)
+                    # z_next, u, v = fixed_point(z, factor, q)
+                    z_next, u, u_tilde, v = partial_fixed_point(z, q, factor)
                     diff = jnp.linalg.norm(z_next - z)
                     loss_vec = loss_vec.at[i].set(diff)
 
@@ -609,7 +610,7 @@ class L2WSmodel(object):
                 elif loss_method == 'fixed_k':
                     loss = jnp.linalg.norm(z_next - z)
                 elif loss_method == 'first_2_last':
-                    loss = jnp.linalg.norm(z_next-z0)
+                    loss = jnp.linalg.norm(z_next - z0)
 
             out = all_z_, z_next, alpha, all_u
 
@@ -619,56 +620,6 @@ class L2WSmodel(object):
                 return loss, iter_losses, angles, primal_residuals, dual_residuals, out
 
         loss_fn = predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
-
-        # create the loss function
-        #   different possibilities based on
-        #   1. static
-        #   2. diff_required
-        # inputs are
-        #   1. diff_required
-        #   2. predict (fn)
-        #   3. static_flag
-        # if diff_required:
-        #     out_axes = (0, 0, 0, (0, 0, 0, 0))
-        # else:
-        #     out_axes = (0, 0, 0, 0, 0, (0, 0, 0, 0))
-        # if static_flag:
-        #     predict_final = partial(predict,
-        #                             factor=factor_static,
-        #                             M=M_static
-        #                             )
-        #     batch_predict = vmap(predict_final, in_axes=(
-        #         None, 0, 0, None, 0), out_axes=out_axes)
-
-        #     @partial(jit, static_argnums=(3,))
-        #     def loss_fn(params, inputs, q, iters, z_stars):
-        #         if diff_required:
-        #             losses, iter_losses, angles, out = batch_predict(
-        #                 params, inputs, q, iters, z_stars)
-        #             loss_out = out, losses, iter_losses, angles
-        #         else:
-        #             predict_out = batch_predict(
-        #                 params, inputs, q, iters, z_stars)
-        #             losses, iter_losses, angles, primal_residuals, dual_residuals, out = predict_out
-        #             loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
-
-        #         return losses.mean(), loss_out
-        # else:
-        #     batch_predict = vmap(predict, in_axes=(
-        #         None, 0, 0, None, 0, 0), out_axes=out_axes)
-
-        #     @partial(jax.jit, static_argnums=(5,))
-        #     def loss_fn(params, inputs, factor, M, q, iters):
-        #         if diff_required:
-        #             losses, iter_losses, angles, out = batch_predict(
-        #                 params, inputs, q, iters, factor, M)
-        #             loss_out = out, losses, iter_losses, angles
-        #         else:
-        #             predict_out = batch_predict(
-        #                 params, inputs, q, iters, factor, M)
-        #             losses, iter_losses, angles, primal_residuals, dual_residuals, out = predict_out
-        #             loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
-        #         return losses.mean(), loss_out
 
         return loss_fn
 
