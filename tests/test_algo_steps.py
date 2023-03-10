@@ -126,3 +126,68 @@ def test_c_vs_jax():
     assert jnp.linalg.norm(y_jax - y_c) < 1e-12
     assert jnp.linalg.norm(s_jax - s_c) < 1e-12
     assert jnp.all(jnp.diff(fp_res_hsde) < 0)
+
+
+def test_warm_start_from_opt():
+    m_orig, n_orig = 30, 40
+    rho = 1
+    b_center, b_range = 1, 1
+    P, A, c, b, cones = random_robust_ls(m_orig, n_orig, rho, b_center, b_range)
+    m, n = A.shape
+
+    max_iters = 10
+
+    # fix warm start
+    x_ws = np.ones(n)
+    y_ws = np.ones(m)
+    s_ws = np.zeros(m)
+
+    # solve in C to get close to opt
+    P_sparse, A_sparse = csc_matrix(np.array(P)), csc_matrix(np.array(A))
+    c_np, b_np = np.array(c), np.array(b)
+    c_data = dict(P=P_sparse, A=A_sparse, c=c_np, b=b_np)
+    solver_opt = scs.SCS(c_data,
+                         cones,
+                         normalize=False,
+                         scale=1,
+                         adaptive_scale=False,
+                         rho_x=1,
+                         alpha=1,
+                         acceleration_lookback=0,
+                         max_iters=1000)
+
+    sol = solver_opt.solve(warm_start=True, x=x_ws, y=y_ws, s=s_ws)
+    x_opt = jnp.array(sol['x'])
+    y_opt = jnp.array(sol['y'])
+    s_opt = jnp.array(sol['s'])
+
+    # warm start scs from opt
+    solver = scs.SCS(c_data,
+                     cones,
+                     normalize=False,
+                     scale=1,
+                     adaptive_scale=False,
+                     rho_x=1,
+                     alpha=1,
+                     acceleration_lookback=0,
+                     max_iters=max_iters,
+                     eps_abs=1e-12,
+                     eps_rel=1e-12,)
+    sol = solver.solve(warm_start=True, x=np.array(x_opt), y=np.array(y_opt), s=np.array(s_opt))
+    x_c = jnp.array(sol['x'])
+    y_c = jnp.array(sol['y'])
+    s_c = jnp.array(sol['s'])
+
+    # warm start our implementation from opt
+    data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_opt, y=y_opt, s=s_opt)
+    sol_hsde = scs_jax(data, hsde=True, iters=max_iters)
+    x_jax, y_jax, s_jax = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
+    # fp_res_hsde = sol_hsde['fixed_point_residuals']
+
+    # these should match to machine precision
+    assert jnp.linalg.norm(x_jax - x_c) < 1e-12
+    assert jnp.linalg.norm(y_jax - y_c) < 1e-12
+    assert jnp.linalg.norm(s_jax - s_c) < 1e-12
+
+    # this line actually isn't true
+    # assert jnp.all(jnp.diff(fp_res_hsde) < 0)

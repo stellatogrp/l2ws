@@ -105,9 +105,6 @@ def scs_jax(data, hsde=True, iters=5000, jit=True, plot=False):
     # extract the primal and dual variables
     x, y, s = extract_sol(u_final, v_final, n, hsde)
 
-    # import pdb
-    # pdb.set_trace()
-
     if plot:
         plt.plot(iter_losses, label='fixed point residuals')
         plt.yscale('log')
