@@ -36,9 +36,6 @@ class L2WSmodel(object):
         # share all method
         self.setup_share_all(dict)
 
-        # self.psd = dict.get('psd')
-        # self.psd_size = dict.get('psd_size')
-
         # init to track training
         self.init_train_tracking()
 
@@ -383,10 +380,17 @@ class L2WSmodel(object):
                 wait_time = 2 * patience * self.plateau_decay.avg_window_size
                 self.dont_decay_until = self.epoch + wait_time
 
+    def train_full_batch(self, params, state):
+        """
+        wrapper for train_batch where the batch size is N_train
+        """
+        batch_indices = jnp.arange(self.N_train)
+        return self.train_batch(batch_indices, params, state)
+
     def train_batch(self, batch_indices, params, state):
         batch_inputs = self.train_inputs[batch_indices, :]
         batch_q_data = self.q_mat_train[batch_indices, :]
-        batch_z_stars = self.w_stars_train[batch_indices, :]
+        batch_z_stars = self.w_stars_train[batch_indices, :] if self.supervised else None
         results = self.optimizer.update(params=params,
                                         state=state,
                                         inputs=batch_inputs,

@@ -10,7 +10,7 @@ from l2ws.algo_steps import create_projection_fn, create_M
 import jax.scipy as jsp
 
 
-def test_minimal_l2ws_model_init():
+def test_minimal_l2ws_model():
     """
     tests that we can initialize an L2WSmodel with the minimal amount of information needed
     """
@@ -28,7 +28,6 @@ def test_minimal_l2ws_model_init():
     proj = create_projection_fn(cones, n)
     q_mat_train, q_mat_test = q_mat[:N_train, :], q_mat[N_train:N, :]
     train_inputs, test_inputs = theta_mat[:N_train, :], theta_mat[N_train:N, :]
-
     static_M = create_M(P, A)
     static_algo_factor = jsp.linalg.lu_factor(static_M + jnp.eye(n + m))
 
@@ -37,4 +36,19 @@ def test_minimal_l2ws_model_init():
                       train_unrolls=20, q_mat_train=q_mat_train, q_mat_test=q_mat_test,
                       train_inputs=train_inputs, test_inputs=test_inputs,
                       static_M=static_M, static_algo_factor=static_algo_factor)
-    L2WSmodel(input_dict)
+    l2ws_model = L2WSmodel(input_dict)
+
+    # call train_batch
+    params, state = l2ws_model.params, l2ws_model.state
+    num_epochs = 10
+    losses = jnp.zeros(num_epochs)
+    for i in range(num_epochs):
+        train_result = l2ws_model.train_full_batch(params, state)
+        loss, params, state = train_result
+        losses = losses.at[i].set(loss)
+
+    # some reduction should be made from first to last epoch
+    assert losses[0] - losses[-1] > 0
+
+    # final loss should be at least 50% better than the first loss
+    assert losses[-1] / losses[0] < 0.5
