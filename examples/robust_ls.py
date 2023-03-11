@@ -408,8 +408,8 @@ def random_robust_ls(m_orig, n_orig, rho, b_center, b_range, seed=42):
     """
     given dimensions, returns a random robust least squares problem
     """
-    A = (np.random.rand(m_orig, n_orig) * 2) - 1
-    out = static_canon(A, rho)
+    A_orig = (np.random.rand(m_orig, n_orig) * 2) - 1
+    out = static_canon(A_orig, rho)
     c, b = out['c'], out['b']
     P_sparse, A_sparse = out['P_sparse'], out['A_sparse']
     P, A = jnp.array(P_sparse.todense()), jnp.array(A_sparse.todense())
@@ -418,3 +418,28 @@ def random_robust_ls(m_orig, n_orig, rho, b_center, b_range, seed=42):
     b_rand_np = (2 * np.random.rand(m_orig) - 1) * b_range + b_center
     b[n_orig:m_orig + n_orig] = np.array(b_rand_np)
     return P, A, jnp.array(c), jnp.array(b), cones
+
+
+def multiple_random_robust_ls(m_orig, n_orig, rho, b_center, b_range, N, seed=42):
+    A_orig = (np.random.rand(m_orig, n_orig) * 2) - 1
+    out = static_canon(A_orig, rho)
+    c, b = out['c'], out['b']
+    c_jax = jnp.array(c)
+    P_sparse, A_sparse = out['P_sparse'], out['A_sparse']
+    P, A = jnp.array(P_sparse.todense()), jnp.array(A_sparse.todense())
+    m, n = A.shape
+    cones = out['cones_dict']
+
+    q_mat = jnp.zeros((N, m + n))
+    theta_mat = jnp.zeros((N, m_orig))
+    for i in range(N):
+        b_rand_np = (2 * np.random.rand(m_orig) - 1) * b_range + b_center
+
+        b[n_orig:m_orig + n_orig] = np.array(b_rand_np)
+        b_jax = jnp.array(b)
+
+        theta_mat = theta_mat.at[i, :].set(b_rand_np)
+        q_mat = q_mat.at[i, :n].set(c_jax)
+        q_mat = q_mat.at[i, n:].set(b_jax)
+
+    return P, A, cones, q_mat, theta_mat

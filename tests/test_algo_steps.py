@@ -1,6 +1,5 @@
 import time
 from examples.robust_ls import random_robust_ls
-import pytest
 import jax.numpy as jnp
 from l2ws.scs_problem import scs_jax
 import scs

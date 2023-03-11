@@ -6,7 +6,7 @@ import optax
 import time
 from jaxopt import OptaxSolver
 from l2ws.utils.nn_utils import init_network_params, \
-    predict_y, batched_predict_y, init_matrix_params
+    predict_y, batched_predict_y
 from l2ws.utils.generic_utils import unvec_symm
 import numpy as np
 import matplotlib.pyplot as plt
@@ -36,46 +36,55 @@ class L2WSmodel(object):
         # share all method
         self.setup_share_all(dict)
 
-        self.psd = dict.get('psd')
-        self.psd_size = dict.get('psd_size')
+        # self.psd = dict.get('psd')
+        # self.psd_size = dict.get('psd_size')
 
         # init to track training
         self.init_train_tracking()
 
-    def initialize_essentials(self, dict):
-        self.hsde = dict.get('hsde', True)
-        self.m, self.n = dict['m'], dict['n']
-        self.proj, self.static_flag = dict['proj'], dict['static_flag']
-        self.q_mat_train, self.q_mat_test = dict['q_mat_train'], dict['q_mat_test']
-        self.eval_unrolls, self.train_unrolls = dict['eval_unrolls'], dict['train_unrolls']
-        self.train_inputs, self.test_inputs = dict['train_inputs'], dict['test_inputs']
+    def initialize_essentials(self, input_dict):
+        """
+        the input_dict is required to contain these keys
+        otherwise there is an error
+        """
+        self.hsde = input_dict.get('hsde', True)  # todo: this is an exception for now
+        self.m, self.n = input_dict['m'], input_dict['n']
+        self.proj, self.static_flag = input_dict['proj'], input_dict['static_flag']
+        self.q_mat_train, self.q_mat_test = input_dict['q_mat_train'], input_dict['q_mat_test']
+        self.eval_unrolls = input_dict.get('eval_unrolls', 500)
+        self.train_unrolls = input_dict['train_unrolls']
+        self.train_inputs, self.test_inputs = input_dict['train_inputs'], input_dict['test_inputs']
         self.N_train, self.N_test = self.train_inputs.shape[0], self.test_inputs.shape[0]
-        self.share_all = dict.get('share_all', False)
+        self.share_all = input_dict.get('share_all', False)
 
         if self.static_flag:
-            self.static_M = dict['static_M']
-            self.static_algo_factor = dict['static_algo_factor']
+            self.static_M = input_dict['static_M']
+            self.static_algo_factor = input_dict['static_algo_factor']
         else:
-            self.M_tensor_train = dict['M_tensor_train']
-            self.M_tensor_test = dict['M_tensor_test']
+            self.M_tensor_train = input_dict['M_tensor_train']
+            self.M_tensor_test = input_dict['M_tensor_test']
             self.static_M, self.static_algo_factor = None, None
-            self.matrix_invs_train = dict['matrix_invs_train']
-            self.matrix_invs_test = dict['matrix_invs_test']
+            self.matrix_invs_train = input_dict['matrix_invs_train']
+            self.matrix_invs_test = input_dict['matrix_invs_test']
 
-    def initialize_neural_network(self, dict):
-        nn_cfg = dict['nn_cfg']
+    def initialize_neural_network(self, input_dict):
+        nn_cfg = input_dict.get('nn_cfg', {})
 
         # neural network
-        self.epochs, self.lr = nn_cfg.epochs, nn_cfg.lr
-        self.decay_lr, self.min_lr = nn_cfg.decay_lr, nn_cfg.min_lr
+        self.epochs, self.lr = nn_cfg.get('epochs', 10), nn_cfg.get('lr', 1e-3)
+        self.decay_lr, self.min_lr = nn_cfg.get('decay_lr', False), nn_cfg.get('min_lr', 1e-7)
 
         # auto-decay learning rate
-        self.plateau_decay = dict.get('plateau_decay')
-        self.dont_decay_until = 2 * self.plateau_decay.avg_window_size
+        self.plateau_decay = input_dict.get('plateau_decay')
+        if self.plateau_decay is None:
+            self.plateau_decay = dict(min_lr=1e-7, decay_factor=5,
+                                      avg_window_size=50, tolerance=1e-2, patience=2)
+
+        self.dont_decay_until = 2 * self.plateau_decay['avg_window_size']
         self.epoch_decay_points = []
 
         # batching
-        batch_size = nn_cfg.batch_size
+        batch_size = nn_cfg.get('batch_size', self.N_train)
         self.batch_size = min([batch_size, self.N_train])
         self.num_batches = int(self.N_train/self.batch_size)
 
@@ -85,17 +94,18 @@ class L2WSmodel(object):
             output_size = self.num_clusters
         else:
             output_size = self.n + self.m
-        layer_sizes = [input_size] + \
-            nn_cfg['intermediate_layer_sizes'] + [output_size]
+        hidden_layer_sizes = nn_cfg.get('intermediate_layer_sizes', [])
+        layer_sizes = [input_size] + hidden_layer_sizes + [output_size]
 
         # initialize weights of neural network
         self.params = init_network_params(layer_sizes, random.PRNGKey(0))
 
         # initializes the optimizer
-        if nn_cfg.method == 'adam':
+        optimizer = nn_cfg.get('method', 'adam')
+        if optimizer == 'adam':
             self.optimizer = OptaxSolver(opt=optax.adam(
                 self.lr), fun=self.loss_fn_train, has_aux=False)
-        elif nn_cfg.method == 'sgd':
+        elif optimizer == 'sgd':
             self.optimizer = OptaxSolver(opt=optax.sgd(
                 self.lr), fun=self.loss_fn_train, has_aux=False)
         self.state = self.optimizer.init_state(self.params)
@@ -113,7 +123,7 @@ class L2WSmodel(object):
                 self.pretrain_alphas(1000, None, share_all=True)
 
     def setup_optimal_solutions(self, dict):
-        if dict['x_stars_train'] is not None:
+        if dict.get('x_stars_train', None) is not None:
             self.y_stars_train, self.y_stars_test = dict['y_stars_train'], dict['y_stars_test']
             self.x_stars_train, self.x_stars_test = dict['x_stars_train'], dict['x_stars_test']
             self.w_stars_train = jnp.array(dict['w_stars_train'])
