@@ -401,11 +401,12 @@ class L2WSmodel(object):
         return state.value, params, state
 
     def short_test_eval(self):
+        z_stars_test = self.w_stars_test if self.supervised else None
         if self.static_flag:
             test_loss, test_out, time_per_prob = self.static_eval(self.train_unrolls,
                                                                   self.test_inputs,
                                                                   self.q_mat_test,
-                                                                  self.w_stars_test)
+                                                                  z_stars_test)
         else:
             eval_out = self.dynamic_eval(self.train_unrolls,
                                          self.test_inputs,

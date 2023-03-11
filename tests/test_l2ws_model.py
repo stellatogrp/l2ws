@@ -38,7 +38,10 @@ def test_minimal_l2ws_model():
                       static_M=static_M, static_algo_factor=static_algo_factor)
     l2ws_model = L2WSmodel(input_dict)
 
-    # call train_batch
+    # evaluate test before training
+    init_test_loss, init_time_per_iter = l2ws_model.short_test_eval()
+
+    # call train_batch without jitting
     params, state = l2ws_model.params, l2ws_model.state
     num_epochs = 10
     losses = jnp.zeros(num_epochs)
@@ -52,3 +55,12 @@ def test_minimal_l2ws_model():
 
     # final loss should be at least 50% better than the first loss
     assert losses[-1] / losses[0] < 0.5
+
+    # evaluate test after training
+    final_test_loss, final_time_per_iter = l2ws_model.short_test_eval()
+
+    # test loss does not get 5% worse
+    assert final_test_loss < init_test_loss * 1.05
+
+    # after jitting, evaluating the test set should be much faster
+    assert final_time_per_iter < .1 * init_time_per_iter
