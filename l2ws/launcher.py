@@ -7,16 +7,16 @@ import pandas as pd
 from l2ws.l2ws_model import L2WSmodel
 import jax.numpy as jnp
 import jax.scipy as jsp
-from jax import jit
+from jax import jit, lax
 import hydra
 import time
-import jax
 from scipy.spatial import distance_matrix
 from l2ws.algo_steps import create_projection_fn, get_psd_sizes
 from l2ws.utils.generic_utils import sample_plot, setup_permutation
 import scs
 from scipy.sparse import csc_matrix
 from l2ws.algo_steps import lin_sys_solve
+from functools import partial
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
@@ -35,47 +35,30 @@ class Workspace:
         cfg is the run_cfg
         static_dict holds the data that doesn't change from problem to problem
         '''
-        self.cfg = cfg
         self.eval_unrolls = cfg.eval_unrolls
         self.eval_every_x_epochs = cfg.eval_every_x_epochs
         self.save_every_x_epochs = cfg.save_every_x_epochs
         self.num_samples = cfg.num_samples
         self.pretrain_cfg = cfg.pretrain
-        self.angle_anchors = cfg.angle_anchors
-        self.supervised = cfg.supervised
-        self.tx, self.ty = cfg.get('tx'), cfg.get('ty')
-        self.dx, self.dy = cfg.get('dx'), cfg.get('dy')
-        self.learn_XY = cfg.get('learn_XY')
-        self.num_clusters = cfg.get('num_clusters')
-        self.loss_method = cfg.loss_method
+
         self.plot_iterates = cfg.plot_iterates
-        self.share_all = cfg.get('share_all')
-        self.pretrain_alpha = cfg.get('pretrain_alpha')
-        self.test_every_x_epochs = cfg.get('test_every_x_epochs')
-        self.normalize_inputs = cfg.get('normalize_inputs')
-        self.normalize_alpha = cfg.get('normalize_alpha')
-        self.plateau_decay = cfg.plateau_decay
+
+        share_all = cfg.get('share_all', False)
+
+        self.normalize_inputs = cfg.get('normalize_inputs', True)
+
         self.epochs_jit = cfg.epochs_jit
         self.accs = cfg.get('accuracies')
-        self.iterates_visualize = cfg.get('iterates_visualize')
 
         # custom visualization
-        if custom_visualize_fn is None:
-            self.has_custom_visualization = False
-        else:
-            self.has_custom_visualization = True
-            self.custom_visualize_fn = custom_visualize_fn
+        self.init_custom_visualization(cfg, custom_visualize_fn)
 
         # from the run cfg retrieve the following via the data cfg
-        self.nn_cfg = cfg.nn_cfg
         N_train, N_test = cfg.N_train, cfg.N_test
         N = N_train + N_test
 
         # load the data from problem to problem
-        orig_cwd = hydra.utils.get_original_cwd()
-        folder = f"{orig_cwd}/outputs/{example}/aggregate_outputs/{cfg.data.datetime}"
-        filename = f"{folder}/data_setup_aggregate.npz"
-        jnp_load_obj = jnp.load(filename)
+        jnp_load_obj = self.load_setup_data(example, cfg.data.datetime)
 
         '''
         previously was saving + loading the common data
@@ -99,8 +82,7 @@ class Workspace:
         self.x_stars_test = x_stars[N_train:N, :]
         self.y_stars_test = y_stars[N_train:N, :]
         w_stars_test = w_stars[N_train:N, :]
-        m = y_stars_train.shape[1]
-        n = x_stars_train[0, :].size
+        m, n = y_stars_train.shape[1], x_stars_train[0, :].size
 
         if static_flag:
             static_M = static_dict['M']
@@ -142,33 +124,20 @@ class Workspace:
         self.train_unrolls = cfg.train_unrolls
         eval_unrolls = cfg.train_unrolls
 
-        self.proj = create_projection_fn(cones, n)
+        proj = create_projection_fn(cones, n)
 
         psd_sizes = get_psd_sizes(cones)
 
-        # self.proj, psd_sizes = out[0], out[1]
         self.psd_size = psd_sizes[0]
         sdp_bool = self.psd_size > 0
 
-        # normalize the inputs if the option is on
-        if self.normalize_inputs:
-            col_sums = thetas.mean(axis=0)
-            inputs_normalized = (thetas - col_sums) / thetas.std(axis=0)
-            inputs = jnp.array(inputs_normalized)
-        else:
-            inputs = thetas
-        train_inputs = inputs[:N_train, :]
-        test_inputs = inputs[N_train:N, :]
+        train_inputs, test_inputs = self.normalize_inputs_fn(thetas, N_train, N_test)
 
         num_plot = 5
-        sample_plot(thetas, 'theta', num_plot)
-        sample_plot(train_inputs, 'input', num_plot)
-        sample_plot(x_stars, 'x_stars', num_plot)
-        sample_plot(y_stars, 'y_stars', num_plot)
-        sample_plot(w_stars, 'w_stars', num_plot)
+        self.plot_samples(num_plot, thetas, train_inputs, x_stars, y_stars, w_stars)
 
-        input_dict = {'nn_cfg': self.nn_cfg,
-                      'proj': self.proj,
+        input_dict = {'nn_cfg': cfg.nn_cfg,
+                      'proj': proj,
                       'train_inputs': train_inputs,
                       'test_inputs': test_inputs,
                       'train_unrolls': self.train_unrolls,
@@ -190,27 +159,55 @@ class Workspace:
                       'static_algo_factor': static_algo_factor,
                       'matrix_invs_train': matrix_invs_train,
                       'matrix_invs_test': matrix_invs_test,
-                      'angle_anchors': self.angle_anchors,
-                      'supervised': self.supervised,
+                      'supervised': cfg.get('supervised', False),
                       'psd': sdp_bool,
-                      'tx': self.tx,
-                      'ty': self.ty,
-                      'dx': self.dx,
-                      'dy': self.dy,
                       'psd_size': self.psd_size,
                       'low_2_high_dim': low_2_high_dim,
-                      'learn_XY': self.learn_XY,
-                      'num_clusters': self.num_clusters,
+                      'num_clusters': cfg.get('num_clusters'),
                       'x_psd_indices': x_psd_indices,
                       'y_psd_indices': y_psd_indices,
-                      'loss_method': self.loss_method,
-                      'share_all': self.share_all,
-                      'pretrain_alpha': self.pretrain_alpha,
-                      'normalize_alpha': self.normalize_alpha,
-                      'plateau_decay': self.plateau_decay
+                      'loss_method': cfg.get('loss_method', 'fixed_k'),
+                      'share_all': share_all,
+                      'pretrain_alpha': cfg.get('pretrain_alpha'),
+                      'normalize_alpha': cfg.get('normalize_alpha'),
+                      'plateau_decay': cfg.plateau_decay
                       }
-
         self.l2ws_model = L2WSmodel(input_dict)
+
+    def normalize_inputs_fn(self, thetas, N_train, N_test):
+        # normalize the inputs if the option is on
+        N = N_train + N_test
+        if self.normalize_inputs:
+            col_sums = thetas.mean(axis=0)
+            inputs_normalized = (thetas - col_sums) / thetas.std(axis=0)
+            inputs = jnp.array(inputs_normalized)
+        else:
+            inputs = thetas
+        train_inputs = inputs[:N_train, :]
+        test_inputs = inputs[N_train:N, :]
+        return train_inputs, test_inputs
+
+    def load_setup_data(self, example, datetime):
+        orig_cwd = hydra.utils.get_original_cwd()
+        folder = f"{orig_cwd}/outputs/{example}/aggregate_outputs/{datetime}"
+        filename = f"{folder}/data_setup_aggregate.npz"
+        jnp_load_obj = jnp.load(filename)
+        return jnp_load_obj
+
+    def plot_samples(self, num_plot, thetas, train_inputs, x_stars, y_stars, w_stars):
+        sample_plot(thetas, 'theta', num_plot)
+        sample_plot(train_inputs, 'input', num_plot)
+        sample_plot(x_stars, 'x_stars', num_plot)
+        sample_plot(y_stars, 'y_stars', num_plot)
+        sample_plot(w_stars, 'w_stars', num_plot)
+
+    def init_custom_visualization(self, cfg, custom_visualize_fn):
+        if custom_visualize_fn is None:
+            self.has_custom_visualization = False
+        else:
+            self.has_custom_visualization = True
+            self.custom_visualize_fn = custom_visualize_fn
+            self.iterates_visualize = cfg.get('iterates_visualize')
 
     def _init_logging(self):
         self.logf = open('log.csv', 'a')
@@ -399,7 +396,7 @@ class Workspace:
         self.setup_dataframes()
 
         # set pretrain_on boolean
-        pretrain_on = self.pretrain_cfg.pretrain_iters > 0
+        self.pretrain_on = self.pretrain_cfg.pretrain_iters > 0
 
         # no learning evaluation
         self.eval_iters_train_and_test('no_train', False)
@@ -408,64 +405,40 @@ class Workspace:
         self.eval_iters_train_and_test('nearest_neighbor', False)
 
         # pretrain evaluation
-        if pretrain_on:
+        if self.pretrain_on:
             self.pretrain()
 
         # eval test data to start
         self.test_eval_write()
 
+        # do all of the training
+        self.train()
+
+    def train(self):
+        """
+        does all of the training
+        jits together self.epochs_jit number of epochs together
+        writes results to filesystem
+        """
         num_epochs_jit = int(self.l2ws_model.epochs / self.epochs_jit)
+        loop_size = int(self.l2ws_model.num_batches * self.epochs_jit)
 
         # key_count updated to get random permutation for each epoch
         key_count = 0
+
         for epoch_batch in range(num_epochs_jit):
             epoch = int(epoch_batch * self.epochs_jit)
             if epoch % self.eval_every_x_epochs == 0:
-                self.eval_iters_train_and_test(f"train_epoch_{epoch}", pretrain_on)
+                self.eval_iters_train_and_test(f"train_epoch_{epoch}", self.pretrain_on)
             if epoch > self.l2ws_model.dont_decay_until:
                 self.l2ws_model.decay_upon_plateau()
 
             # setup the permutations
             permutation = setup_permutation(key_count, self.l2ws_model.N_train, self.epochs_jit)
 
-            @jit
-            def body_fn(batch, val):
-                train_losses, params, state = val
-                start_index = batch * self.l2ws_model.batch_size
-                batch_indices = jax.lax.dynamic_slice(
-                    permutation, (start_index,), (self.l2ws_model.batch_size,))
-                train_loss, params, state = self.l2ws_model.train_batch(
-                    batch_indices, params, state)
-                train_losses = train_losses.at[batch].set(train_loss)
-                val = train_losses, params, state
-                return val
-
-            epoch_batch_start_time = time.time()
-
-            loop_size = int(self.l2ws_model.num_batches * self.epochs_jit)
-            epoch_train_losses = jnp.zeros(loop_size)
-            if epoch == 0:
-                # unroll the first iterate so that This allows `init_val` and `body_fun`
-                # below to have the same output type, which is a requirement of
-                # jax.lax.while_loop and jax.lax.scan.
-                batch_indices = jax.lax.dynamic_slice(
-                    permutation, (0,), (self.l2ws_model.batch_size,))
-                train_loss_first, params, state = self.l2ws_model.train_batch(
-                    batch_indices, self.l2ws_model.params, self.l2ws_model.state)
-
-                epoch_train_losses = epoch_train_losses.at[0].set(train_loss_first)
-                start_index = 1
-            else:
-                start_index = 0
-
-            # loop the last (self.l2ws_model.num_batches - 1) iterates
-            init_val = epoch_train_losses, params, state
-            val = jax.lax.fori_loop(start_index, loop_size, body_fn, init_val)
-
-            epoch_batch_end_time = time.time()
-            time_diff = epoch_batch_end_time - epoch_batch_start_time
-            time_train_per_epoch = time_diff / self.epochs_jit
-            epoch_train_losses, params, state = val
+            # train the jitted epochs
+            params, state, epoch_train_losses, time_train_per_epoch = self.train_jitted_epochs(
+                permutation, epoch)
 
             # reset the global (params, state)
             self.l2ws_model.epoch += self.epochs_jit
@@ -485,6 +458,55 @@ class Workspace:
             # plot the train / test loss so far
             if epoch % self.save_every_x_epochs == 0:
                 self.plot_train_test_losses()
+
+    def train_jitted_epochs(self, permutation, epoch):
+        """
+        train self.epochs_jit at a time
+        special case: the first time we call train_batch (i.e. epoch = 0)
+        """
+        epoch_batch_start_time = time.time()
+        loop_size = int(self.l2ws_model.num_batches * self.epochs_jit)
+        epoch_train_losses = jnp.zeros(loop_size)
+        if epoch == 0:
+            # unroll the first iterate so that This allows `init_val` and `body_fun`
+            # below to have the same output type, which is a requirement of
+            # lax.while_loop and lax.scan.
+            batch_indices = lax.dynamic_slice(
+                permutation, (0,), (self.l2ws_model.batch_size,))
+            train_loss_first, params, state = self.l2ws_model.train_batch(
+                batch_indices, self.l2ws_model.params, self.l2ws_model.state)
+
+            epoch_train_losses = epoch_train_losses.at[0].set(train_loss_first)
+            start_index = 1
+        else:
+            start_index = 0
+
+        # loop the last (self.l2ws_model.num_batches - 1) iterates if not
+        #   the first time calling train_batch
+        init_val = epoch_train_losses, params, state
+        body_fn = partial(self.train_over_epochs_body_fn, permutation=permutation)
+        val = lax.fori_loop(start_index, loop_size, body_fn, init_val)
+
+        epoch_batch_end_time = time.time()
+        time_diff = epoch_batch_end_time - epoch_batch_start_time
+        time_train_per_epoch = time_diff / self.epochs_jit
+        epoch_train_losses, params, state = val
+        return params, state, epoch_train_losses, time_train_per_epoch
+
+    def train_over_epochs_body_fn(self, batch, val, permutation):
+        """
+        to be used as the body_fn in lax.fori_loop
+        need to call partial for the specific permutation
+        """
+        train_losses, params, state = val
+        start_index = batch * self.l2ws_model.batch_size
+        batch_indices = lax.dynamic_slice(
+            permutation, (start_index,), (self.l2ws_model.batch_size,))
+        train_loss, params, state = self.l2ws_model.train_batch(
+            batch_indices, params, state)
+        train_losses = train_losses.at[batch].set(train_loss)
+        val = train_losses, params, state
+        return val
 
     def write_accuracies_csv(self, losses, train, col):
         # def update_acc(df_acc, accs, col, losses):
@@ -939,7 +961,7 @@ class Workspace:
             plt.clf()
 
             # plot for y
-            
+
             for j in self.plot_iterates:
                 plt.plot(u_all[i, j, n:n + m], label=f"prediction_{j}")
             if train:

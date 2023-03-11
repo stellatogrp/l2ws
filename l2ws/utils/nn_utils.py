@@ -1,4 +1,4 @@
-from jax import random, jit
+from jax import random, jit, vmap
 import jax.numpy as jnp
 import functools
 
@@ -36,6 +36,9 @@ def predict_y(params, inputs):
     final_w, final_b = params[-1]
     outputs = jnp.dot(final_w, inputs) + final_b
     return outputs
+
+
+batched_predict_y = vmap(predict_y, in_axes=(None, 0))
 
 
 @functools.partial(jit, static_argnums=(1,))

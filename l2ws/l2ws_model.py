@@ -6,7 +6,7 @@ import optax
 import time
 from jaxopt import OptaxSolver
 from l2ws.utils.nn_utils import init_network_params, \
-    predict_y, init_matrix_params
+    predict_y, batched_predict_y, init_matrix_params
 from l2ws.utils.generic_utils import unvec_symm
 import numpy as np
 import matplotlib.pyplot as plt
@@ -21,51 +21,36 @@ config.update("jax_enable_x64", True)
 
 class L2WSmodel(object):
     def __init__(self, dict):
-        self.hsde = True
-        self.proj = dict['proj']
-        self.static_flag = dict['static_flag']
-        self.batch_size = dict['nn_cfg'].batch_size
-        self.epochs, self.lr = dict['nn_cfg'].epochs, dict['nn_cfg'].lr
-        self.decay_lr, self.min_lr = dict['nn_cfg'].decay_lr, dict['nn_cfg'].min_lr
+        # essential pieces for the model
+        self.initialize_essentials(dict)
 
-        self.eval_unrolls = dict['eval_unrolls']
-        self.train_unrolls = dict['train_unrolls']
+        # create_all_loss_fns
+        self.create_all_loss_fns(dict)
 
-        self.train_inputs, self.test_inputs = dict['train_inputs'], dict['test_inputs']
+        # neural network setup
+        self.initialize_neural_network(dict)
 
-        self.N_train, _ = self.train_inputs.shape
-        self.N_test, _ = self.test_inputs.shape
-        self.batch_size = min([self.batch_size, self.N_train])
-        self.num_batches = int(self.N_train/self.batch_size)
+        # optimal solutions (not needed as input)
+        self.setup_optimal_solutions(dict)
 
-        self.y_stars_train, self.y_stars_test = dict['y_stars_train'], dict['y_stars_test']
-        self.x_stars_train, self.x_stars_test = dict['x_stars_train'], dict['x_stars_test']
-        self.w_stars_train = jnp.array(dict['w_stars_train'])
-        self.w_stars_test = jnp.array(dict['w_stars_test'])
-        self.u_stars_train = jnp.hstack([self.x_stars_train, self.y_stars_train])
-        self.u_stars_test = jnp.hstack([self.x_stars_test, self.y_stars_test])
+        # share all method
+        self.setup_share_all(dict)
 
-        self.q_mat_train, self.q_mat_test = dict['q_mat_train'], dict['q_mat_test']
-
-        self.angle_anchors = dict['angle_anchors']
-        self.supervised = dict['supervised']
-
-        self.m, self.n = dict['m'], dict['n']
-        self.psd, self.tx, self.ty = dict.get('psd'), dict.get('tx', 0), dict.get('ty', 0)
-        self.dx, self.dy = dict.get('dx', 0), dict.get('dy', 0)
+        self.psd = dict.get('psd')
         self.psd_size = dict.get('psd_size')
-        self.low_2_high_dim = dict.get('low_2_high_dim')
 
-        self.num_clusters = dict.get('num_clusters')
-        self.x_psd_indices = dict.get('x_psd_indices')
-        self.y_psd_indices = dict.get('y_psd_indices')
-        self.loss_method = dict.get('loss_method')
-        self.share_all = dict.get('share_all')
-        self.pretrain_alpha = dict.get('pretrain_alpha')
-        self.normalize_alpha = dict.get('normalize_alpha')
-        self.plateau_decay = dict.get('plateau_decay')
-        self.dont_decay_until = 2 * self.plateau_decay.avg_window_size
-        self.epoch_decay_points = []
+        # init to track training
+        self.init_train_tracking()
+
+    def initialize_essentials(self, dict):
+        self.hsde = dict.get('hsde', True)
+        self.m, self.n = dict['m'], dict['n']
+        self.proj, self.static_flag = dict['proj'], dict['static_flag']
+        self.q_mat_train, self.q_mat_test = dict['q_mat_train'], dict['q_mat_test']
+        self.eval_unrolls, self.train_unrolls = dict['eval_unrolls'], dict['train_unrolls']
+        self.train_inputs, self.test_inputs = dict['train_inputs'], dict['test_inputs']
+        self.N_train, self.N_test = self.train_inputs.shape[0], self.test_inputs.shape[0]
+        self.share_all = dict.get('share_all', False)
 
         if self.static_flag:
             self.static_M = dict['static_M']
@@ -77,88 +62,84 @@ class L2WSmodel(object):
             self.matrix_invs_train = dict['matrix_invs_train']
             self.matrix_invs_test = dict['matrix_invs_test']
 
-        self.nn_cfg = dict['nn_cfg']
+    def initialize_neural_network(self, dict):
+        nn_cfg = dict['nn_cfg']
+
+        # neural network
+        self.epochs, self.lr = nn_cfg.epochs, nn_cfg.lr
+        self.decay_lr, self.min_lr = nn_cfg.decay_lr, nn_cfg.min_lr
+
+        # auto-decay learning rate
+        self.plateau_decay = dict.get('plateau_decay')
+        self.dont_decay_until = 2 * self.plateau_decay.avg_window_size
+        self.epoch_decay_points = []
+
+        # batching
+        batch_size = nn_cfg.batch_size
+        self.batch_size = min([batch_size, self.N_train])
+        self.num_batches = int(self.N_train/self.batch_size)
+
+        # layer sizes
         input_size = self.train_inputs.shape[1]
-
-        self.batched_predict_y = vmap(predict_y, in_axes=(None, 0))
-
         if self.share_all:
             output_size = self.num_clusters
         else:
-            if self.psd:
-                n_x_non_psd = self.n - int(self.psd_size * (self.psd_size + 1) / 2)
-                n_y_non_psd = self.m - int(self.psd_size * (self.psd_size + 1) / 2)
-                n_x_low = n_x_non_psd + self.dx * self.psd_size
-                n_y_low = n_y_non_psd + self.dy * self.psd_size
-
-                output_size = n_x_low + n_y_low + self.tx + self.ty
-            else:
-                output_size = self.n + self.m
-
+            output_size = self.n + self.m
         layer_sizes = [input_size] + \
-            self.nn_cfg['intermediate_layer_sizes'] + [output_size]
+            nn_cfg['intermediate_layer_sizes'] + [output_size]
 
-        self.nn_params = init_network_params(layer_sizes, random.PRNGKey(0))
-        key = 0
+        # initialize weights of neural network
+        self.params = init_network_params(layer_sizes, random.PRNGKey(0))
+
+        # initializes the optimizer
+        if nn_cfg.method == 'adam':
+            self.optimizer = OptaxSolver(opt=optax.adam(
+                self.lr), fun=self.loss_fn_train, has_aux=False)
+        elif nn_cfg.method == 'sgd':
+            self.optimizer = OptaxSolver(opt=optax.sgd(
+                self.lr), fun=self.loss_fn_train, has_aux=False)
+        self.state = self.optimizer.init_state(self.params)
+
+    def setup_share_all(self, dict):
         if self.share_all:
+            self.num_clusters = dict.get('num_clusters', 10)
+            self.pretrain_alpha = dict.get('pretrain_alpha', False)
+            self.normalize_alpha = dict.get('normalize_alpha', 'none')
             out = self.cluster_z()
             self.Z_shared = out[0]
             self.train_cluster_indices, self.test_cluster_indices = out[1], out[2]
             self.X_list, self.Y_list = [], []
-            self.params = self.nn_params
             if self.pretrain_alpha:
                 self.pretrain_alphas(1000, None, share_all=True)
 
-        else:
-            self.Z_shared = None
-            if self.psd and self.tx + self.ty > 0:
-                if self.learn_XY:
-                    self.X_list = init_matrix_params(self.tx, self.psd_size, random.PRNGKey(key))
-                    key += self.tx
-                    self.Y_list = init_matrix_params(self.ty, self.psd_size, random.PRNGKey(key))
-                    self.params = self.nn_params + self.X_list + self.Y_list
-                else:
-                    out = self.cluster_init_XY_list()
-                    self.X_list, self.Y_list = out[0], out[1]
-                    self.train_cluster_indices, self.test_cluster_indices = out[2], out[3]
-                    self.params = self.nn_params
-                    if self.pretrain_alpha:
-                        self.pretrain_alphas(1000, n_x_low + n_y_low)
-            else:
-                self.X_list, self.Y_list = [], []
-                self.params = self.nn_params
+    def setup_optimal_solutions(self, dict):
+        if dict['x_stars_train'] is not None:
+            self.y_stars_train, self.y_stars_test = dict['y_stars_train'], dict['y_stars_test']
+            self.x_stars_train, self.x_stars_test = dict['x_stars_train'], dict['x_stars_test']
+            self.w_stars_train = jnp.array(dict['w_stars_train'])
+            self.w_stars_test = jnp.array(dict['w_stars_test'])
+            self.u_stars_train = jnp.hstack([self.x_stars_train, self.y_stars_train])
+            self.u_stars_test = jnp.hstack([self.x_stars_test, self.y_stars_test])
 
+    def create_all_loss_fns(self, dict):
+        # to describe the final loss function (not the end-to-end loss fn)
+        self.loss_method = dict.get('loss_method', 'fixed_k')
+        self.supervised = dict.get('supervised', False)
+
+        # end-to-end loss fn for training
+        self.loss_fn_train = self.create_end2end_loss_fn(bypass_nn=False, diff_required=True)
+
+        # end-to-end loss fn for evaluation
+        self.loss_fn_eval = self.create_end2end_loss_fn(bypass_nn=False, diff_required=False)
+
+        # end-to-end added fixed warm start eval - bypasses neural network
+        self.loss_fn_fixed_ws = self.create_end2end_loss_fn(bypass_nn=True, diff_required=False)
+
+    def init_train_tracking(self):
         self.epoch = 0
-
-        train_loss_dict = {'diff_required': True,
-                           'bypass_nn': False}
-        eval_loss_dict = {'diff_required': False,
-                          'bypass_nn': False}
-        fixed_ws_dict = {'diff_required': False,
-                         'bypass_nn': True}
-
-        # loss fn for training
-        self.loss_fn_train = self.create_loss_fn(train_loss_dict)
-
-        # loss fn for evaluation
-        self.loss_fn_eval = self.create_loss_fn(eval_loss_dict)
-
-        # added fixed warm start eval - bypasses neural network
-        self.loss_fn_fixed_ws = self.create_loss_fn(fixed_ws_dict)
-
-        if self.nn_cfg.method == 'adam':
-            self.optimizer = OptaxSolver(opt=optax.adam(
-                self.lr), fun=self.loss_fn_train, has_aux=False)
-        elif self.nn_cfg.method == 'sgd':
-            self.optimizer = OptaxSolver(opt=optax.sgd(
-                self.lr), fun=self.loss_fn_train, has_aux=False)
-
         self.tr_losses = None
         self.te_losses = None
-
         self.train_data = []
-
-        self.state = self.optimizer.init_state(self.params)
         self.tr_losses_batch = []
         self.te_losses = []
 
@@ -181,7 +162,6 @@ class L2WSmodel(object):
             return indices
         train_cluster_indices = get_indices(self.w_stars_train, 'train')
         test_cluster_indices = get_indices(self.w_stars_test, 'test')
-
         return Z_shared, train_cluster_indices, test_cluster_indices
 
     def cluster_init_XY_list(self):
@@ -221,7 +201,8 @@ class L2WSmodel(object):
     def pretrain_alphas(self, num_iters, n_xy_low, share_all=False, stepsize=.001, method='adam',
                         batches=10):
         def pretrain_loss(params, inputs, targets):
-            nn_output = self.batched_predict_y(params, inputs)
+            # nn_output = self.batched_predict_y(params, inputs)
+            nn_output = batched_predict_y(params, inputs)
             if share_all:
                 alpha_hat = nn_output
             else:
@@ -243,16 +224,16 @@ class L2WSmodel(object):
         pretrain_test_losses = np.zeros(batches + 1)
 
         # do a 1-hot encoding - assume given vector of indices
-        if share_all:
-            train_targets = jax.nn.one_hot(self.train_cluster_indices, self.num_clusters)
-            test_targets = jax.nn.one_hot(self.test_cluster_indices, self.num_clusters)
-        else:
-            train_targets_x = jax.nn.one_hot(self.train_cluster_indices, self.tx)
-            train_targets_y = jax.nn.one_hot(self.train_cluster_indices, self.ty)
-            test_targets_x = jax.nn.one_hot(self.test_cluster_indices, self.tx)
-            test_targets_y = jax.nn.one_hot(self.test_cluster_indices, self.ty)
-            train_targets = jnp.hstack([train_targets_x, train_targets_y])
-            test_targets = jnp.hstack([test_targets_x, test_targets_y])
+        # if share_all:
+        train_targets = jax.nn.one_hot(self.train_cluster_indices, self.num_clusters)
+        test_targets = jax.nn.one_hot(self.test_cluster_indices, self.num_clusters)
+        # else:
+        #     train_targets_x = jax.nn.one_hot(self.train_cluster_indices, self.tx)
+        #     train_targets_y = jax.nn.one_hot(self.train_cluster_indices, self.ty)
+        #     test_targets_x = jax.nn.one_hot(self.test_cluster_indices, self.tx)
+        #     test_targets_y = jax.nn.one_hot(self.test_cluster_indices, self.ty)
+        #     train_targets = jnp.hstack([train_targets_x, train_targets_y])
+        #     test_targets = jnp.hstack([test_targets_x, test_targets_y])
 
         curr_pretrain_loss = pretrain_loss(
             params, self.train_inputs, train_targets)
@@ -284,10 +265,11 @@ class L2WSmodel(object):
     def pretrain(self, num_iters, stepsize=.001, method='adam', df_pretrain=None, batches=1):
         def pretrain_loss(params, inputs, targets):
             if self.tx is None or self.ty is None:
-                nn_output = self.batched_predict_y(params, inputs)
+                # nn_output = self.batched_predict_y(params, inputs)
+                nn_output = batched_predict_y(params, inputs)
                 uu = nn_output
             else:
-                num_nn_params = len(self.nn_params)
+                num_nn_params = len(self.params)
 
                 def predict(params_, inputs_):
                     nn_params = params_[:num_nn_params]
@@ -458,21 +440,21 @@ class L2WSmodel(object):
 
         return loss, out, time_per_prob
 
-    def create_loss_fn(self, input_dict):
-        bypass_nn = input_dict['bypass_nn']
-        diff_required = input_dict['diff_required']
+    def create_end2end_loss_fn(self, bypass_nn, diff_required):
         supervised = self.supervised and diff_required
-        
-        proj, n, normalize_alpha = self.proj, self.n, self.normalize_alpha
+
+        proj, n = self.proj, self.n,
         M_static, factor_static = self.static_M, self.static_algo_factor
-        share_all, Z_shared = self.share_all, self.Z_shared
+        share_all = self.share_all
+        Z_shared = self.Z_shared if share_all else None
+        normalize_alpha = self.normalize_alpha if share_all else None
         loss_method, static_flag = self.loss_method, self.static_flag
         hsde, jit = self.hsde, True
 
         def predict(params, input, q, iters, z_star, factor, M):
             P, A = M[:n, :n], -M[n:, :n]
             b, c = q[n:], q[:n]
-            z0, alpha = predict_warm_start(params, input, bypass_nn, self.hsde,
+            z0, alpha = predict_warm_start(params, input, bypass_nn, hsde,
                                            share_all, Z_shared, normalize_alpha)
             if hsde:
                 q_r = lin_sys_solve(factor, q)
