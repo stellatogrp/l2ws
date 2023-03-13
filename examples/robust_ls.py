@@ -351,7 +351,7 @@ def static_canon(A, rho):
     A_dense[n_orig, n_orig] = -1
     A_dense[n_orig + 1:n_orig + m_orig + 1, :n_orig] = -A
 
-    b[n_orig:m_orig + n_orig] = 0  # fill in for b when theta enters --
+    b[n_orig + 1:m_orig + n_orig + 1] = 0  # fill in for b when theta enters --
     # here we can put anything since it will change
 
     # constraint 3
@@ -415,8 +415,8 @@ def random_robust_ls(m_orig, n_orig, rho, b_center, b_range, seed=42):
     P, A = jnp.array(P_sparse.todense()), jnp.array(A_sparse.todense())
     cones = out['cones_dict']
 
-    b_rand_np = (2 * np.random.rand(m_orig) - 1) * b_range + b_center
-    b[n_orig:m_orig + n_orig] = np.array(b_rand_np)
+    b_rand_np = -(2 * np.random.rand(m_orig) - 1) * b_range + b_center
+    b[n_orig:m_orig + n_orig] = -np.array(b_rand_np)
     return P, A, jnp.array(c), jnp.array(b), cones
 
 
@@ -432,14 +432,16 @@ def multiple_random_robust_ls(m_orig, n_orig, rho, b_center, b_range, N, seed=42
 
     q_mat = jnp.zeros((N, m + n))
     theta_mat = jnp.zeros((N, m_orig))
+    b_orig = jnp.zeros((N, m_orig))
     for i in range(N):
         b_rand_np = (2 * np.random.rand(m_orig) - 1) * b_range + b_center
+        b_orig = b_orig.at[i, :].set(b_rand_np)
 
-        b[n_orig:m_orig + n_orig] = np.array(b_rand_np)
+        b[n_orig + 1:m_orig + n_orig + 1] = -np.array(b_rand_np)
         b_jax = jnp.array(b)
 
         theta_mat = theta_mat.at[i, :].set(b_rand_np)
         q_mat = q_mat.at[i, :n].set(c_jax)
         q_mat = q_mat.at[i, n:].set(b_jax)
 
-    return P, A, cones, q_mat, theta_mat
+    return P, A, cones, q_mat, theta_mat, A_orig, b_orig

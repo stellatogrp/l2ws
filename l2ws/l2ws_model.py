@@ -44,7 +44,7 @@ class L2WSmodel(object):
         the input_dict is required to contain these keys
         otherwise there is an error
         """
-        self.hsde = input_dict.get('hsde', True)  # todo: this is an exception for now
+        self.hsde, self.jit = input_dict.get('hsde', True), input_dict.get('jit', True)
         self.m, self.n = input_dict['m'], input_dict['n']
         self.proj, self.static_flag = input_dict['proj'], input_dict['static_flag']
         self.q_mat_train, self.q_mat_test = input_dict['q_mat_train'], input_dict['q_mat_test']
@@ -431,6 +431,7 @@ class L2WSmodel(object):
         else:
             curr_loss_fn = self.loss_fn_eval
         num_probs, _ = inputs.shape
+
         test_time0 = time.time()
 
         loss, out = curr_loss_fn(
@@ -464,7 +465,7 @@ class L2WSmodel(object):
         Z_shared = self.Z_shared if share_all else None
         normalize_alpha = self.normalize_alpha if share_all else None
         loss_method, static_flag = self.loss_method, self.static_flag
-        hsde, jit = self.hsde, True
+        hsde, jit = self.hsde, self.jit
 
         def predict(params, input, q, iters, z_star, factor, M):
             P, A = M[:n, :n], -M[n:, :n]
@@ -484,7 +485,7 @@ class L2WSmodel(object):
                     iters, z0, q_r, factor, proj, P, A, c, b, jit, hsde)
                 z_final, iter_losses = k_eval_out[0], k_eval_out[1]
                 primal_residuals, dual_residuals = k_eval_out[2], k_eval_out[3]
-                all_z_plus_1, all_u = k_eval_out[4], k_eval_out[5]
+                all_z_plus_1, all_u, all_v = k_eval_out[4], k_eval_out[5], k_eval_out[6]
 
                 # compute angle(z^{k+1} - z^k, z^k - z^{k-1})
                 diffs = jnp.diff(all_z_plus_1, axis=0)
@@ -495,7 +496,7 @@ class L2WSmodel(object):
             if diff_required:
                 return loss
             else:
-                out = all_z_plus_1, z_final, alpha, all_u
+                out = all_z_plus_1, z_final, alpha, all_u, all_v
                 return loss, iter_losses, angles, primal_residuals, dual_residuals, out
         loss_fn = predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
         return loss_fn
@@ -587,8 +588,8 @@ def get_out_axes_shape(diff_required):
     else:
         # out_axes for
         #   (loss, iter_losses, angles, primal_residuals, dual_residuals, out)
-        #   out = (all_z_, z_next, alpha, all_u)
-        out_axes = (0, 0, 0, 0, 0, (0, 0, 0, 0))
+        #   out = (all_z_, z_next, alpha, all_u, all_v)
+        out_axes = (0, 0, 0, 0, 0, (0, 0, 0, 0, 0))
     return out_axes
 
 

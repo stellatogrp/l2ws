@@ -52,7 +52,8 @@ def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, lightweigh
         primal_residuals = primal_residuals.at[i].set(pr)
         dual_residuals = dual_residuals.at[i].set(dr)
 
-    all_z = all_z.at[i, :].set(z)
+    # all_z = all_z.at[i, :].set(z)
+    all_z = all_z.at[i, :].set(z_next)
     all_u = all_u.at[i, :].set(u)
     all_v = all_v.at[i, :].set(v)
     return z_next, z_prev, loss_vec, all_z, all_u, all_v, primal_residuals, dual_residuals
@@ -108,6 +109,7 @@ def k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit, hsde):
         out = python_fori_loop(start_iter, k, fp_eval_partial, val)
     z_final, z_penult, iter_losses, all_z, all_u, all_v, primal_residuals, dual_residuals = out
     all_z_plus_1 = all_z_plus_1.at[1:, :].set(all_z)
+
     return z_final, iter_losses, primal_residuals, dual_residuals, all_z_plus_1, all_u, all_v
 
 
