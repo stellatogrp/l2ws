@@ -123,8 +123,8 @@ class L2WSmodel(object):
         if dict.get('x_stars_train', None) is not None:
             self.y_stars_train, self.y_stars_test = dict['y_stars_train'], dict['y_stars_test']
             self.x_stars_train, self.x_stars_test = dict['x_stars_train'], dict['x_stars_test']
-            self.w_stars_train = jnp.array(dict['w_stars_train'])
-            self.w_stars_test = jnp.array(dict['w_stars_test'])
+            self.z_stars_train = jnp.array(dict['z_stars_train'])
+            self.z_stars_test = jnp.array(dict['z_stars_test'])
             self.u_stars_train = jnp.hstack([self.x_stars_train, self.y_stars_train])
             self.u_stars_test = jnp.hstack([self.x_stars_test, self.y_stars_test])
 
@@ -153,7 +153,7 @@ class L2WSmodel(object):
     def cluster_z(self):
         N_train = self.x_stars_train.shape[0]
         sample_indices = np.random.choice(N_train, self.num_clusters, replace=False)
-        Z_shared = self.w_stars_train[sample_indices, :].T
+        Z_shared = self.z_stars_train[sample_indices, :].T
 
         # compute distance matrix
         def get_indices(input, flag):
@@ -167,8 +167,8 @@ class L2WSmodel(object):
             plt.savefig(f"{flag}_indices_psd_plot.pdf", bbox_inches='tight')
             plt.clf()
             return indices
-        train_cluster_indices = get_indices(self.w_stars_train, 'train')
-        test_cluster_indices = get_indices(self.w_stars_test, 'test')
+        train_cluster_indices = get_indices(self.z_stars_train, 'train')
+        test_cluster_indices = get_indices(self.z_stars_test, 'test')
         return Z_shared, train_cluster_indices, test_cluster_indices
 
     def cluster_init_XY_list(self):
@@ -304,8 +304,8 @@ class L2WSmodel(object):
         pretrain_losses = np.zeros(batches + 1)
         pretrain_test_losses = np.zeros(batches + 1)
 
-        train_targets = self.w_stars_train
-        test_targets = self.w_stars_test
+        train_targets = self.z_stars_train
+        test_targets = self.z_stars_test
 
         curr_pretrain_loss = pretrain_loss(
             params, self.train_inputs, train_targets)
@@ -390,7 +390,7 @@ class L2WSmodel(object):
     def train_batch(self, batch_indices, params, state):
         batch_inputs = self.train_inputs[batch_indices, :]
         batch_q_data = self.q_mat_train[batch_indices, :]
-        batch_z_stars = self.w_stars_train[batch_indices, :] if self.supervised else None
+        batch_z_stars = self.z_stars_train[batch_indices, :] if self.supervised else None
         results = self.optimizer.update(params=params,
                                         state=state,
                                         inputs=batch_inputs,
@@ -401,7 +401,7 @@ class L2WSmodel(object):
         return state.value, params, state
 
     def short_test_eval(self):
-        z_stars_test = self.w_stars_test if self.supervised else None
+        z_stars_test = self.z_stars_test if self.supervised else None
         if self.static_flag:
             test_loss, test_out, time_per_prob = self.static_eval(self.train_unrolls,
                                                                   self.test_inputs,

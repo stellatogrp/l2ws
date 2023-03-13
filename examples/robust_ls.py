@@ -61,7 +61,7 @@ def single_q(theta, rho, m_orig, n_orig):
 
     # b
     b = jnp.zeros(m)
-    b = b.at[n_orig: n_orig + m_orig].set(theta)
+    b = b.at[n_orig + 1: n_orig + m_orig + 1].set(-theta)
 
     # q
     m = b.size
@@ -98,8 +98,9 @@ def run(run_cfg):
     datetime = run_cfg.data.datetime
     orig_cwd = hydra.utils.get_original_cwd()
     example = "robust_ls"
-    folder = f"{orig_cwd}/outputs/{example}/aggregate_outputs/{datetime}"
-    data_yaml_filename = f"{folder}/data_setup_copied.yaml"
+    # folder = f"{orig_cwd}/outputs/{example}/data_setup_outputs/{datetime}"
+    # data_yaml_filename = f"{folder}/data_setup_copied.yaml"
+    data_yaml_filename = 'data_setup_copied.yaml'
 
     # read the yaml file
     with open(data_yaml_filename, "r") as stream:
@@ -108,14 +109,6 @@ def run(run_cfg):
         except yaml.YAMLError as exc:
             print(exc)
             setup_cfg = {}
-
-    # T, control_box = setup_cfg["T"], setup_cfg["control_box"]
-    # state_box = setup_cfg["state_box"]
-    # nx, nu = setup_cfg["nx"], setup_cfg["nu"]
-    # Q_val, QT_val = setup_cfg["Q_val"], setup_cfg["QT_val"]
-    # R_val = setup_cfg["R_val"]
-
-    # Ad, Bd = oscillating_masses_setup(nx, nu)
 
     # set the seed
     np.random.seed(setup_cfg['seed'])
@@ -186,11 +179,12 @@ def setup_probs(setup_cfg):
     save output to output_filename
     """
     # save to outputs/mm-dd-ss/... file
-    if "SLURM_ARRAY_TASK_ID" in os.environ.keys():
-        slurm_idx = os.environ["SLURM_ARRAY_TASK_ID"]
-        output_filename = f"{os.getcwd()}/data_setup_slurm_{slurm_idx}"
-    else:
-        output_filename = f"{os.getcwd()}/data_setup_slurm"
+    # if "SLURM_ARRAY_TASK_ID" in os.environ.keys():
+    #     slurm_idx = os.environ["SLURM_ARRAY_TASK_ID"]
+    #     output_filename = f"{os.getcwd()}/data_setup_slurm_{slurm_idx}"
+    # else:
+    #     output_filename = f"{os.getcwd()}/data_setup"
+    output_filename = f"{os.getcwd()}/data_setup"
     """
     create scs solver object
     we can cache the factorization if we do it like this
@@ -243,18 +237,18 @@ def setup_probs(setup_cfg):
         q_mat = q_mat.at[i, :].set(scs_instance.q)
         solve_times[i] = scs_instance.solve_time
 
-        # check with our jax implementation
-        P_jax = jnp.array(P_sparse.todense())
-        A_jax = jnp.array(A_sparse.todense())
-        c_jax, b_jax = jnp.array(c), jnp.array(b)
-        data = dict(P=P_jax, A=A_jax, b=b_jax, c=c_jax, cones=cones_dict)
-        # disturbance_x = np.random.normal(size=(n))
-        # disturbance_x = disturbance_x / np.linalg.norm(disturbance_x) * 1e-2
-        # disturbance_y = np.random.normal(size=(m))
-        # disturbance_y = disturbance_y / np.linalg.norm(disturbance_y) * 1e-2
-        # data['x'] = x_stars[i, :] + disturbance_x
-        # data['y'] = y_stars[i, :] + disturbance_y
-        x_jax, y_jax, s_jax = scs_jax(data, iters=1000)
+        # # check with our jax implementation
+        # P_jax = jnp.array(P_sparse.todense())
+        # A_jax = jnp.array(A_sparse.todense())
+        # c_jax, b_jax = jnp.array(c), jnp.array(b)
+        # data = dict(P=P_jax, A=A_jax, b=b_jax, c=c_jax, cones=cones_dict)
+        # # disturbance_x = np.random.normal(size=(n))
+        # # disturbance_x = disturbance_x / np.linalg.norm(disturbance_x) * 1e-2
+        # # disturbance_y = np.random.normal(size=(m))
+        # # disturbance_y = disturbance_y / np.linalg.norm(disturbance_y) * 1e-2
+        # # data['x'] = x_stars[i, :] + disturbance_x
+        # # data['y'] = y_stars[i, :] + disturbance_y
+        # x_jax, y_jax, s_jax = scs_jax(data, iters=1000)
 
         ############
 
@@ -266,7 +260,9 @@ def setup_probs(setup_cfg):
         output_filename,
         thetas=thetas,
         x_stars=x_stars,
-        y_stars=y_stars
+        y_stars=y_stars,
+        s_stars=s_stars,
+        q_mat=q_mat
     )
 
     # save solve times

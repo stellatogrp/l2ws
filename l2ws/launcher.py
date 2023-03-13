@@ -65,23 +65,25 @@ class Workspace:
         but that was too memory-intensive
         so just passing it in now
         '''
+
         thetas = jnp_load_obj['thetas']
+        self.thetas_train = thetas[:N_train, :]
+        self.thetas_test = thetas[N_train:N, :]
         x_stars = jnp_load_obj['x_stars']
         y_stars = jnp_load_obj['y_stars']
-        w_stars = jnp_load_obj['w_stars']
+        s_stars = jnp_load_obj['s_stars']
+
+        z_stars = jnp.hstack([x_stars, y_stars + s_stars])
         x_stars_train = x_stars[:N_train, :]
         y_stars_train = y_stars[:N_train, :]
 
         self.x_stars_train = x_stars[:N_train, :]
         self.y_stars_train = y_stars[:N_train, :]
 
-        self.thetas_train = thetas[:N_train, :]
-        self.thetas_test = thetas[N_train:N, :]
-
-        w_stars_train = w_stars[:N_train, :]
+        z_stars_train = z_stars[:N_train, :]
         self.x_stars_test = x_stars[N_train:N, :]
         self.y_stars_test = y_stars[N_train:N, :]
-        w_stars_test = w_stars[N_train:N, :]
+        z_stars_test = z_stars[N_train:N, :]
         m, n = y_stars_train.shape[1], x_stars_train[0, :].size
 
         if static_flag:
@@ -134,7 +136,7 @@ class Workspace:
         train_inputs, test_inputs = self.normalize_inputs_fn(thetas, N_train, N_test)
 
         num_plot = 5
-        self.plot_samples(num_plot, thetas, train_inputs, x_stars, y_stars, w_stars)
+        self.plot_samples(num_plot, thetas, train_inputs, x_stars, y_stars, z_stars)
 
         input_dict = {'nn_cfg': cfg.nn_cfg,
                       'proj': proj,
@@ -142,8 +144,8 @@ class Workspace:
                       'test_inputs': test_inputs,
                       'train_unrolls': self.train_unrolls,
                       'eval_unrolls': eval_unrolls,
-                      'w_stars_train': w_stars_train,
-                      'w_stars_test': w_stars_test,
+                      'z_stars_train': z_stars_train,
+                      'z_stars_test': z_stars_test,
                       'q_mat_train': q_mat_train,
                       'q_mat_test': q_mat_test,
                       'M_tensor_train': M_tensor_train,
@@ -189,17 +191,19 @@ class Workspace:
 
     def load_setup_data(self, example, datetime):
         orig_cwd = hydra.utils.get_original_cwd()
-        folder = f"{orig_cwd}/outputs/{example}/aggregate_outputs/{datetime}"
-        filename = f"{folder}/data_setup_aggregate.npz"
+        # folder = f"{orig_cwd}/outputs/{example}/aggregate_outputs/{datetime}"
+        # filename = f"{folder}/data_setup_aggregate.npz"
+        folder = f"{orig_cwd}/outputs/{example}/data_setup_outputs/{datetime}"
+        filename = f"{folder}/data_setup.npz"
         jnp_load_obj = jnp.load(filename)
         return jnp_load_obj
 
-    def plot_samples(self, num_plot, thetas, train_inputs, x_stars, y_stars, w_stars):
+    def plot_samples(self, num_plot, thetas, train_inputs, x_stars, y_stars, z_stars):
         sample_plot(thetas, 'theta', num_plot)
         sample_plot(train_inputs, 'input', num_plot)
         sample_plot(x_stars, 'x_stars', num_plot)
         sample_plot(y_stars, 'y_stars', num_plot)
-        sample_plot(w_stars, 'w_stars', num_plot)
+        sample_plot(z_stars, 'z_stars', num_plot)
 
     def init_custom_visualization(self, cfg, custom_visualize_fn):
         if custom_visualize_fn is None:
@@ -469,8 +473,8 @@ class Workspace:
         epoch_train_losses = jnp.zeros(loop_size)
         if epoch == 0:
             # unroll the first iterate so that This allows `init_val` and `body_fun`
-            # below to have the same output type, which is a requirement of
-            # lax.while_loop and lax.scan.
+            #   below to have the same output type, which is a requirement of
+            #   lax.while_loop and lax.scan.
             batch_indices = lax.dynamic_slice(
                 permutation, (0,), (self.l2ws_model.batch_size,))
             train_loss_first, params, state = self.l2ws_model.train_batch(
@@ -480,6 +484,7 @@ class Workspace:
             start_index = 1
         else:
             start_index = 0
+            params, state = self.l2ws_model.params, self.l2ws_model.state
 
         # loop the last (self.l2ws_model.num_batches - 1) iterates if not
         #   the first time calling train_batch
@@ -580,8 +585,8 @@ class Workspace:
 
     def evaluate_only(self, fixed_ws, num, train, col):
         tag = 'train' if train else 'test'
-        z_stars = self.l2ws_model.w_stars_train[:num,
-                                                :] if train else self.l2ws_model.w_stars_test[:num,
+        z_stars = self.l2ws_model.z_stars_train[:num,
+                                                :] if train else self.l2ws_model.z_stars_test[:num,
                                                                                               :]
         q_mat = self.l2ws_model.q_mat_train[:num,
                                             :] if train else self.l2ws_model.q_mat_test[:num, :]
@@ -601,7 +606,7 @@ class Workspace:
         else:
             # elif col == 'no_train': (possible case to consider)
             # random init with neural network ()
-            # _, predict_size = self.l2ws_model.w_stars_test.shape
+            # _, predict_size = self.l2ws_model.z_stars_test.shape
             # random_start = np.random.normal(size=(num, predict_size))
             # inputs = jnp.array(random_start)
             # fixed_ws = True
@@ -631,7 +636,7 @@ class Workspace:
         else:
             plt.savefig("indices_train_plot.pdf", bbox_inches='tight')
         plt.clf()
-        return self.l2ws_model.w_stars_train[indices, :]
+        return self.l2ws_model.z_stars_train[indices, :]
 
     def setup_dataframes(self):
         self.iters_df_train = pd.DataFrame(
@@ -984,15 +989,15 @@ class Workspace:
             for j in self.plot_iterates:
                 plt.plot(z_all[i, j, :], label=f"prediction_{j}")
             if train:
-                plt.plot(self.l2ws_model.w_stars_train[i, :], label='optimal')
+                plt.plot(self.l2ws_model.z_stars_train[i, :], label='optimal')
             else:
-                plt.plot(self.l2ws_model.w_stars_test[i, :], label='optimal')
+                plt.plot(self.l2ws_model.z_stars_test[i, :], label='optimal')
             plt.legend()
             plt.savefig(f"{ws_path}/{col}/prob_{i}_z_ws.pdf")
             plt.clf()
 
             for j in self.plot_iterates:
-                plt.plot(z_all[i, j, :] - self.l2ws_model.w_stars_train[i, :],
+                plt.plot(z_all[i, j, :] - self.l2ws_model.z_stars_train[i, :],
                          label=f"prediction_{j}")
             plt.legend()
             plt.title('diffs to optimal')

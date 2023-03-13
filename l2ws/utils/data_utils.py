@@ -25,7 +25,8 @@ def recover_last_datetime(orig_cwd, example, stage):
 
 def copy_data_file(example, datetime):
     orig_cwd = hydra.utils.get_original_cwd()
-    data_yaml_filename = f"{orig_cwd}/outputs/{example}/aggregate_outputs/{datetime}/data_setup_copied.yaml"
+    # data_yaml_filename = f"{orig_cwd}/outputs/{example}/aggregate_outputs/{datetime}/data_setup_copied.yaml"
+    data_yaml_filename = f"{orig_cwd}/outputs/{example}/data_setup_outputs/{datetime}/.hydra/config.yaml"
     
     # read the yaml file
     with open(data_yaml_filename, "r") as stream:

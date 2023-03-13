@@ -15,6 +15,8 @@ def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous):
     z, loss_vec = val
     if hsde:
         r = q_r
+        # import pdb
+        # pdb.set_trace()
         z_next, u, u_tilde, v = fixed_point_hsde(z, homogeneous, r, factor, proj)
     else:
         q = q_r
@@ -64,11 +66,21 @@ def k_steps_train(k, z0, q_r, factor, supervised, z_star, proj, jit, hsde):
     fp_train_partial = partial(fp_train, q_r=q_r, factor=factor,
                                supervised=supervised, z_star=z_star, proj=proj, hsde=hsde,
                                homogeneous=True)
+    if hsde:
+        # first step: iteration 0
+        # we set homogeneous = False for the first iteration
+        #   to match the SCS code which has the global variable FEASIBLE_ITERS
+        #   which is set to 1
+        homogeneous = False
+        z_next, u, u_tilde, v = fixed_point_hsde(z0, homogeneous, q_r, factor, proj)
+        iter_losses = iter_losses.at[0].set(jnp.linalg.norm(z_next - z0))
+        z0 = z_next
     val = z0, iter_losses
+    start_iter = 1 if hsde else 0
     if jit:
-        out = lax.fori_loop(0, k, fp_train_partial, val)
+        out = lax.fori_loop(start_iter, k, fp_train_partial, val)
     else:
-        out = python_fori_loop(0, k, fp_train_partial, val)
+        out = python_fori_loop(start_iter, k, fp_train_partial, val)
     z_final, iter_losses = out
     return z_final, iter_losses
 

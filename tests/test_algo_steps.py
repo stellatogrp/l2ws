@@ -5,6 +5,34 @@ from l2ws.scs_problem import scs_jax
 import scs
 import numpy as np
 from scipy.sparse import csc_matrix
+from l2ws.algo_steps import k_steps_eval, k_steps_train, create_projection_fn, lin_sys_solve, \
+    create_M
+import jax.scipy as jsp
+
+
+def test_train_vs_eval():
+    # get a random robust least squares problem
+    m_orig, n_orig = 20, 25
+    rho = 1
+    b_center, b_range = 1, 1
+    P, A, c, b, cones = random_robust_ls(m_orig, n_orig, rho, b_center, b_range)
+    m, n = A.shape
+    proj = create_projection_fn(cones, n)
+    k = 20
+    z0 = jnp.ones(m + n + 1)
+    M = create_M(P, A)
+    factor = jsp.linalg.lu_factor(M + jnp.eye(n + m))
+
+    q = jnp.concatenate([c, b])
+    q_r = lin_sys_solve(factor, q)
+    train_out = k_steps_train(k, z0, q_r, factor, supervised=False,
+                              z_star=None, proj=proj, jit=False, hsde=True)
+    z_final_train, iter_losses_train = train_out
+
+    eval_out = k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit=True, hsde=True)
+    z_final_eval, iter_losses_eval = eval_out[:2]
+    assert jnp.linalg.norm(iter_losses_train - iter_losses_eval) <= 1e-12
+    assert jnp.linalg.norm(z_final_eval - z_final_train) <= 1e-12
 
 
 def test_jit_speed():
@@ -49,32 +77,32 @@ def test_jit_speed():
     assert jnp.linalg.norm(s_jit - s_non_jit) < 1e-12
 
 
-# def test_hsde_socp():
-#     """
-#     tests to make sure hsde returns the same solution as the non-hsde
-#     tests socp of different cone sizes also (there are 2 SOCs)
-#     """
-#     # get a random robust least squares problem
-#     m_orig, n_orig = 50, 55
-#     rho = 1
-#     b_center, b_range = 1, 1
-#     P, A, c, b, cones = random_robust_ls(m_orig, n_orig, rho, b_center, b_range)
+def test_hsde_socp():
+    """
+    tests to make sure hsde returns the same solution as the non-hsde
+    tests socp of different cone sizes also (there are 2 SOCs)
+    """
+    # get a random robust least squares problem
+    m_orig, n_orig = 50, 55
+    rho = 1
+    b_center, b_range = 1, 1
+    P, A, c, b, cones = random_robust_ls(m_orig, n_orig, rho, b_center, b_range)
 
-#     data = dict(P=P, A=A, c=c, b=b, cones=cones)
+    data = dict(P=P, A=A, c=c, b=b, cones=cones)
 
-#     sol_std = scs_jax(data, hsde=False, iters=200)
-#     x_std, y_std, s_std = sol_std['x'], sol_std['y'], sol_std['s']
-#     fp_res_std = sol_std['fixed_point_residuals']
+    sol_std = scs_jax(data, hsde=False, iters=200)
+    x_std, y_std, s_std = sol_std['x'], sol_std['y'], sol_std['s']
+    fp_res_std = sol_std['fixed_point_residuals']
 
-#     sol_hsde = scs_jax(data, hsde=True, iters=200)
-#     x_hsde, y_hsde, s_hsde = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
-#     fp_res_hsde = sol_hsde['fixed_point_residuals']
+    sol_hsde = scs_jax(data, hsde=True, iters=200)
+    x_hsde, y_hsde, s_hsde = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
+    fp_res_hsde = sol_hsde['fixed_point_residuals']
 
-#     assert jnp.linalg.norm(x_hsde - x_std) < 1e-3
-#     assert jnp.linalg.norm(y_hsde - y_std) < 1e-3
-#     assert jnp.linalg.norm(s_hsde - s_std) < 1e-3
-#     assert jnp.all(jnp.diff(fp_res_std) < 0)
-#     assert jnp.all(jnp.diff(fp_res_hsde) < 0)
+    assert jnp.linalg.norm(x_hsde - x_std) < 1e-3
+    assert jnp.linalg.norm(y_hsde - y_std) < 1e-3
+    assert jnp.linalg.norm(s_hsde - s_std) < 1e-3
+    assert jnp.all(jnp.diff(fp_res_std) < 0)
+    assert jnp.all(jnp.diff(fp_res_hsde) < 0)
 
 
 def test_c_vs_jax():
@@ -188,5 +216,6 @@ def test_warm_start_from_opt():
     assert jnp.linalg.norm(y_jax - y_c) < 1e-12
     assert jnp.linalg.norm(s_jax - s_c) < 1e-12
 
-    # this line actually isn't true
+    # this line actually isn't true (even in SCS) because of the change in treating the
+    #   problem as homogeneous
     # assert jnp.all(jnp.diff(fp_res_hsde) < 0)
