@@ -116,8 +116,8 @@ class Workspace:
         self.cones = static_dict['cones_dict']
 
         # alternate -- load it if available (but this is memory-intensive)
-        q_mat_train = q_mat[:N_train, :]
-        q_mat_test = q_mat[N_train:N, :]
+        q_mat_train = jnp.array(q_mat[:N_train, :])
+        q_mat_test = jnp.array(q_mat[N_train:N, :])
 
         self.M = static_M
 
