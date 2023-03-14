@@ -80,7 +80,8 @@ def run(run_cfg):
                            n_orig=setup_cfg['n_orig'],
                            )
 
-    get_q = vmap(get_q_single, in_axes=0, out_axes=0)
+    # get_q = vmap(get_q_single, in_axes=0, out_axes=0)
+    get_q = None
 
     # static_flag = True
     #   means that the matrices don't change across problems

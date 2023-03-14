@@ -15,7 +15,6 @@ from l2ws.algo_steps import create_projection_fn, get_psd_sizes
 from l2ws.utils.generic_utils import sample_plot, setup_permutation
 import scs
 from scipy.sparse import csc_matrix
-from l2ws.algo_steps import lin_sys_solve
 from functools import partial
 plt.rcParams.update({
     "text.usetex": True,
@@ -68,6 +67,8 @@ class Workspace:
         x_stars = jnp_load_obj['x_stars']
         y_stars = jnp_load_obj['y_stars']
         s_stars = jnp_load_obj['s_stars']
+        if get_M_q is None:
+            q_mat = jnp_load_obj['q_mat']
 
         z_stars = jnp.hstack([x_stars, y_stars + s_stars])
         x_stars_train = x_stars[:N_train, :]
@@ -89,7 +90,8 @@ class Workspace:
             cones = static_dict['cones_dict']
 
             # call get_q_mat
-            q_mat = get_M_q(thetas)
+            if get_M_q is not None:
+                q_mat = get_M_q(thetas)
             M_tensor_train, M_tensor_test = None, None
             matrix_invs_train, matrix_invs_test = None, None
 
@@ -284,15 +286,12 @@ class Workspace:
 
         # solve with scs
         z0_mat = z_all[:, 0, :]
-        # self.solve_scs(z0_mat, train, col)
-        self.solve_scs(z_all, u_all, train, col)
+        self.solve_scs(z0_mat, train, col)
+        # self.solve_scs(z_all, u_all, train, col)
 
         return out_train
 
-    # def solve_scs(self, z0_mat, train, col):
-    def solve_scs(self, z_all, u_all, train, col):
-        z0_mat = z_all[:, 0, :]
-
+    def solve_scs(self, z0_mat, train, col):
         # create the path
         if train:
             scs_path = 'scs_train'
@@ -322,12 +321,12 @@ class Workspace:
                          rho_x=1,
                          alpha=1,
                          acceleration_lookback=0,
-                         eps_abs=1e-12,
-                         eps_rel=1e-12,
-                         max_iters=100)
+                         eps_abs=1e-2,
+                         eps_rel=0)
 
         num = 20
-        solve_times = np.zeros(num + 1)
+        solve_times = np.zeros(num)
+        solve_iters = np.zeros(num)
 
         if train:
             q_mat = self.l2ws_model.q_mat_train
@@ -352,13 +351,17 @@ class Workspace:
 
             # set the solve time in seconds
             solve_times[i] = sol['info']['solve_time'] / 1000
-        solve_times[-1] = solve_times[:num].mean()
+            solve_iters[i] = sol['info']['iter']
+        mean_time = solve_times.mean()
+        mean_iters = solve_iters.mean()
 
         # write the solve times to the csv file
-        scs_df = pd.DataFrame(solve_times)
+        scs_df = pd.DataFrame()
+        scs_df['solve_times'] = solve_times
+        scs_df['solve_iters'] = solve_iters
+        scs_df['mean_time'] = mean_time
+        scs_df['mean_iters'] = mean_iters
         scs_df.to_csv(f"{scs_path}/{col}/scs_solve_times.csv")
-        import pdb
-        pdb.set_trace()
 
     def get_xys_from_z(self, z_init):
         """
@@ -370,13 +373,6 @@ class Workspace:
         x = z_init[:n]
         y = z_init[n:n + m]
         s = jnp.zeros(m)
-        # u_tilde = lin_sys_solve(self.l2ws_model.static_algo_factor, z_init - q)
-        # u_temp = 2 * u_tilde - z_init
-        # u = self.proj(u_temp)
-        # v = u + z_init - 2 * u_tilde
-
-        # x, y = u[:n], u[n:]
-        # s = v[n:]
         return x, y, s
 
     def custom_visualize(self, x_primals, train, col):
