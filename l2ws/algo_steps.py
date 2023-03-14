@@ -15,8 +15,6 @@ def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous):
     z, loss_vec = val
     if hsde:
         r = q_r
-        # import pdb
-        # pdb.set_trace()
         z_next, u, u_tilde, v = fixed_point_hsde(z, homogeneous, r, factor, proj)
     else:
         q = q_r

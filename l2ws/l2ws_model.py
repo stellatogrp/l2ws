@@ -98,11 +98,11 @@ class L2WSmodel(object):
         self.params = init_network_params(layer_sizes, random.PRNGKey(0))
 
         # initializes the optimizer
-        optimizer = nn_cfg.get('method', 'adam')
-        if optimizer == 'adam':
+        self.optimizer_method = nn_cfg.get('method', 'adam')
+        if self.optimizer_method == 'adam':
             self.optimizer = OptaxSolver(opt=optax.adam(
                 self.lr), fun=self.loss_fn_train, has_aux=False)
-        elif optimizer == 'sgd':
+        elif self.optimizer_method == 'sgd':
             self.optimizer = OptaxSolver(opt=optax.sgd(
                 self.lr), fun=self.loss_fn_train, has_aux=False)
         self.state = self.optimizer.init_state(self.params)
@@ -364,10 +364,10 @@ class L2WSmodel(object):
                 self.lr = self.lr / decay_factor
 
                 # update the optimizer (restart) and reset the state
-                if self.nn_cfg.method == 'adam':
+                if self.optimizer_method == 'adam':
                     self.optimizer = OptaxSolver(opt=optax.adam(
                         self.lr), fun=self.loss_fn_train, has_aux=False)
-                elif self.nn_cfg.method == 'sgd':
+                elif self.optimizer_method == 'sgd':
                     self.optimizer = OptaxSolver(opt=optax.sgd(
                         self.lr), fun=self.loss_fn_train, has_aux=False)
                 self.state = self.optimizer.init_state(self.params)

@@ -7,7 +7,7 @@ import pandas as pd
 from l2ws.l2ws_model import L2WSmodel
 import jax.numpy as jnp
 import jax.scipy as jsp
-from jax import jit, lax
+from jax import lax
 import hydra
 import time
 from scipy.spatial import distance_matrix
@@ -32,8 +32,10 @@ class Workspace:
                  y_psd_indices=None,
                  custom_visualize_fn=None):
         '''
-        cfg is the run_cfg
+        cfg is the run_cfg from hydra
+        static_flag is True if the matrices P and A don't change from problem to problem
         static_dict holds the data that doesn't change from problem to problem
+        example is the string (e.g. 'robust_kalman')
         '''
         self.eval_unrolls = cfg.eval_unrolls
         self.eval_every_x_epochs = cfg.eval_every_x_epochs
@@ -59,12 +61,6 @@ class Workspace:
 
         # load the data from problem to problem
         jnp_load_obj = self.load_setup_data(example, cfg.data.datetime)
-
-        '''
-        previously was saving + loading the common data
-        but that was too memory-intensive
-        so just passing it in now
-        '''
 
         thetas = jnp_load_obj['thetas']
         self.thetas_train = thetas[:N_train, :]
@@ -289,10 +285,14 @@ class Workspace:
         # solve with scs
         z0_mat = z_all[:, 0, :]
         # self.solve_scs(z0_mat, train, col)
+        self.solve_scs(z_all, u_all, train, col)
 
         return out_train
 
-    def solve_scs(self, z0_mat, train, col):
+    # def solve_scs(self, z0_mat, train, col):
+    def solve_scs(self, z_all, u_all, train, col):
+        z0_mat = z_all[:, 0, :]
+
         # create the path
         if train:
             scs_path = 'scs_train'
@@ -322,11 +322,12 @@ class Workspace:
                          rho_x=1,
                          alpha=1,
                          acceleration_lookback=0,
-                         eps_abs=.001,
-                         eps_rel=0)
+                         eps_abs=1e-12,
+                         eps_rel=1e-12,
+                         max_iters=100)
 
         num = 20
-        solve_times = np.zeros(num)
+        solve_times = np.zeros(num + 1)
 
         if train:
             q_mat = self.l2ws_model.q_mat_train
@@ -335,37 +336,47 @@ class Workspace:
 
         for i in range(num):
             # get the current q
-            q = q_mat[i, :]
+            # q = q_mat[i, :]
 
             # set b, c
             b, c = q_mat[i, n:], q_mat[i, :n]
-            scs_data = dict(P=P, A=A, b=b, c=c)
+            # scs_data = dict(P=P, A=A, b=b, c=c)
             solver.update(b=np.array(b))
             solver.update(c=np.array(c))
-            self.solver = solver
 
             # set the warm start
-            x, y, s = self.get_xys_from_z(z0_mat[i, :], q)
+            x, y, s = self.get_xys_from_z(z0_mat[i, :])
 
             # solve
             sol = solver.solve(warm_start=True, x=np.array(x), y=np.array(y), s=np.array(s))
 
             # set the solve time in seconds
             solve_times[i] = sol['info']['solve_time'] / 1000
+        solve_times[-1] = solve_times[:num].mean()
 
         # write the solve times to the csv file
         scs_df = pd.DataFrame(solve_times)
         scs_df.to_csv(f"{scs_path}/{col}/scs_solve_times.csv")
+        import pdb
+        pdb.set_trace()
 
-    def get_xys_from_z(self, z_init, q):
-        n = self.l2ws_model.n
-        u_tilde = lin_sys_solve(self.l2ws_model.static_algo_factor, z_init - q)
-        u_temp = 2 * u_tilde - z_init
-        u = self.proj(u_temp)
-        v = u + z_init - 2 * u_tilde
+    def get_xys_from_z(self, z_init):
+        """
+        z = (x, y + s, 1)
+        we always set the last entry of z to be 1
+        we allow s to be zero (we just need z[n:m + n] = y + s)
+        """
+        m, n = self.l2ws_model.m, self.l2ws_model.n
+        x = z_init[:n]
+        y = z_init[n:n + m]
+        s = jnp.zeros(m)
+        # u_tilde = lin_sys_solve(self.l2ws_model.static_algo_factor, z_init - q)
+        # u_temp = 2 * u_tilde - z_init
+        # u = self.proj(u_temp)
+        # v = u + z_init - 2 * u_tilde
 
-        x, y = u[:n], u[n:]
-        s = v[n:]
+        # x, y = u[:n], u[n:]
+        # s = v[n:]
         return x, y, s
 
     def custom_visualize(self, x_primals, train, col):
@@ -514,7 +525,6 @@ class Workspace:
         return val
 
     def write_accuracies_csv(self, losses, train, col):
-        # def update_acc(df_acc, accs, col, losses):
         df_acc = pd.DataFrame()
         df_acc['accuracies'] = np.array(self.accs)
 
@@ -551,17 +561,6 @@ class Workspace:
                 val = 1 - df_acc[col] / self.no_learning_accs
                 df_percent[col] = np.round(val, decimals=2)
         df_percent.to_csv(f"{accs_path}/{col}/reduction.csv")
-
-        # save both iterations and fraction reduction in single table
-        # df_acc_both = pd.DataFrame()
-        # # df_acc_both['accuracies'] = df_acc['no_learn']
-        # df_acc_both['no_learn_iters'] = np.array(self.accs)
-
-        # for col in df_percent.columns:
-        #     if col != 'accuracies' and col != 'no_learn':
-        #         df_acc_both[col + '_iters'] = df_acc[col]
-        #         df_acc_both[col + '_red'] = df_percent[col]
-        # df_acc_both.to_csv(f"{accs_path}/{col}/accuracies_reduction_both.csv")
 
     def eval_iters_train_and_test(self, col, pretrain_on):
         self.evaluate_iters(

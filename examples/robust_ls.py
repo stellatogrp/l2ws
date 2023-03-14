@@ -1,7 +1,5 @@
 from functools import partial
-import hydra
-import cvxpy as cp
-from l2ws.scs_problem import SCSinstance, scs_jax
+from l2ws.scs_problem import SCSinstance
 import numpy as np
 from l2ws.launcher import Workspace
 import jax.numpy as jnp
@@ -27,27 +25,6 @@ plt.rcParams.update(
 log = logging.getLogger(__name__)
 
 
-def cvxpy_manual(A, b, rho):
-    m, n = A.shape
-    x = cp.Variable(shape=(n))
-    u = cp.Variable()
-    v = cp.Variable()
-
-    obj = u + rho * v
-
-    constr = [x >= 0, cp.norm(x) <= v, cp.norm(A @ x - b) <= u]
-
-    prob = cp.Problem(cp.Minimize(obj), constr).solve(verbose=True)
-    prob.solve(verbose=True)
-
-    x = np.array(x.value)
-    u = np.array(u.value)
-    v = np.array(v.value)
-    return x, u, v
-
-
-# @functools.partial(jit, static_argnums=(1, 2, 3, 4, 5, 6, 7, 8,))
-# def single_q(theta, m, n, T, nx, nu, state_box, control_box, A_dynamics):
 def single_q(theta, rho, m_orig, n_orig):
     # note: m, n are the sizes of the constraint matrix in the SOCP
     # theta is the vector b
@@ -74,32 +51,9 @@ def single_q(theta, rho, m_orig, n_orig):
 
 def run(run_cfg):
     """
-    retrieve data for this config
-    theta is all of the following
-    theta = (ret, pen_risk, pen_hold, pen_trade, w0)
-
-    Sigma is constant
-
-     just need (theta, factor, u_star), Pi
+    
     """
-    # todo: retrieve data and put into a nice form - OR - just save to nice form
-
-    """
-    create workspace
-    needs to know the following somehow -- from the run_cfg
-    1. nn cfg
-    2. (theta, factor, u_star)_i=1^N
-    3. Pi
-
-    2. and 3. are stored in data files and the run_cfg holds the location
-
-    it will create the l2a_model
-    """
-    datetime = run_cfg.data.datetime
-    orig_cwd = hydra.utils.get_original_cwd()
     example = "robust_ls"
-    # folder = f"{orig_cwd}/outputs/{example}/data_setup_outputs/{datetime}"
-    # data_yaml_filename = f"{folder}/data_setup_copied.yaml"
     data_yaml_filename = 'data_setup_copied.yaml'
 
     # read the yaml file
@@ -128,29 +82,23 @@ def run(run_cfg):
 
     get_q = vmap(get_q_single, in_axes=0, out_axes=0)
 
-    """
-    static_flag = True
-    means that the matrices don't change across problems
-    we only need to factor once
-    """
+    # static_flag = True
+    #   means that the matrices don't change across problems
     static_flag = True
     workspace = Workspace(run_cfg, static_flag, static_dict, example, get_q)
 
-    """
-    run the workspace
-    """
+    # run the workspace
     workspace.run()
 
 
 def setup_probs(setup_cfg):
-    print("entered robust kalman setup", flush=True)
+    print("entered robust least squares setup", flush=True)
     cfg = setup_cfg
     N_train, N_test = cfg.N_train, cfg.N_test
     N = N_train + N_test
     m_orig, n_orig = cfg.m_orig, cfg.n_orig
 
     np.random.seed(cfg.seed)
-    # A = np.random.normal(size=(m_orig, n_orig))
     A = (np.random.rand(m_orig, n_orig) * 2) - 1
 
     log.info("creating static canonicalization...")
@@ -160,36 +108,16 @@ def setup_probs(setup_cfg):
     t1 = time.time()
     log.info(f"finished static canonicalization - took {t1-t0} seconds")
 
-    # M = out_dict["M"]
-    # algo_factor = out_dict["algo_factor"]
-    # cones_array = out_dict["cones_array"]
     cones_dict = out_dict["cones_dict"]
     A_sparse, P_sparse = out_dict["A_sparse"], out_dict["P_sparse"]
-
-    """
-    if with_states, b is updated
-    if w/out states, c is updated
-    """
     b, c = out_dict["b"], out_dict["c"]
-
     m, n = A_sparse.shape
-    # cones_dict = dict(z=int(cones_array[0]), l=int(cones_array[1]))
 
-    """
-    save output to output_filename
-    """
-    # save to outputs/mm-dd-ss/... file
-    # if "SLURM_ARRAY_TASK_ID" in os.environ.keys():
-    #     slurm_idx = os.environ["SLURM_ARRAY_TASK_ID"]
-    #     output_filename = f"{os.getcwd()}/data_setup_slurm_{slurm_idx}"
-    # else:
-    #     output_filename = f"{os.getcwd()}/data_setup"
+    # save output to output_filename
     output_filename = f"{os.getcwd()}/data_setup"
-    """
-    create scs solver object
-    we can cache the factorization if we do it like this
-    """
 
+    # create scs solver object
+    #    we can cache the factorization if we do it like this
     data = dict(P=P_sparse, A=A_sparse, b=b, c=c)
     tol_abs = cfg.solve_acc_abs
     tol_rel = cfg.solve_acc_rel
@@ -200,9 +128,7 @@ def setup_probs(setup_cfg):
     s_stars = jnp.zeros((N, m))
     q_mat = jnp.zeros((N, m + n))
 
-    """
-    sample theta for each problem
-    """
+    # sample theta for each problem
     thetas_np = (2 * np.random.rand(N, m_orig) - 1) * cfg.b_range + cfg.b_nominal
     thetas = jnp.array(thetas_np)
 
@@ -214,7 +140,6 @@ def setup_probs(setup_cfg):
 
     for i in range(N):
         log.info(f"solving problem number {i}")
-        # print(f"solving problem number {i}")
 
         # update
         b = np.array(q_mat[i, n:])
@@ -237,23 +162,7 @@ def setup_probs(setup_cfg):
         q_mat = q_mat.at[i, :].set(scs_instance.q)
         solve_times[i] = scs_instance.solve_time
 
-        # # check with our jax implementation
-        # P_jax = jnp.array(P_sparse.todense())
-        # A_jax = jnp.array(A_sparse.todense())
-        # c_jax, b_jax = jnp.array(c), jnp.array(b)
-        # data = dict(P=P_jax, A=A_jax, b=b_jax, c=c_jax, cones=cones_dict)
-        # # disturbance_x = np.random.normal(size=(n))
-        # # disturbance_x = disturbance_x / np.linalg.norm(disturbance_x) * 1e-2
-        # # disturbance_y = np.random.normal(size=(m))
-        # # disturbance_y = disturbance_y / np.linalg.norm(disturbance_y) * 1e-2
-        # # data['x'] = x_stars[i, :] + disturbance_x
-        # # data['y'] = y_stars[i, :] + disturbance_y
-        # x_jax, y_jax, s_jax = scs_jax(data, iters=1000)
-
-        ############
-
-    # resave the data??
-    # print('saving final data...', flush=True)
+    # save the data
     log.info("saving final data...")
     t0 = time.time()
     jnp.savez(
@@ -269,7 +178,6 @@ def setup_probs(setup_cfg):
     df_solve_times = pd.DataFrame(solve_times, columns=['solve_times'])
     df_solve_times.to_csv('solve_times.csv')
 
-    # print(f"finished saving final data... took {save_time-t0}'", flush=True)
     save_time = time.time()
     log.info(f"finished saving final data... took {save_time-t0}'")
 
@@ -411,8 +319,8 @@ def random_robust_ls(m_orig, n_orig, rho, b_center, b_range, seed=42):
     P, A = jnp.array(P_sparse.todense()), jnp.array(A_sparse.todense())
     cones = out['cones_dict']
 
-    b_rand_np = -(2 * np.random.rand(m_orig) - 1) * b_range + b_center
-    b[n_orig:m_orig + n_orig] = -np.array(b_rand_np)
+    b_rand_np = (2 * np.random.rand(m_orig) - 1) * b_range + b_center
+    b[n_orig + 1:m_orig + n_orig + 1] = -np.array(b_rand_np)
     return P, A, jnp.array(c), jnp.array(b), cones
 
 
