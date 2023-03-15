@@ -163,8 +163,19 @@ def setup_probs(setup_cfg):
         q_mat = q_mat.at[i, :].set(scs_instance.q)
         solve_times[i] = scs_instance.solve_time
 
+        if i % 1000 == 0:
+            log.info(f"saving final data... after solving problem number {i}")
+            jnp.savez(
+                output_filename,
+                thetas=thetas,
+                x_stars=x_stars,
+                y_stars=y_stars,
+                s_stars=s_stars,
+                q_mat=q_mat
+            )
+
     # save the data
-    log.info("saving final data...")
+    log.info("final saving final data...")
     t0 = time.time()
     jnp.savez(
         output_filename,
