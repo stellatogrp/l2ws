@@ -41,12 +41,12 @@ def main_run_osc_mass(cfg):
 def main_run_robust_kalman(cfg):
     orig_cwd = hydra.utils.get_original_cwd()
     example = 'robust_kalman'
-    agg_datetime = cfg.data.datetime
-    if agg_datetime == '':
+    setup_datetime = cfg.data.datetime
+    if setup_datetime == '':
         # get the most recent datetime and update datetimes
-        agg_datetime = recover_last_datetime(orig_cwd, example, 'aggregate')
-        cfg.data.datetime = agg_datetime
-    copy_data_file(example, agg_datetime)
+        setup_datetime = recover_last_datetime(orig_cwd, example, 'data_setup')
+        cfg.data.datetime = setup_datetime
+    copy_data_file(example, setup_datetime)
     robust_kalman.run(cfg)
 
 
