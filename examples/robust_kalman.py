@@ -317,20 +317,26 @@ def lighten_color(color, amount=0.5):
     return colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
 
 
-def plot_positions_overlay(traj, labels, axis=None, filename=None):
+def plot_positions_overlay(traj, labels, num_dots=2, axis=None, filename=None):
     '''
     show point clouds for true, observed, and recovered positions
+
+    the first num_dots trajectories are given as scatter plots (dots)
+    the rest of the trajectories are given as continuous lines
     '''
     n = len(traj)
 
-    colors = ['green', 'red']
+    colors = ['green', 'red', 'blue', 'orange']
 
-    for i in range(n - 2):
-        shade = (i + 1) / (n - 2)
-        colors.append(lighten_color('blue', shade))
+    # for i in range(n - 2):
+    #     shade = (i + 1) / (n - 2)
+    #     colors.append(lighten_color('blue', shade))
 
     for i, x in enumerate(traj):
-        plt.plot(x[0, :], x[1, :], 'o', color=colors[i], alpha=.5, label=labels[i])
+        if i < num_dots:
+            plt.plot(x[0, :], x[1, :], 'o', color=colors[i], alpha=.5, label=labels[i])
+        else:
+            plt.plot(x[0, :], x[1, :], color=colors[i], alpha=.5, label=labels[i])
 
     plt.legend()
 
@@ -789,18 +795,28 @@ def setup_probs(setup_cfg):
                                filename=f"positions_plots/positions_{i}_rotated.pdf")
 
 
-def custom_visualize_fn(x_primals, x_stars, thetas, iterates, visual_path, T):
+def custom_visualize_fn(x_primals, x_stars, x_no_learn, thetas, iterates, visual_path, T):
+    """
+    assume len(iterates) == 1 for now
+        point is to compare no-learning vs learned for 20 iterations
+    """
+    assert len(iterates) == 1
     num = 5
     y_mat_rotated = jnp.reshape(thetas[:num, :], (num, T, 2))
     for i in range(5):
         titles = ['x_star', 'noisy']
         x_true_kalman = get_x_kalman_from_x_primal(x_stars[i, :], T)
         traj = [x_true_kalman, y_mat_rotated[i, :].T]
+
         for j in range(len(iterates)):
             iter = iterates[j]
+            x_no_learn_kalman = get_x_kalman_from_x_primal(x_no_learn[i, iter, :], T)
             x_hat_kalman = get_x_kalman_from_x_primal(x_primals[i, iter, :], T)
+            traj.append(x_no_learn_kalman)
             traj.append(x_hat_kalman)
-            titles.append(f"iterate {iter}")
+            # titles.append(f"iterate {iter}")
+            titles.append(f"no learning: {iter} iters")
+            titles.append(f"learned: {iter} iters")
 
         plot_positions_overlay(traj, titles, filename=f"{visual_path}/positions_{i}_rotated.pdf")
 

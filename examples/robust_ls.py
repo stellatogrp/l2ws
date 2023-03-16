@@ -74,12 +74,12 @@ def run(run_cfg):
 
     static_dict = static_canon(A, rho)
 
-    get_q_single = partial(single_q,
-                           rho=setup_cfg['rho'],
-                           m_orig=setup_cfg['m_orig'],
-                           n_orig=setup_cfg['n_orig'],
-                           )
-
+    # we directly save q now, so no need for this
+    # get_q_single = partial(single_q,
+    #                        rho=setup_cfg['rho'],
+    #                        m_orig=setup_cfg['m_orig'],
+    #                        n_orig=setup_cfg['n_orig'],
+    #                        )
     # get_q = vmap(get_q_single, in_axes=0, out_axes=0)
     get_q = None
 

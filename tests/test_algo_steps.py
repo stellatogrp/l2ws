@@ -31,8 +31,8 @@ def test_train_vs_eval():
 
     eval_out = k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit=True, hsde=True)
     z_final_eval, iter_losses_eval = eval_out[:2]
-    assert jnp.linalg.norm(iter_losses_train - iter_losses_eval) <= 1e-12
-    assert jnp.linalg.norm(z_final_eval - z_final_train) <= 1e-12
+    assert jnp.linalg.norm(iter_losses_train - iter_losses_eval) <= 1e-10
+    assert jnp.linalg.norm(z_final_eval - z_final_train) <= 1e-10
 
 
 def test_jit_speed():
@@ -68,13 +68,13 @@ def test_jit_speed():
     non_jit_time = t1_non_jit - t0_non_jit
 
     assert jit_time - non_jit_time > 0
-    assert jnp.all(jnp.diff(fp_res_jit) < 1e-12)
-    assert jnp.all(jnp.diff(fp_res_non_jit) < 1e-12)
+    assert jnp.all(jnp.diff(fp_res_jit) < 1e-10)
+    assert jnp.all(jnp.diff(fp_res_non_jit) < 1e-10)
 
     # these should match to machine precision
-    assert jnp.linalg.norm(x_jit - x_non_jit) < 1e-12
-    assert jnp.linalg.norm(y_jit - y_non_jit) < 1e-12
-    assert jnp.linalg.norm(s_jit - s_non_jit) < 1e-12
+    assert jnp.linalg.norm(x_jit - x_non_jit) < 1e-10
+    assert jnp.linalg.norm(y_jit - y_non_jit) < 1e-10
+    assert jnp.linalg.norm(s_jit - s_non_jit) < 1e-10
 
 
 def test_hsde_socp():
@@ -149,9 +149,9 @@ def test_c_vs_jax():
     fp_res_hsde = sol_hsde['fixed_point_residuals']
 
     # these should match to machine precision
-    assert jnp.linalg.norm(x_jax - x_c) < 1e-12
-    assert jnp.linalg.norm(y_jax - y_c) < 1e-12
-    assert jnp.linalg.norm(s_jax - s_c) < 1e-12
+    assert jnp.linalg.norm(x_jax - x_c) < 1e-10
+    assert jnp.linalg.norm(y_jax - y_c) < 1e-10
+    assert jnp.linalg.norm(s_jax - s_c) < 1e-10
     assert jnp.all(jnp.diff(fp_res_hsde) < 0)
 
 

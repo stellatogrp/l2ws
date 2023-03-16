@@ -281,7 +281,11 @@ class Workspace:
 
         # custom visualize
         if self.has_custom_visualization:
-            x_primals = u_all[:, :, :self.l2ws_model.n]
+            if self.l2ws_model.hsde:
+                tau = u_all[:, :, -1:]
+                x_primals = u_all[:, :, :self.l2ws_model.n] / tau
+            else:
+                x_primals = u_all[:, :, :self.l2ws_model.n]
             self.custom_visualize(x_primals, train, col)
 
         # solve with scs
@@ -395,7 +399,19 @@ class Workspace:
         else:
             x_stars = self.l2ws_model.x_stars_test
             thetas = self.thetas_test
-        self.custom_visualize_fn(x_primals, x_stars, thetas, self.iterates_visualize, visual_path)
+
+        if col == 'no_train':
+            if train:
+                self.x_no_learn_train = x_primals[:5, :, :]
+            else:
+                self.x_no_learn_test = x_primals[:5, :, :]
+        if train:
+            x_no_learn = self.x_no_learn_train[:5, :, :]
+        else:
+            x_no_learn = self.x_no_learn_test[:5, :, :]
+
+        self.custom_visualize_fn(x_primals, x_stars, x_no_learn,
+                                 thetas, self.iterates_visualize, visual_path)
 
         # save x_primals to csv (TODO)
         # x_primals_df = pd.DataFrame(x_primals[:5, :])

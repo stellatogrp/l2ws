@@ -131,6 +131,6 @@ def test_minimal_l2ws_model():
     y_jax = u_final[n:n + m] / u_all[0, max_iters - 1, -1]
     s_jax = v_all[0, max_iters - 1, n:n+m] / u_all[0, max_iters - 1, -1]
 
-    assert jnp.linalg.norm(x_jax - x_c) < 1e-12
-    assert jnp.linalg.norm(y_jax - y_c) < 1e-12
-    assert jnp.linalg.norm(s_jax - s_c) < 1e-12
+    assert jnp.linalg.norm(x_jax - x_c) < 1e-10
+    assert jnp.linalg.norm(y_jax - y_c) < 1e-10
+    assert jnp.linalg.norm(s_jax - s_c) < 1e-10

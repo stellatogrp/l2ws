@@ -45,4 +45,4 @@ normalize_inputs: True
 normalize_alpha: 'other'
 epochs_jit: 10
 accuracies: [.01, .001, .0001]
-iterates_visualize: [0, 20]
+iterates_visualize: [10]
