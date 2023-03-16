@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 def single_q(theta, rho, m_orig, n_orig):
     # note: m, n are the sizes of the constraint matrix in the SOCP
     # theta is the vector b
-    m = 2 * m_orig + n_orig + 2
+    m = 2 * n_orig + m_orig + 2
     n = n_orig + 2
 
     # c
