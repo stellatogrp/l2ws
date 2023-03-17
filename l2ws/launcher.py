@@ -86,6 +86,7 @@ class Workspace:
             x_stars_train, self.x_stars_test = None, None
             y_stars_train, self.y_stars_test = None, None
             z_stars_train, z_stars_test = None, None
+            m, n = jnp_load_obj['m'], jnp_load_obj['n']
 
         if get_M_q is None:
             q_mat = jnp_load_obj['q_mat']

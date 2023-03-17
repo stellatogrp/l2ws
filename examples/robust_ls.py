@@ -192,7 +192,9 @@ def setup_probs(setup_cfg):
         jnp.savez(
             output_filename,
             thetas=thetas,
-            q_mat=q_mat
+            q_mat=q_mat,
+            m=m,
+            n=n
         )
 
     
