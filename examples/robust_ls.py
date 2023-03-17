@@ -139,52 +139,65 @@ def setup_probs(setup_cfg):
 
     scs_instances = []
 
-    for i in range(N):
-        log.info(f"solving problem number {i}")
+    import pdb
+    pdb.set_trace()
 
-        # update
-        b = np.array(q_mat[i, n:])
-        c = np.array(q_mat[i, :n])
+    if setup_cfg['solve']:
+        for i in range(N):
+            log.info(f"solving problem number {i}")
 
-        # manual canon
-        manual_canon_dict = {
-            "P": P_sparse,
-            "A": A_sparse,
-            "b": b,
-            "c": c,
-            "cones": cones_dict,
-        }
-        scs_instance = SCSinstance(manual_canon_dict, solver, manual_canon=True)
+            # update
+            b = np.array(q_mat[i, n:])
+            c = np.array(q_mat[i, :n])
 
-        scs_instances.append(scs_instance)
-        x_stars = x_stars.at[i, :].set(scs_instance.x_star)
-        y_stars = y_stars.at[i, :].set(scs_instance.y_star)
-        s_stars = s_stars.at[i, :].set(scs_instance.s_star)
-        q_mat = q_mat.at[i, :].set(scs_instance.q)
-        solve_times[i] = scs_instance.solve_time
+            # manual canon
+            manual_canon_dict = {
+                "P": P_sparse,
+                "A": A_sparse,
+                "b": b,
+                "c": c,
+                "cones": cones_dict,
+            }
+            scs_instance = SCSinstance(manual_canon_dict, solver, manual_canon=True)
 
-        if i % 1000 == 0:
-            log.info(f"saving final data... after solving problem number {i}")
-            jnp.savez(
-                output_filename,
-                thetas=thetas,
-                x_stars=x_stars,
-                y_stars=y_stars,
-                s_stars=s_stars,
-                q_mat=q_mat
-            )
+            scs_instances.append(scs_instance)
+            x_stars = x_stars.at[i, :].set(scs_instance.x_star)
+            y_stars = y_stars.at[i, :].set(scs_instance.y_star)
+            s_stars = s_stars.at[i, :].set(scs_instance.s_star)
+            q_mat = q_mat.at[i, :].set(scs_instance.q)
+            solve_times[i] = scs_instance.solve_time
 
-    # save the data
-    log.info("final saving final data...")
-    t0 = time.time()
-    jnp.savez(
-        output_filename,
-        thetas=thetas,
-        x_stars=x_stars,
-        y_stars=y_stars,
-        s_stars=s_stars,
-        q_mat=q_mat
-    )
+            if i % 1000 == 0:
+                log.info(f"saving final data... after solving problem number {i}")
+                jnp.savez(
+                    output_filename,
+                    thetas=thetas,
+                    x_stars=x_stars,
+                    y_stars=y_stars,
+                    s_stars=s_stars,
+                    q_mat=q_mat
+                )
+        # save the data
+        log.info("final saving final data...")
+        t0 = time.time()
+        jnp.savez(
+            output_filename,
+            thetas=thetas,
+            x_stars=x_stars,
+            y_stars=y_stars,
+            s_stars=s_stars,
+            q_mat=q_mat
+        )
+    else:
+        log.info("final saving final data...")
+        t0 = time.time()
+        jnp.savez(
+            output_filename,
+            thetas=thetas,
+            q_mat=q_mat
+        )
+
+    
 
     # save solve times
     df_solve_times = pd.DataFrame(solve_times, columns=['solve_times'])

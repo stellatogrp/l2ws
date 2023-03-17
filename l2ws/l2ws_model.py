@@ -127,6 +127,8 @@ class L2WSmodel(object):
             self.z_stars_test = jnp.array(dict['z_stars_test'])
             self.u_stars_train = jnp.hstack([self.x_stars_train, self.y_stars_train])
             self.u_stars_test = jnp.hstack([self.x_stars_test, self.y_stars_test])
+        else:
+            self.z_stars_train, self.z_stars_test = None, None
 
     def create_all_loss_fns(self, dict):
         # to describe the final loss function (not the end-to-end loss fn)

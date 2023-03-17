@@ -429,7 +429,8 @@ class Workspace:
         self.eval_iters_train_and_test('no_train', False)
 
         # fixed ws evaluation
-        self.eval_iters_train_and_test('nearest_neighbor', False)
+        if self.l2ws_model.z_stars_train is not None:
+            self.eval_iters_train_and_test('nearest_neighbor', False)
 
         # pretrain evaluation
         if self.pretrain_on:
