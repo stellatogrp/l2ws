@@ -139,8 +139,6 @@ def setup_probs(setup_cfg):
 
     scs_instances = []
 
-    import pdb
-    pdb.set_trace()
 
     if setup_cfg['solve']:
         for i in range(N):

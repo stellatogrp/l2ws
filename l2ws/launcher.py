@@ -64,24 +64,31 @@ class Workspace:
         thetas = jnp_load_obj['thetas']
         self.thetas_train = thetas[:N_train, :]
         self.thetas_test = thetas[N_train:N, :]
-        x_stars = jnp_load_obj['x_stars']
-        y_stars = jnp_load_obj['y_stars']
-        s_stars = jnp_load_obj['s_stars']
+        import pdb
+        pdb.set_trace()
+        if 'x_stars' in jnp_load_obj.keys():
+            x_stars = jnp_load_obj['x_stars']
+            y_stars = jnp_load_obj['y_stars']
+            s_stars = jnp_load_obj['s_stars']
+            z_stars = jnp.hstack([x_stars, y_stars + s_stars])
+            x_stars_train = x_stars[:N_train, :]
+            y_stars_train = y_stars[:N_train, :]
+
+            self.x_stars_train = x_stars[:N_train, :]
+            self.y_stars_train = y_stars[:N_train, :]
+
+            z_stars_train = z_stars[:N_train, :]
+            self.x_stars_test = x_stars[N_train:N, :]
+            self.y_stars_test = y_stars[N_train:N, :]
+            z_stars_test = z_stars[N_train:N, :]
+            m, n = y_stars_train.shape[1], x_stars_train[0, :].size
+        else:
+            x_stars_train, self.x_stars_test = None, None
+            y_stars_train, self.y_stars_test = None, None
+            z_stars_train, z_stars_test = None, None
+
         if get_M_q is None:
             q_mat = jnp_load_obj['q_mat']
-
-        z_stars = jnp.hstack([x_stars, y_stars + s_stars])
-        x_stars_train = x_stars[:N_train, :]
-        y_stars_train = y_stars[:N_train, :]
-
-        self.x_stars_train = x_stars[:N_train, :]
-        self.y_stars_train = y_stars[:N_train, :]
-
-        z_stars_train = z_stars[:N_train, :]
-        self.x_stars_test = x_stars[N_train:N, :]
-        self.y_stars_test = y_stars[N_train:N, :]
-        z_stars_test = z_stars[N_train:N, :]
-        m, n = y_stars_train.shape[1], x_stars_train[0, :].size
 
         if static_flag:
             static_M = static_dict['M']
@@ -189,8 +196,6 @@ class Workspace:
 
     def load_setup_data(self, example, datetime):
         orig_cwd = hydra.utils.get_original_cwd()
-        # folder = f"{orig_cwd}/outputs/{example}/aggregate_outputs/{datetime}"
-        # filename = f"{folder}/data_setup_aggregate.npz"
         folder = f"{orig_cwd}/outputs/{example}/data_setup_outputs/{datetime}"
         filename = f"{folder}/data_setup.npz"
         jnp_load_obj = jnp.load(filename)
