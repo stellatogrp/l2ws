@@ -1,10 +1,10 @@
-m_orig: 1200
-n_orig: 800
+m_orig: 600
+n_orig: 900
 rho: 1
 solve_acc_abs: 1e-4
 solve_acc_rel: 0
-N_train: 100
-N_test: 20
+N_train: 50000
+N_test: 1000
 seed: 42
-b_nominal: 2
-b_range: 1
+b_nominal: .5
+b_range: .5
