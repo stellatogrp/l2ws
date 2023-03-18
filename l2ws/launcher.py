@@ -64,8 +64,8 @@ class Workspace:
         thetas = jnp_load_obj['thetas']
         self.thetas_train = thetas[:N_train, :]
         self.thetas_test = thetas[N_train:N, :]
-        import pdb
-        pdb.set_trace()
+        # import pdb
+        # pdb.set_trace()
         if 'x_stars' in jnp_load_obj.keys():
             x_stars = jnp_load_obj['x_stars']
             y_stars = jnp_load_obj['y_stars']
@@ -86,7 +86,9 @@ class Workspace:
             x_stars_train, self.x_stars_test = None, None
             y_stars_train, self.y_stars_test = None, None
             z_stars_train, z_stars_test = None, None
-            m, n = jnp_load_obj['m'], jnp_load_obj['n']
+            m, n = int(jnp_load_obj['m']), int(jnp_load_obj['n'])
+            # import pdb
+            # pdb.set_trace()
 
         if get_M_q is None:
             q_mat = jnp_load_obj['q_mat']
@@ -142,7 +144,8 @@ class Workspace:
         train_inputs, test_inputs = self.normalize_inputs_fn(thetas, N_train, N_test)
 
         num_plot = 5
-        self.plot_samples(num_plot, thetas, train_inputs, x_stars, y_stars, z_stars)
+        self.plot_samples(num_plot, thetas, train_inputs,
+                          x_stars_train, y_stars_train, z_stars_train)
 
         input_dict = {'nn_cfg': cfg.nn_cfg,
                       'proj': proj,
@@ -205,9 +208,10 @@ class Workspace:
     def plot_samples(self, num_plot, thetas, train_inputs, x_stars, y_stars, z_stars):
         sample_plot(thetas, 'theta', num_plot)
         sample_plot(train_inputs, 'input', num_plot)
-        sample_plot(x_stars, 'x_stars', num_plot)
-        sample_plot(y_stars, 'y_stars', num_plot)
-        sample_plot(z_stars, 'z_stars', num_plot)
+        if x_stars is not None:
+            sample_plot(x_stars, 'x_stars', num_plot)
+            sample_plot(y_stars, 'y_stars', num_plot)
+            sample_plot(z_stars, 'z_stars', num_plot)
 
     def init_custom_visualization(self, cfg, custom_visualize_fn):
         if custom_visualize_fn is None:
@@ -603,9 +607,12 @@ class Workspace:
 
     def evaluate_only(self, fixed_ws, num, train, col):
         tag = 'train' if train else 'test'
-        z_stars = self.l2ws_model.z_stars_train[:num,
-                                                :] if train else self.l2ws_model.z_stars_test[:num,
-                                                                                              :]
+        if self.l2ws_model.z_stars_train is None:
+            z_stars = None
+        else:
+            z_stars = self.l2ws_model.z_stars_train[:num,
+                                                    :] if train else self.l2ws_model.z_stars_test[:num,
+                                                                                                  :]
         q_mat = self.l2ws_model.q_mat_train[:num,
                                             :] if train else self.l2ws_model.q_mat_test[:num, :]
 
@@ -816,7 +823,7 @@ class Workspace:
                         train, col):
         # plot of the fixed point residuals
         plt.plot(iters_df['no_train'], 'k-', label='no learning')
-        if col != 'no_train':
+        if col != 'no_train' and 'nearest_neighbor' in iters_df.keys():
             plt.plot(iters_df['nearest_neighbor'], 'm-', label='nearest neighbor')
         if plot_pretrain:
             plt.plot(iters_df['pretrain'], 'r-', label='pretraining')
