@@ -317,7 +317,7 @@ def lighten_color(color, amount=0.5):
     return colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
 
 
-def plot_positions_overlay(traj, labels, num_dots=2, axis=None, filename=None):
+def plot_positions_overlay(traj, labels, num_dots=2, grayscales=[.8, .3, .7, 1.0], axis=None, filename=None):
     '''
     show point clouds for true, observed, and recovered positions
 
@@ -326,19 +326,22 @@ def plot_positions_overlay(traj, labels, num_dots=2, axis=None, filename=None):
     '''
     n = len(traj)
 
-    colors = ['green', 'red', 'blue', 'orange']
+    colors = ['green', 'red', 'orange', 'blue']
 
     # for i in range(n - 2):
     #     shade = (i + 1) / (n - 2)
     #     colors.append(lighten_color('blue', shade))
 
     for i, x in enumerate(traj):
+        alpha = grayscales[i]
         if i < num_dots:
-            plt.plot(x[0, :], x[1, :], 'o', color=colors[i], alpha=.5, label=labels[i])
+            plt.plot(x[0, :], x[1, :], 'o', color=colors[i], alpha=alpha, label=labels[i])
         else:
-            plt.plot(x[0, :], x[1, :], color=colors[i], alpha=.5, label=labels[i])
+            plt.plot(x[0, :], x[1, :], color=colors[i], alpha=alpha, label=labels[i])
 
     plt.legend()
+    plt.xlabel('x position')
+    plt.ylabel('y position')
 
     if filename:
         plt.savefig(filename, bbox_inches='tight')
@@ -804,7 +807,7 @@ def custom_visualize_fn(x_primals, x_stars, x_no_learn, thetas, iterates, visual
     num = 5
     y_mat_rotated = jnp.reshape(thetas[:num, :], (num, T, 2))
     for i in range(5):
-        titles = ['x_star', 'noisy']
+        titles = ['optimal solution', 'noisy trajectory']
         x_true_kalman = get_x_kalman_from_x_primal(x_stars[i, :], T)
         traj = [x_true_kalman, y_mat_rotated[i, :].T]
 
@@ -814,9 +817,8 @@ def custom_visualize_fn(x_primals, x_stars, x_no_learn, thetas, iterates, visual
             x_hat_kalman = get_x_kalman_from_x_primal(x_primals[i, iter, :], T)
             traj.append(x_no_learn_kalman)
             traj.append(x_hat_kalman)
-            # titles.append(f"iterate {iter}")
-            titles.append(f"no learning: {iter} iters")
-            titles.append(f"learned: {iter} iters")
+            titles.append(f"no learning: ${iter}$ iters")
+            titles.append(f"learned: ${iter}$ iters")
 
         plot_positions_overlay(traj, titles, filename=f"{visual_path}/positions_{i}_rotated.pdf")
 
