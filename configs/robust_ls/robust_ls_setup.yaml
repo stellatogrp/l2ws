@@ -1,6 +1,6 @@
 m_orig: 500
 n_orig: 800
-rho: 1
+rho: 4
 solve_acc_abs: 1e-4
 solve_acc_rel: 0
 N_train: 50000
