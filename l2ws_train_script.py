@@ -6,6 +6,7 @@ import examples.robust_kalman as robust_kalman
 import examples.robust_pca as robust_pca
 import examples.robust_ls as robust_ls
 import examples.sparse_pca as sparse_pca
+import examples.phase_retrieval as phase_retrieval
 import hydra
 import pdb
 import yaml
@@ -90,6 +91,19 @@ def main_run_sparse_pca(cfg):
     sparse_pca.run(cfg)
 
 
+@hydra.main(config_path='configs/phase_retrieval', config_name='phase_retrieval_run.yaml')
+def main_run_phase_retrieval(cfg):
+    orig_cwd = hydra.utils.get_original_cwd()
+    example = 'phase_retrieval'
+    setup_datetime = cfg.data.datetime
+    if setup_datetime == '':
+        # get the most recent datetime and update datetimes
+        setup_datetime = recover_last_datetime(orig_cwd, example, 'data_setup')
+        cfg.data.datetime = setup_datetime
+    copy_data_file(example, setup_datetime)
+    phase_retrieval.run(cfg)
+
+
 @hydra.main(config_path='configs/vehicle', config_name='vehicle_run.yaml')
 def main_run_vehicle(cfg):
     orig_cwd = hydra.utils.get_original_cwd()
@@ -139,3 +153,7 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'sparse_pca/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_run_sparse_pca()
+    elif sys.argv[1] == 'phase_retrieval':
+        sys.argv[1] = base + 'phase_retrieval/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_run_phase_retrieval()

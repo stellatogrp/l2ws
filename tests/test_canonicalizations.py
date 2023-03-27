@@ -1,9 +1,14 @@
 from examples.robust_ls import multiple_random_robust_ls
 from examples.sparse_pca import multiple_random_sparse_pca
+from examples.phase_retrieval import multiple_random_phase_retrieval
 import jax.numpy as jnp
 from l2ws.scs_problem import scs_jax
 import numpy as np
 import cvxpy as cp
+
+
+def test_phase_retrieval():
+    pass
 
 
 def test_sparse_pca():
@@ -22,7 +27,7 @@ def test_sparse_pca():
     data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_ws, y=y_ws, s=s_ws)
     sol_hsde = scs_jax(data, hsde=True, iters=max_iters, plot=True)
     x_jax = sol_hsde['x']
-    fp_res_hsde = sol_hsde['fixed_point_residuals']
+    # fp_res_hsde = sol_hsde['fixed_point_residuals']
 
     # form matrix from vector solution
     jax_obj = c @ x_jax

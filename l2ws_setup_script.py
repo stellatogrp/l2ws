@@ -6,6 +6,7 @@ import examples.robust_kalman as robust_kalman
 import examples.robust_pca as robust_pca
 import examples.robust_ls as robust_ls
 import examples.sparse_pca as sparse_pca
+import examples.phase_retrieval as phase_retrieval
 import hydra
 
 
@@ -44,6 +45,11 @@ def main_setup_sparse_pca(cfg):
     sparse_pca.setup_probs(cfg)
 
 
+@hydra.main(config_path='configs/phase_retrieval', config_name='phase_retrieval_setup.yaml')
+def main_setup_phase_retrieval(cfg):
+    phase_retrieval.setup_probs(cfg)
+
+
 if __name__ == '__main__':
     if sys.argv[2] == 'cluster':
         base = 'hydra.run.dir=/scratch/gpfs/rajivs/learn2warmstart/outputs/'
@@ -80,3 +86,7 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'sparse_pca/data_setup_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_setup_sparse_pca()
+    elif sys.argv[1] == 'phase_retrieval':
+        sys.argv[1] = base + 'phase_retrieval/data_setup_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_setup_phase_retrieval()
