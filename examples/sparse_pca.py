@@ -11,6 +11,8 @@ import scs
 import cvxpy as cp
 import jax.scipy as jsp
 from l2ws.algo_steps import create_M
+from scipy.sparse import csc_matrix
+from examples.solve_script import setup_script
 
 
 plt.rcParams.update(
@@ -21,6 +23,25 @@ plt.rcParams.update(
     }
 )
 log = logging.getLogger(__name__)
+
+
+def multiple_random_sparse_pca(n_orig, k, r, N, seed=42):
+    out_dict = static_canon(n_orig, k)
+    # c, b = out_dict['c'], out_dict['b']
+    P_sparse, A_sparse = out_dict['P_sparse'], out_dict['A_sparse']
+    cones = out_dict['cones_dict']
+    prob, A_param = out_dict['prob'], out_dict['A_param']
+    P, A = jnp.array(P_sparse.todense()), jnp.array(A_sparse.todense())
+
+    # get theta_mat
+    A_tensor, theta_mat = generate_A_tensor(N, n_orig, r)
+    theta_mat_jax = jnp.array(theta_mat)
+
+    # get theta_mat
+    m, n = A.shape
+    q_mat = get_q_mat(A_tensor, prob, A_param, m, n)
+
+    return P, A, cones, q_mat, theta_mat_jax, A_tensor
 
 
 def generate_A_tensor(N, n_orig, r):
@@ -34,14 +55,23 @@ def generate_A_tensor(N, n_orig, r):
         F stays the same for each problem
     We let theta = upper_tri(Sigma_i)
     """
-    F = np.random.rand(n_orig, r)
+    # first generate a random A matrix
+    A0 = np.random.rand(n_orig, n_orig)
+
+    # take the SVD
+    U, S, VT = np.linalg.svd(A0)
+
+    # take F to be the first r columns of U
+    F = U[:, :r]
     A_tensor = np.zeros((N, n_orig, n_orig))
-    n_choose_2 = int(n_orig * (n_orig + 1) / 2)
-    theta_mat = np.zeros((N, n_choose_2))
+    r_choose_2 = int(r * (r + 1) / 2)
+    theta_mat = np.zeros((N, r_choose_2))
     for i in range(N):
-        B = np.random.rand(r, r)
-        Sigma = B @ B.T
-        theta_mat[i, :] = np.triu(Sigma)
+        B = 2 * np.random.rand(r, r) - 1
+        Sigma = .1 * B @ B.T
+        # theta_mat[i, :] = np.triu(Sigma)
+        col_idx, row_idx = np.triu_indices(r)
+        theta_mat[i, :] = Sigma[(row_idx, col_idx)]
         A_tensor[i, :, :] = F @ Sigma @ F.T
     return A_tensor, theta_mat
 
@@ -49,8 +79,8 @@ def generate_A_tensor(N, n_orig, r):
 def cvxpy_prob(n_orig, k):
     A_param = cp.Parameter((n_orig, n_orig), symmetric=True)
     X = cp.Variable((n_orig, n_orig), symmetric=True)
-    constraints = [cp.sum(cp.abs(X)) <= k, cp.trace(X) == 1]
-    prob = cp.Problem(cp.trace(A_param @ X), constraints)
+    constraints = [X >> 0, cp.sum(cp.abs(X)) <= k, cp.trace(X) == 1]
+    prob = cp.Problem(cp.Minimize(-cp.trace(A_param @ X)), constraints)
     return prob, A_param
 
 
@@ -79,12 +109,14 @@ def static_canon(n_orig, k):
     data, _, __ = prob.get_problem_data(cp.SCS)
 
     A_sparse, c, b = data['A'], data['c'], data['b']
-    P_sparse = jnp.zeros
+    m, n = A_sparse.shape
+    P_sparse = csc_matrix(np.zeros((n, n)))
     cones_cp = data['dims']
 
     # factor for DR splitting
     m, n = A_sparse.shape
-    M = create_M(P_sparse, A_sparse)
+    P_jax, A_jax = jnp.array(P_sparse.todense()), jnp.array(A_sparse.todense())
+    M = create_M(P_jax, A_jax)
     algo_factor = jsp.linalg.lu_factor(M + jnp.eye(n + m))
 
     # set the dict
@@ -107,123 +139,36 @@ def setup_probs(setup_cfg):
     cfg = setup_cfg
     N_train, N_test = cfg.N_train, cfg.N_test
     N = N_train + N_test
-    m_orig, n_orig = cfg.m_orig, cfg.n_orig
+    n_orig = cfg.n_orig
 
-    # np.random.seed(cfg.seed)
+    np.random.seed(cfg.seed)
 
-    log.info("creating static canonicalization...")
-    t0 = time.time()
-    out_dict = static_canon(cfg.n_orig, cfg.k)
+    # log.info("creating static canonicalization...")
+    # t0 = time.time()
+    # out_dict = static_canon(cfg.n_orig, cfg.k)
 
-    t1 = time.time()
-    log.info(f"finished static canonicalization - took {t1-t0} seconds")
+    # t1 = time.time()
+    # log.info(f"finished static canonicalization - took {t1-t0} seconds")
 
-    cones_dict = out_dict["cones_dict"]
-    A_sparse, P_sparse = out_dict["A_sparse"], out_dict["P_sparse"]
-    b, c = out_dict["b"], out_dict["c"]
-    prob, A_param = out_dict["prob"], out_dict["A_param"]
-    m, n = A_sparse.shape
+    # cones_dict = out_dict["cones_dict"]
+    # A_sparse, P_sparse = out_dict["A_sparse"], out_dict["P_sparse"]
+    # b, c = out_dict["b"], out_dict["c"]
+    # prob, A_param = out_dict["prob"], out_dict["A_param"]
+    # m, n = A_sparse.shape
 
     # save output to output_filename
     output_filename = f"{os.getcwd()}/data_setup"
 
+    P, A, cones, q_mat, theta_mat_jax, A_tensor = multiple_random_sparse_pca(
+        n_orig, cfg.k, cfg.r, N)
+    P_sparse, A_sparse = csc_matrix(P), csc_matrix(A)
+    m, n = A.shape
+
     # create scs solver object
     #    we can cache the factorization if we do it like this
-    data = dict(P=P_sparse, A=A_sparse, b=b, c=c)
+    data = dict(P=P_sparse, A=A_sparse, b=q_mat[0, n:], c=q_mat[0, :n])
     tol_abs = cfg.solve_acc_abs
     tol_rel = cfg.solve_acc_rel
-    solver = scs.SCS(data, cones_dict, eps_abs=tol_abs, eps_rel=tol_rel)
-    solve_times = np.zeros(N)
-    x_stars = jnp.zeros((N, n))
-    y_stars = jnp.zeros((N, m))
-    s_stars = jnp.zeros((N, m))
-    q_mat = jnp.zeros((N, m + n))
+    solver = scs.SCS(data, cones, eps_abs=tol_abs, eps_rel=tol_rel)
 
-    # sample theta for each problem -- generate A_tensor from factor model
-    thetas_np = (2 * np.random.rand(N, m_orig) - 1) * cfg.b_range + cfg.b_nominal
-    thetas = jnp.array(thetas_np)
-
-    q_mat = get_q_mat(A_tensor, prob, A_param, m, n)
-
-    scs_instances = []
-
-    if setup_cfg['solve']:
-        for i in range(N):
-            log.info(f"solving problem number {i}")
-
-            # update
-            b = np.array(q_mat[i, n:])
-            c = np.array(q_mat[i, :n])
-
-            # manual canon
-            manual_canon_dict = {
-                "P": P_sparse,
-                "A": A_sparse,
-                "b": b,
-                "c": c,
-                "cones": cones_dict,
-            }
-            scs_instance = SCSinstance(manual_canon_dict, solver, manual_canon=True)
-
-            scs_instances.append(scs_instance)
-            x_stars = x_stars.at[i, :].set(scs_instance.x_star)
-            y_stars = y_stars.at[i, :].set(scs_instance.y_star)
-            s_stars = s_stars.at[i, :].set(scs_instance.s_star)
-            q_mat = q_mat.at[i, :].set(scs_instance.q)
-            solve_times[i] = scs_instance.solve_time
-
-            if i % 1000 == 0:
-                log.info(f"saving final data... after solving problem number {i}")
-                jnp.savez(
-                    output_filename,
-                    thetas=thetas,
-                    x_stars=x_stars,
-                    y_stars=y_stars,
-                    s_stars=s_stars,
-                    q_mat=q_mat
-                )
-        # save the data
-        log.info("final saving final data...")
-        t0 = time.time()
-        jnp.savez(
-            output_filename,
-            thetas=thetas,
-            x_stars=x_stars,
-            y_stars=y_stars,
-            s_stars=s_stars,
-            q_mat=q_mat
-        )
-    else:
-        log.info("final saving final data...")
-        t0 = time.time()
-        jnp.savez(
-            output_filename,
-            thetas=thetas,
-            q_mat=q_mat,
-            m=m,
-            n=n
-        )
-
-    # save solve times
-    df_solve_times = pd.DataFrame(solve_times, columns=['solve_times'])
-    df_solve_times.to_csv('solve_times.csv')
-
-    save_time = time.time()
-    log.info(f"finished saving final data... took {save_time-t0}'")
-
-    # save plot of first 5 solutions
-    for i in range(5):
-        plt.plot(x_stars[i, :])
-    plt.savefig("x_stars.pdf")
-    plt.clf()
-
-    for i in range(5):
-        plt.plot(y_stars[i, :])
-    plt.savefig("y_stars.pdf")
-    plt.clf()
-
-    # save plot of first 5 parameters
-    for i in range(5):
-        plt.plot(thetas[i, :])
-    plt.savefig("thetas.pdf")
-    plt.clf()
+    setup_script(q_mat, theta_mat_jax, solver, data, cones, output_filename)

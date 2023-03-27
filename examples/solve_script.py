@@ -1,14 +1,9 @@
 import numpy as np
 import logging
-import yaml
-from jax import vmap
 import pandas as pd
 import matplotlib.pyplot as plt
 import time
 import jax.numpy as jnp
-import os
-import scs
-import jax.scipy as jsp
 from l2ws.scs_problem import SCSinstance
 
 
@@ -79,3 +74,27 @@ def setup_script(q_mat, theta_mat, solver, data, cones_dict, output_filename):
         s_stars=s_stars,
         q_mat=q_mat
     )
+
+    # save solve times
+    df_solve_times = pd.DataFrame(solve_times, columns=['solve_times'])
+    df_solve_times.to_csv('solve_times.csv')
+
+    save_time = time.time()
+    log.info(f"finished saving final data... took {save_time-t0}'")
+
+    # save plot of first 5 solutions
+    for i in range(5):
+        plt.plot(x_stars[i, :])
+    plt.savefig("x_stars.pdf")
+    plt.clf()
+
+    for i in range(5):
+        plt.plot(y_stars[i, :])
+    plt.savefig("y_stars.pdf")
+    plt.clf()
+
+    # save plot of first 5 parameters
+    for i in range(5):
+        plt.plot(theta_mat[i, :])
+    plt.savefig("thetas.pdf")
+    plt.clf()
