@@ -50,9 +50,6 @@ def single_q(theta, rho, m_orig, n_orig):
 
 
 def run(run_cfg):
-    """
-    
-    """
     example = "robust_ls"
     data_yaml_filename = 'data_setup_copied.yaml'
 

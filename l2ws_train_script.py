@@ -5,6 +5,7 @@ import examples.vehicle as vehicle
 import examples.robust_kalman as robust_kalman
 import examples.robust_pca as robust_pca
 import examples.robust_ls as robust_ls
+import examples.sparse_pca as sparse_pca
 import hydra
 import pdb
 import yaml
@@ -76,6 +77,19 @@ def main_run_robust_ls(cfg):
     robust_ls.run(cfg)
 
 
+@hydra.main(config_path='configs/sparse_pca', config_name='sparse_pca_run.yaml')
+def main_run_sparse_pca(cfg):
+    orig_cwd = hydra.utils.get_original_cwd()
+    example = 'sparse_pca'
+    setup_datetime = cfg.data.datetime
+    if setup_datetime == '':
+        # get the most recent datetime and update datetimes
+        setup_datetime = recover_last_datetime(orig_cwd, example, 'data_setup')
+        cfg.data.datetime = setup_datetime
+    copy_data_file(example, setup_datetime)
+    sparse_pca.run(cfg)
+
+
 @hydra.main(config_path='configs/vehicle', config_name='vehicle_run.yaml')
 def main_run_vehicle(cfg):
     orig_cwd = hydra.utils.get_original_cwd()
@@ -121,3 +135,7 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'robust_ls/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_run_robust_ls()
+    elif sys.argv[1] == 'sparse_pca':
+        sys.argv[1] = base + 'sparse_pca/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_run_sparse_pca()

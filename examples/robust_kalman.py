@@ -326,7 +326,7 @@ def plot_positions_overlay(traj, labels, num_dots=2, grayscales=[.8, .3, .7, 1.0
     '''
     n = len(traj)
 
-    colors = ['green', 'red', 'orange', 'blue']
+    colors = ['green', 'red', 'blue', 'orange']
 
     # for i in range(n - 2):
     #     shade = (i + 1) / (n - 2)

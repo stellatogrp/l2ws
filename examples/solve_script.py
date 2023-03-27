@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import time
 import jax.numpy as jnp
 from l2ws.scs_problem import SCSinstance
+import pdb
 
 
 plt.rcParams.update(
@@ -25,10 +26,10 @@ def setup_script(q_mat, theta_mat, solver, data, cones_dict, output_filename):
     x_stars = jnp.zeros((N, n))
     y_stars = jnp.zeros((N, m))
     s_stars = jnp.zeros((N, m))
-    q_mat = jnp.zeros((N, m + n))
+    # q_mat = jnp.zeros((N, m + n))
     # scs_instances = []
 
-    P_sparse, A_sparse = data['P_sparse'], data['A_sparse']
+    P_sparse, A_sparse = data['P'], data['A']
     for i in range(N):
         log.info(f"solving problem number {i}")
 
@@ -44,6 +45,7 @@ def setup_script(q_mat, theta_mat, solver, data, cones_dict, output_filename):
             "c": c,
             "cones": cones_dict,
         }
+
         scs_instance = SCSinstance(manual_canon_dict, solver, manual_canon=True)
 
         # scs_instances.append(scs_instance)

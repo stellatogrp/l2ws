@@ -13,6 +13,7 @@ import jax.scipy as jsp
 from l2ws.algo_steps import create_M
 from scipy.sparse import csc_matrix
 from examples.solve_script import setup_script
+from l2ws.launcher import Workspace
 
 
 plt.rcParams.update(
@@ -23,6 +24,34 @@ plt.rcParams.update(
     }
 )
 log = logging.getLogger(__name__)
+
+
+def run(run_cfg):
+    example = "sparse_pca"
+    data_yaml_filename = 'data_setup_copied.yaml'
+
+    # read the yaml file
+    with open(data_yaml_filename, "r") as stream:
+        try:
+            setup_cfg = yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+            setup_cfg = {}
+
+    # set the seed
+    np.random.seed(setup_cfg['seed'])
+    n_orig = setup_cfg['n_orig']
+    k = setup_cfg['k']
+
+    static_dict = static_canon(n_orig, k)
+
+    # we directly save q now
+    get_q = None
+    static_flag = True
+    workspace = Workspace(run_cfg, static_flag, static_dict, example, get_q)
+
+    # run the workspace
+    workspace.run()
 
 
 def multiple_random_sparse_pca(n_orig, k, r, N, seed=42):
@@ -69,7 +98,6 @@ def generate_A_tensor(N, n_orig, r):
     for i in range(N):
         B = 2 * np.random.rand(r, r) - 1
         Sigma = .1 * B @ B.T
-        # theta_mat[i, :] = np.triu(Sigma)
         col_idx, row_idx = np.triu_indices(r)
         theta_mat[i, :] = Sigma[(row_idx, col_idx)]
         A_tensor[i, :, :] = F @ Sigma @ F.T
@@ -143,19 +171,6 @@ def setup_probs(setup_cfg):
 
     np.random.seed(cfg.seed)
 
-    # log.info("creating static canonicalization...")
-    # t0 = time.time()
-    # out_dict = static_canon(cfg.n_orig, cfg.k)
-
-    # t1 = time.time()
-    # log.info(f"finished static canonicalization - took {t1-t0} seconds")
-
-    # cones_dict = out_dict["cones_dict"]
-    # A_sparse, P_sparse = out_dict["A_sparse"], out_dict["P_sparse"]
-    # b, c = out_dict["b"], out_dict["c"]
-    # prob, A_param = out_dict["prob"], out_dict["A_param"]
-    # m, n = A_sparse.shape
-
     # save output to output_filename
     output_filename = f"{os.getcwd()}/data_setup"
 
@@ -166,7 +181,8 @@ def setup_probs(setup_cfg):
 
     # create scs solver object
     #    we can cache the factorization if we do it like this
-    data = dict(P=P_sparse, A=A_sparse, b=q_mat[0, n:], c=q_mat[0, :n])
+    b_np, c_np = np.array(q_mat[0, n:]), np.array(q_mat[0, :n])
+    data = dict(P=P_sparse, A=A_sparse, b=b_np, c=c_np)
     tol_abs = cfg.solve_acc_abs
     tol_rel = cfg.solve_acc_rel
     solver = scs.SCS(data, cones, eps_abs=tol_abs, eps_rel=tol_rel)
