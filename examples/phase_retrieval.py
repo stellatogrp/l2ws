@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 
 
 def run(run_cfg):
-    example = "sparse_pca"
+    example = "phase_retrieval"
     data_yaml_filename = 'data_setup_copied.yaml'
 
     # read the yaml file
@@ -38,12 +38,13 @@ def run(run_cfg):
             print(exc)
             setup_cfg = {}
 
+    ######################### TODO
     # set the seed
-    np.random.seed(setup_cfg['seed'])
-    n_orig = setup_cfg['n_orig']
-    k = setup_cfg['k']
+    # np.random.seed(setup_cfg['seed'])
+    # n_orig = setup_cfg['n_orig']
+    # k = setup_cfg['k']
+    # static_dict = static_canon(n_orig, k)
 
-    static_dict = static_canon(n_orig, k)
 
     # we directly save q now
     get_q = None
@@ -54,70 +55,54 @@ def run(run_cfg):
     workspace.run()
 
 
-def multiple_random_sparse_pca(n_orig, k, r, N, seed=42):
-    out_dict = static_canon(n_orig, k)
-    # c, b = out_dict['c'], out_dict['b']
-    P_sparse, A_sparse = out_dict['P_sparse'], out_dict['A_sparse']
-    cones = out_dict['cones_dict']
-    prob, A_param = out_dict['prob'], out_dict['A_param']
-    P, A = jnp.array(P_sparse.todense()), jnp.array(A_sparse.todense())
+def multiple_random_phase_retrieval():
+    ######################### TODO
+    # out_dict = static_canon(n_orig, k)
+    # # c, b = out_dict['c'], out_dict['b']
+    # P_sparse, A_sparse = out_dict['P_sparse'], out_dict['A_sparse']
+    # cones = out_dict['cones_dict']
+    # prob, A_param = out_dict['prob'], out_dict['A_param']
+    # P, A = jnp.array(P_sparse.todense()), jnp.array(A_sparse.todense())
 
-    # get theta_mat
-    A_tensor, theta_mat = generate_A_tensor(N, n_orig, r)
-    theta_mat_jax = jnp.array(theta_mat)
+    # # get theta_mat
+    # A_tensor, theta_mat = generate_A_tensor(N, n_orig, r)
+    # theta_mat_jax = jnp.array(theta_mat)
 
-    # get theta_mat
-    m, n = A.shape
-    q_mat = get_q_mat(A_tensor, prob, A_param, m, n)
+    # # get theta_mat
+    # m, n = A.shape
+    # q_mat = get_q_mat(A_tensor, prob, A_param, m, n)
 
-    return P, A, cones, q_mat, theta_mat_jax, A_tensor
-
-
-def generate_A_tensor(N, n_orig, r):
-    """
-    generates covariance matrices A_1, ..., A_N
-        where each A_i has shape (n_orig, n_orig)
-    A_i = F Sigma_i F^T
-        where F has shape (n_orig, r)
-    i.e. each Sigma_i is psd (Sigma_i = B_i B_i^T) and is different
-        B_i has shape (r, r)
-        F stays the same for each problem
-    We let theta = upper_tri(Sigma_i)
-    """
-    # first generate a random A matrix
-    A0 = np.random.rand(n_orig, n_orig)
-
-    # take the SVD
-    U, S, VT = np.linalg.svd(A0)
-
-    # take F to be the first r columns of U
-    F = U[:, :r]
-    A_tensor = np.zeros((N, n_orig, n_orig))
-    r_choose_2 = int(r * (r + 1) / 2)
-    theta_mat = np.zeros((N, r_choose_2))
-    for i in range(N):
-        B = 2 * np.random.rand(r, r) - 1
-        Sigma = .1 * B @ B.T
-        col_idx, row_idx = np.triu_indices(r)
-        theta_mat[i, :] = Sigma[(row_idx, col_idx)]
-        A_tensor[i, :, :] = F @ Sigma @ F.T
-    return A_tensor, theta_mat
+    return P, A, cones, q_mat, theta_mat_jax # possibly return more
 
 
 def cvxpy_prob(n_orig, k):
-    A_param = cp.Parameter((n_orig, n_orig), symmetric=True)
-    X = cp.Variable((n_orig, n_orig), symmetric=True)
-    constraints = [X >> 0, cp.sum(cp.abs(X)) <= k, cp.trace(X) == 1]
-    prob = cp.Problem(cp.Minimize(-cp.trace(A_param @ X)), constraints)
-    return prob, A_param
+    """
+    TODO adapt for phase retrieval
+    will need to pass in specific A_i matrices
+    """
+
+    ####### this was for sparse pca
+    # A_param = cp.Parameter((n_orig, n_orig), symmetric=True)
+    # X = cp.Variable((n_orig, n_orig), symmetric=True)
+    # constraints = [X >> 0, cp.sum(cp.abs(X)) <= k, cp.trace(X) == 1]
+    # prob = cp.Problem(cp.Minimize(-cp.trace(A_param @ X)), constraints)
+    # return prob, A_param
+
+    return prob, b_param
 
 
-def get_q_mat(A_tensor, prob, A_param, m, n):
-    N, n_orig, _ = A_tensor.shape
+def get_q_mat(b_matrix, prob, b_param, m, n):
+    """
+    change this so that b_matrix, b_param is passed in
+        instead of A_tensor, A_param
+
+    I think this should work now
+    """
+    N = b_matrix.shape[0]
     q_mat = jnp.zeros((N, m + n))
     for i in range(N):
         # set the parameter
-        A_param.value = A_tensor[i, :, :]
+        b_param.value = b_matrix[i, :]
 
         # get the problem data
         data, _, __ = prob.get_problem_data(cp.SCS)
@@ -174,8 +159,9 @@ def setup_probs(setup_cfg):
     # save output to output_filename
     output_filename = f"{os.getcwd()}/data_setup"
 
-    P, A, cones, q_mat, theta_mat_jax, A_tensor = multiple_random_sparse_pca(
-        n_orig, cfg.k, cfg.r, N)
+    ################## TODO something like this
+    # P, A, cones, q_mat, theta_mat_jax = multiple_random_phase_retrieval(inputs)
+
     P_sparse, A_sparse = csc_matrix(P), csc_matrix(A)
     m, n = A.shape
 
