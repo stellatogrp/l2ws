@@ -187,4 +187,4 @@ def setup_probs(setup_cfg):
     tol_rel = cfg.solve_acc_rel
     solver = scs.SCS(data, cones, eps_abs=tol_abs, eps_rel=tol_rel)
 
-    setup_script(q_mat, theta_mat_jax, solver, data, cones, output_filename)
+    setup_script(q_mat, theta_mat_jax, solver, data, cones, output_filename, solve=cfg.solve)

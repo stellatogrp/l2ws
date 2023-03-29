@@ -11,7 +11,7 @@ import hydra
 import numpy as np
 import pandas as pd
 import math
-from utils.data_utils import recover_last_datetime
+from l2ws.utils.data_utils import recover_last_datetime
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
@@ -46,7 +46,7 @@ def robust_pca_plot_eval_iters(cfg):
 @hydra.main(config_path='configs/robust_kalman', config_name='robust_kalman_plot.yaml')
 def robust_kalman_plot_eval_iters(cfg):
     example = 'robust_kalman'
-    # plot_eval_iters(example, cfg, train=False)
+    plot_eval_iters(example, cfg, train=False)
     overlay_training_losses(example, cfg)
 
 

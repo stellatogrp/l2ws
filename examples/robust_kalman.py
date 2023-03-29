@@ -317,7 +317,7 @@ def lighten_color(color, amount=0.5):
     return colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
 
 
-def plot_positions_overlay(traj, labels, num_dots=2, grayscales=[.8, .3, .7, 1.0], axis=None, filename=None):
+def plot_positions_overlay(traj, labels, num_dots=2, grayscales=[.8, .3, 1.0, 0.7], axis=None, filename=None):
     '''
     show point clouds for true, observed, and recovered positions
 
