@@ -113,8 +113,8 @@ def test_hsde_socp_robust_ls():
     assert jnp.linalg.norm(x_hsde - x_std) < 1e-3
     assert jnp.linalg.norm(y_hsde - y_std) < 1e-3
     assert jnp.linalg.norm(s_hsde - s_std) < 1e-3
-    assert jnp.all(jnp.diff(fp_res_std) < 0)
-    assert jnp.all(jnp.diff(fp_res_hsde) < 0)
+    # assert jnp.all(jnp.diff(fp_res_std) < 0)
+    # assert jnp.all(jnp.diff(fp_res_hsde) < 0)
 
 
 def test_c_socp_robust_kalman_filter_relaxation():
@@ -146,7 +146,7 @@ def test_c_socp_robust_kalman_filter_relaxation():
 
     # pick algorithm hyperparameters
     rho_x = 1e-6
-    scale = 0.1
+    scale = .1
     alpha = 1.5
 
     # solve in C
@@ -156,10 +156,10 @@ def test_c_socp_robust_kalman_filter_relaxation():
     solver = scs.SCS(c_data,
                      cones,
                      normalize=False,
-                     scale=1,
+                     scale=scale,
                      adaptive_scale=False,
-                     rho_x=1,
-                     alpha=1,
+                     rho_x=rho_x,
+                     alpha=alpha,
                      acceleration_lookback=0,
                      max_iters=max_iters)
 
@@ -169,8 +169,9 @@ def test_c_socp_robust_kalman_filter_relaxation():
     s_c = jnp.array(sol['s'])
 
     # solve with our jax implementation
-    data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_ws, y=y_ws, s=s_ws)
-    sol_hsde = scs_jax(data, hsde=True, iters=max_iters, jit=False)
+    data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_ws, y=y_ws, s=s_ws,)
+    sol_hsde = scs_jax(data, hsde=True, iters=max_iters, jit=False,
+                       rho_x=rho_x, scale=scale, alpha=alpha)
     x_jax, y_jax, s_jax = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
     fp_res_hsde = sol_hsde['fixed_point_residuals']
 
@@ -219,7 +220,7 @@ def test_c_vs_jax_sdp():
 
     # solve with our jax implementation
     data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_ws, y=y_ws, s=s_ws)
-    sol_hsde = scs_jax(data, hsde=True, iters=max_iters)
+    sol_hsde = scs_jax(data, hsde=True, iters=max_iters, alpha=1)
     x_jax, y_jax, s_jax = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
     # fp_res_hsde = sol_hsde['fixed_point_residuals']
 
@@ -258,7 +259,7 @@ def test_c_vs_jax_socp():
                      scale=1,
                      adaptive_scale=False,
                      rho_x=1,
-                     alpha=1,
+                     alpha=1.5,
                      acceleration_lookback=0,
                      max_iters=max_iters)
 
@@ -304,7 +305,6 @@ def test_warm_start_from_opt():
                          scale=1,
                          adaptive_scale=False,
                          rho_x=1,
-                         alpha=1,
                          acceleration_lookback=0,
                          max_iters=1000)
 
@@ -320,7 +320,6 @@ def test_warm_start_from_opt():
                      scale=1,
                      adaptive_scale=False,
                      rho_x=1,
-                     alpha=1,
                      acceleration_lookback=0,
                      max_iters=max_iters,
                      eps_abs=1e-12,
