@@ -1053,5 +1053,22 @@ possibly for each example, pass in get_q_mat function
 """
 
 
+def multiple_random_robust_kalman(N, T, gamma, dt, mu, rho, sigma, p, w_noise_var, y_noise_var):
+    out_dict = static_canon(T, gamma, dt, mu, rho, B_const=1)
+    P = jnp.array(out_dict['P_sparse'].todense())
+    A = jnp.array(out_dict['A_sparse'].todense())
+    cones = out_dict['cones_dict']
+    out = sample_theta(N, T, sigma, p, gamma, dt,
+                       w_noise_var, y_noise_var, B_const=1)
+    thetas_np, y_mat, x_trues, w_trues, y_mat_rotated, x_trues_rotated, w_trues_rot, angles = out
+    theta_mat = jnp.array(thetas_np)
+
+    batch_q = vmap(single_q, in_axes=(0, None, None, None, None, None), out_axes=(0))
+
+    q_mat = batch_q(theta_mat, mu, rho, T, gamma, dt)
+
+    return P, A, cones, q_mat, theta_mat
+
+
 if __name__ == "__main__":
     test_kalman()

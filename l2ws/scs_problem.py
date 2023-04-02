@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 from jax import random, lax
 import jax
 from l2ws.algo_steps import create_M, create_projection_fn, lin_sys_solve, fixed_point, \
-    fixed_point_hsde, extract_sol, k_steps_eval
+    fixed_point_hsde, extract_sol, k_steps_eval, get_scale_vec
 from l2ws.utils.generic_utils import python_fori_loop
 
 
@@ -64,15 +64,22 @@ class SCSinstance(object):
                 self.prob.solution.attr['solver_specific_stats']['s'])
 
 
-def scs_jax(data, hsde=True, iters=5000, jit=True, plot=False):
+def scs_jax(data, hsde=True, rho_x=1, scale=1, iters=5000, jit=True, plot=False):
     P, A = data['P'], data['A']
     c, b = data['c'], data['b']
     cones = data['cones']
+    zero_cone_size = cones['z']
 
     m, n = A.shape
 
     M = create_M(P, A)
-    algo_factor = jsp.linalg.lu_factor(M + jnp.eye(m+n))
+
+    scale_vec = get_scale_vec(rho_x, scale, m, n, zero_cone_size)
+
+    # create diagonal matrix
+    scale_vec_diag = jnp.diag(scale_vec)
+
+    algo_factor = jsp.linalg.lu_factor(M + scale_vec_diag)
     q = jnp.concatenate([c, b])
 
     proj = create_projection_fn(cones, n)
@@ -97,7 +104,8 @@ def scs_jax(data, hsde=True, iters=5000, jit=True, plot=False):
     else:
         q_r = q
 
-    eval_out = k_steps_eval(iters, z, q_r, algo_factor, proj, P, A, c, b, jit, hsde)
+    eval_out = k_steps_eval(iters, z, q_r, algo_factor, proj, P, A,
+                            c, b, jit, hsde, zero_cone_size, rho_x=rho_x, scale=scale)
     z_final, iter_losses, primal_residuals, dual_residuals, z_all_plus_1, u_all, v_all = eval_out
 
     u_final, v_final = u_all[-1, :], v_all[-1, :]

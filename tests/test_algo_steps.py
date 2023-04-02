@@ -1,13 +1,16 @@
 import time
 from examples.robust_ls import random_robust_ls
+from examples.sparse_pca import multiple_random_sparse_pca
+from examples.robust_kalman import multiple_random_robust_kalman
 import jax.numpy as jnp
 from l2ws.scs_problem import scs_jax
 import scs
 import numpy as np
 from scipy.sparse import csc_matrix
 from l2ws.algo_steps import k_steps_eval, k_steps_train, create_projection_fn, lin_sys_solve, \
-    create_M
+    create_M, get_scale_vec
 import jax.scipy as jsp
+import pytest
 
 
 def test_train_vs_eval():
@@ -17,19 +20,28 @@ def test_train_vs_eval():
     b_center, b_range = 1, 1
     P, A, c, b, cones = random_robust_ls(m_orig, n_orig, rho, b_center, b_range)
     m, n = A.shape
+    zero_cone_size = cones['z']
     proj = create_projection_fn(cones, n)
     k = 20
     z0 = jnp.ones(m + n + 1)
     M = create_M(P, A)
-    factor = jsp.linalg.lu_factor(M + jnp.eye(n + m))
+    # factor = jsp.linalg.lu_factor(M + jnp.eye(n + m))
+    rho_x, scale = 1e-5, .1
+    scale_vec = get_scale_vec(rho_x, scale, m, n, zero_cone_size)
+    scale_vec_diag = jnp.diag(scale_vec)
+
+    factor = jsp.linalg.lu_factor(M + scale_vec_diag)
 
     q = jnp.concatenate([c, b])
     q_r = lin_sys_solve(factor, q)
+
     train_out = k_steps_train(k, z0, q_r, factor, supervised=False,
-                              z_star=None, proj=proj, jit=False, hsde=True)
+                              z_star=None, proj=proj, jit=False, hsde=True,
+                              m=m, n=n, zero_cone_size=zero_cone_size, rho_x=rho_x, scale=scale)
     z_final_train, iter_losses_train = train_out
 
-    eval_out = k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit=True, hsde=True)
+    eval_out = k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit=True,
+                            hsde=True, zero_cone_size=zero_cone_size, rho_x=rho_x, scale=scale)
     z_final_eval, iter_losses_eval = eval_out[:2]
     assert jnp.linalg.norm(iter_losses_train - iter_losses_eval) <= 1e-10
     assert jnp.linalg.norm(z_final_eval - z_final_train) <= 1e-10
@@ -77,7 +89,7 @@ def test_jit_speed():
     assert jnp.linalg.norm(s_jit - s_non_jit) < 1e-10
 
 
-def test_hsde_socp():
+def test_hsde_socp_robust_ls():
     """
     tests to make sure hsde returns the same solution as the non-hsde
     tests socp of different cone sizes also (there are 2 SOCs)
@@ -105,7 +117,120 @@ def test_hsde_socp():
     assert jnp.all(jnp.diff(fp_res_hsde) < 0)
 
 
-def test_c_vs_jax():
+def test_c_socp_robust_kalman_filter_relaxation():
+    """
+    tests to make sure hsde returns the same solution as the non-hsde
+    tests socp of different cone sizes also (there are 2 SOCs)
+    """
+    # get a random robust least squares problem
+    P, A, cones, q_mat, theta_mat = multiple_random_robust_kalman(
+        N=5, T=50, gamma=.05, dt=.5, mu=2, rho=2, sigma=20, p=0, w_noise_var=.1, y_noise_var=.1)
+    m, n = A.shape
+
+    c, b = q_mat[0, :n], q_mat[0, n:]
+    data = dict(P=P, A=A, c=c, b=b, cones=cones)
+
+    # sol_std = scs_jax(data, hsde=False, iters=200)
+    # x_std, y_std, s_std = sol_std['x'], sol_std['y'], sol_std['s']
+    # fp_res_std = sol_std['fixed_point_residuals']
+
+    # sol_hsde = scs_jax(data, hsde=True, iters=200)
+    # x_hsde, y_hsde, s_hsde = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
+    # fp_res_hsde = sol_hsde['fixed_point_residuals']
+
+    # fix warm start
+    x_ws = np.ones(n)
+    y_ws = np.ones(m)
+    s_ws = np.zeros(m)
+    max_iters = 1
+
+    # pick algorithm hyperparameters
+    rho_x = 1e-6
+    scale = 0.1
+    alpha = 1.5
+
+    # solve in C
+    P_sparse, A_sparse = csc_matrix(np.array(P)), csc_matrix(np.array(A))
+    c_np, b_np = np.array(c), np.array(b)
+    c_data = dict(P=P_sparse, A=A_sparse, c=c_np, b=b_np)
+    solver = scs.SCS(c_data,
+                     cones,
+                     normalize=False,
+                     scale=1,
+                     adaptive_scale=False,
+                     rho_x=1,
+                     alpha=1,
+                     acceleration_lookback=0,
+                     max_iters=max_iters)
+
+    sol = solver.solve(warm_start=True, x=x_ws, y=y_ws, s=s_ws)
+    x_c = jnp.array(sol['x'])
+    y_c = jnp.array(sol['y'])
+    s_c = jnp.array(sol['s'])
+
+    # solve with our jax implementation
+    data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_ws, y=y_ws, s=s_ws)
+    sol_hsde = scs_jax(data, hsde=True, iters=max_iters, jit=False)
+    x_jax, y_jax, s_jax = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
+    fp_res_hsde = sol_hsde['fixed_point_residuals']
+
+    # these should match to machine precision
+    assert jnp.linalg.norm(x_jax - x_c) < 1e-10
+    assert jnp.linalg.norm(y_jax - y_c) < 1e-10
+    assert jnp.linalg.norm(s_jax - s_c) < 1e-10
+    assert jnp.all(jnp.diff(fp_res_hsde) < 0)
+
+
+def test_c_vs_jax_sdp():
+    """
+    check iterate returned by x vs one returned by jax with warm-start is the same
+    """
+    # get a random sparse pca problem
+    P, A, cones, q_mat, theta_mat_jax, A_tensor = multiple_random_sparse_pca(
+        n_orig=30, k=10, r=10, N=5)
+    m, n = A.shape
+
+    max_iters = 10
+
+    # fix warm start
+    x_ws = np.ones(n)
+    y_ws = np.ones(m)
+    s_ws = np.zeros(m)
+
+    # solve in C
+    c, b = q_mat[0, :n], q_mat[0, n:]
+    P_sparse, A_sparse = csc_matrix(np.array(P)), csc_matrix(np.array(A))
+    c_np, b_np = np.array(c), np.array(b)
+    c_data = dict(P=P_sparse, A=A_sparse, c=c_np, b=b_np)
+    solver = scs.SCS(c_data,
+                     cones,
+                     normalize=False,
+                     scale=1,
+                     adaptive_scale=False,
+                     rho_x=1,
+                     alpha=1,
+                     acceleration_lookback=0,
+                     max_iters=max_iters)
+
+    sol = solver.solve(warm_start=True, x=x_ws, y=y_ws, s=s_ws)
+    x_c = jnp.array(sol['x'])
+    y_c = jnp.array(sol['y'])
+    s_c = jnp.array(sol['s'])
+
+    # solve with our jax implementation
+    data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_ws, y=y_ws, s=s_ws)
+    sol_hsde = scs_jax(data, hsde=True, iters=max_iters)
+    x_jax, y_jax, s_jax = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
+    # fp_res_hsde = sol_hsde['fixed_point_residuals']
+
+    # these should match to machine precision
+    assert jnp.linalg.norm(x_jax - x_c) < 1e-6
+    assert jnp.linalg.norm(y_jax - y_c) < 1e-6
+    assert jnp.linalg.norm(s_jax - s_c) < 1e-6
+    # assert jnp.all(jnp.diff(fp_res_hsde) < 0)
+
+
+def test_c_vs_jax_socp():
     """
     check iterate returned by x vs one returned by jax with war-start is the same
     """

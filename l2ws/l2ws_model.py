@@ -461,7 +461,7 @@ class L2WSmodel(object):
     def create_end2end_loss_fn(self, bypass_nn, diff_required):
         supervised = self.supervised and diff_required
 
-        proj, n = self.proj, self.n,
+        proj, n, m = self.proj, self.n, self.m
         M_static, factor_static = self.static_M, self.static_algo_factor
         share_all = self.share_all
         Z_shared = self.Z_shared if share_all else None
@@ -472,6 +472,7 @@ class L2WSmodel(object):
         def predict(params, input, q, iters, z_star, factor, M):
             P, A = M[:n, :n], -M[n:, :n]
             b, c = q[n:], q[:n]
+
             z0, alpha = predict_warm_start(params, input, bypass_nn, hsde,
                                            share_all, Z_shared, normalize_alpha)
             if hsde:
@@ -481,10 +482,10 @@ class L2WSmodel(object):
 
             if diff_required:
                 z_final, iter_losses = k_steps_train(
-                    iters, z0, q_r, factor, supervised, z_star, proj, jit, hsde)
+                    iters, z0, q_r, factor, supervised, z_star, proj, jit, hsde, m, n, zero_cone_size, rho_x, scale)
             else:
                 k_eval_out = k_steps_eval(
-                    iters, z0, q_r, factor, proj, P, A, c, b, jit, hsde)
+                    iters, z0, q_r, factor, proj, P, A, c, b, jit, hsde, zero_cone_size, rho_x, scale)
                 z_final, iter_losses = k_eval_out[0], k_eval_out[1]
                 primal_residuals, dual_residuals = k_eval_out[2], k_eval_out[3]
                 all_z_plus_1, all_u, all_v = k_eval_out[4], k_eval_out[5], k_eval_out[6]

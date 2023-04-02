@@ -5,9 +5,10 @@ from functools import partial
 import jax.scipy as jsp
 from l2ws.utils.generic_utils import python_fori_loop
 TAU_FACTOR = 10
+ALPHA = 1.0
 
 
-def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous):
+def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous, scale_vec):
     """
     q_r = r if hsde else q_r = q
     homogeneous tells us if we set tau = 1.0 or use the root_plus method
@@ -15,10 +16,10 @@ def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous):
     z, loss_vec = val
     if hsde:
         r = q_r
-        z_next, u, u_tilde, v = fixed_point_hsde(z, homogeneous, r, factor, proj)
+        z_next, u, u_tilde, v = fixed_point_hsde(z, homogeneous, r, factor, proj, scale_vec)
     else:
         q = q_r
-        z_next, u, u_tilde, v = fixed_point(z, q, factor, proj)
+        z_next, u, u_tilde, v = fixed_point(z, q, factor, proj, scale_vec)
     if supervised:
         diff = jnp.linalg.norm(z - z_star)
     else:
@@ -27,7 +28,7 @@ def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous):
     return z_next, loss_vec
 
 
-def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, lightweight=True):
+def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, scale_vec, lightweight=True):
     """
     q_r = r if hsde else q_r = q
     homogeneous tells us if we set tau = 1.0 or use the root_plus method
@@ -37,10 +38,10 @@ def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, lightweigh
 
     if hsde:
         r = q_r
-        z_next, u, u_tilde, v = fixed_point_hsde(z, homogeneous, r, factor, proj)
+        z_next, u, u_tilde, v = fixed_point_hsde(z, homogeneous, r, factor, proj, scale_vec)
     else:
         q = q_r
-        z_next, u, u_tilde, v = fixed_point(z, q, factor, proj)
+        z_next, u, u_tilde, v = fixed_point(z, q, factor, proj, scale_vec)
 
     diff = jnp.linalg.norm(z_next - z)
     loss_vec = loss_vec.at[i].set(diff)
@@ -59,18 +60,21 @@ def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, lightweigh
     return z_next, z_prev, loss_vec, all_z, all_u, all_v, primal_residuals, dual_residuals
 
 
-def k_steps_train(k, z0, q_r, factor, supervised, z_star, proj, jit, hsde):
+def k_steps_train(k, z0, q_r, factor, supervised, z_star, proj, jit, hsde, m, n, zero_cone_size,
+                  rho_x=1, scale=1):
     iter_losses = jnp.zeros(k)
+    scale_vec = get_scale_vec(rho_x, scale, m, n, zero_cone_size)
     fp_train_partial = partial(fp_train, q_r=q_r, factor=factor,
                                supervised=supervised, z_star=z_star, proj=proj, hsde=hsde,
-                               homogeneous=True)
+                               homogeneous=True, scale_vec=scale_vec)
+
     if hsde:
         # first step: iteration 0
         # we set homogeneous = False for the first iteration
         #   to match the SCS code which has the global variable FEASIBLE_ITERS
         #   which is set to 1
         homogeneous = False
-        z_next, u, u_tilde, v = fixed_point_hsde(z0, homogeneous, q_r, factor, proj)
+        z_next, u, u_tilde, v = fixed_point_hsde(z0, homogeneous, q_r, factor, proj, scale_vec)
         iter_losses = iter_losses.at[0].set(jnp.linalg.norm(z_next - z0))
         z0 = z_next
     val = z0, iter_losses
@@ -83,7 +87,7 @@ def k_steps_train(k, z0, q_r, factor, supervised, z_star, proj, jit, hsde):
     return z_final, iter_losses
 
 
-def k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit, hsde):
+def k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit, hsde, zero_cone_size, rho_x=1, scale=1):
     """
     if k = 500 we store u_1, ..., u_500 and z_0, z_1, ..., z_500
         which is why we have all_z_plus_1
@@ -94,6 +98,8 @@ def k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit, hsde):
     all_v = jnp.zeros((k, z0.size))
     iter_losses = jnp.zeros(k)
     primal_residuals, dual_residuals = jnp.zeros(k), jnp.zeros(k)
+    m, n = A.shape
+    scale_vec = jnp.ones(m + n)
 
     if hsde:
         # first step: iteration 0
@@ -101,7 +107,8 @@ def k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit, hsde):
         #   to match the SCS code which has the global variable FEASIBLE_ITERS
         #   which is set to 1
         homogeneous = False
-        z_next, u, u_tilde, v = fixed_point_hsde(z0, homogeneous, q_r, factor, proj)
+        scale_vec = get_scale_vec(rho_x, scale, m, n, zero_cone_size)
+        z_next, u, u_tilde, v = fixed_point_hsde(z0, homogeneous, q_r, factor, proj, scale_vec)
         all_z = all_z.at[0, :].set(z_next)
         all_u = all_u.at[0, :].set(u)
         all_v = all_v.at[0, :].set(v)
@@ -110,7 +117,7 @@ def k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit, hsde):
 
     fp_eval_partial = partial(fp_eval, q_r=q_r, factor=factor,
                               proj=proj, P=P, A=A, c=c, b=b, hsde=hsde,
-                              homogeneous=True)
+                              homogeneous=True, scale_vec=scale_vec)
     val = z0, z0, iter_losses, all_z, all_u, all_v, primal_residuals, dual_residuals
     start_iter = 1 if hsde else 0
     if jit:
@@ -121,6 +128,21 @@ def k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit, hsde):
     all_z_plus_1 = all_z_plus_1.at[1:, :].set(all_z)
 
     return z_final, iter_losses, primal_residuals, dual_residuals, all_z_plus_1, all_u, all_v
+
+
+def get_scale_vec(rho_x, scale, m, n, zero_cone_size):
+    scale_vec = jnp.ones(m + n)
+
+    # x-component of scale_vec set to rho_x
+    scale_vec = scale_vec.at[:n].set(rho_x)
+
+    # zero cone of y-component of scale_vec set to 1 / (1000 * scale)
+    scale_vec = scale_vec.at[n:n + zero_cone_size].set(1 / (1000 * scale))
+
+    # other parts of y-component of scale_vec set to 1 / scale
+    scale_vec = scale_vec.at[n + zero_cone_size:].set(1 / scale)
+
+    return scale_vec
 
 
 def extract_sol(u, v, n, hsde):
@@ -201,7 +223,7 @@ def get_psd_sizes(cones):
     return psd_sizes
 
 
-def root_plus(mu, eta, p, r):
+def root_plus(mu, eta, p, r, scale_vec):
     """
     mu, p, r are vectors each with size (m + n)
     eta is a scalar
@@ -221,25 +243,30 @@ def root_plus(mu, eta, p, r):
     the result is a closed-form solution involving the quadratic formula
         we take the positive root
     """
-    a = TAU_FACTOR + r @ r
-    b = r @ mu - 2 * r @ p - eta * TAU_FACTOR
-    c = p @ (p - mu)
+    r_scaled = jnp.multiply(r, scale_vec)
+    a = TAU_FACTOR + r @ r_scaled
+    b = mu @ r_scaled - 2 * r_scaled @ p - eta * TAU_FACTOR
+    c = jnp.multiply(p, scale_vec) @ (p - mu)
     return (-b + jnp.sqrt(b ** 2 - 4 * a * c)) / (2 * a)
 
 
-def fixed_point(z_init, q, factor, proj):
+def fixed_point(z_init, q, factor, proj, scale_vec):
     """
     implements 1 iteration of algorithm 1 in https://arxiv.org/pdf/2212.08260.pdf
     """
-    u_tilde = lin_sys_solve(factor, z_init - q)
+    u_tilde_unscaled = lin_sys_solve(factor, z_init - q)
+    u_tilde = jnp.multiply(u_tilde_unscaled, scale_vec)
     u_temp = 2*u_tilde - z_init
     u = proj(u_temp)
     v = u + z_init - 2*u_tilde
     z = z_init + u - u_tilde
+    print('u_tilde', u_tilde)
+    print('u', u)
+    print('z', z)
     return z, u, u_tilde, v
 
 
-def fixed_point_hsde(z_init, homogeneous, r, factor, proj):
+def fixed_point_hsde(z_init, homogeneous, r, factor, proj, scale_vec, verbose=False):
     """
     implements 1 iteration of algorithm 5.1 in https://arxiv.org/pdf/2004.02177.pdf
 
@@ -275,9 +302,15 @@ def fixed_point_hsde(z_init, homogeneous, r, factor, proj):
     mu, eta = z_init[:-1], z_init[-1]
 
     # u_tilde, tau_tilde update
-    p = lin_sys_solve(factor, mu)
+
+    # non identity DR scaling
+    rhs = jnp.multiply(scale_vec, mu)
+    p = lin_sys_solve(factor, rhs)
+
+    # non identity DR scaling
+    # p = jnp.multiply(scale_vec, p)
     if homogeneous:
-        tau_tilde = root_plus(mu, eta, p, r)
+        tau_tilde = root_plus(mu, eta, p, r, scale_vec)
     else:
         tau_tilde = 1.0
     w_tilde = p - r * tau_tilde
@@ -288,8 +321,8 @@ def fixed_point_hsde(z_init, homogeneous, r, factor, proj):
     tau = jnp.clip(2 * tau_tilde - eta, a_min=0)
 
     # mu, eta update
-    mu = mu + w - w_tilde
-    eta = eta + tau - tau_tilde
+    mu = mu + ALPHA * (w - w_tilde)
+    eta = eta + ALPHA * (tau - tau_tilde)
 
     # concatenate for z, u
     z = jnp.concatenate([mu, jnp.array([eta])])
@@ -297,10 +330,16 @@ def fixed_point_hsde(z_init, homogeneous, r, factor, proj):
     u_tilde = jnp.concatenate([w_tilde, jnp.array([tau_tilde])])
 
     # for s extraction - not needed for algorithm
-    v = u + z_init - 2 * u_tilde
+    full_scaled_vec = jnp.concatenate([scale_vec, jnp.array([TAU_FACTOR])])
+    v = jnp.multiply(full_scaled_vec,  u + z_init - 2 * u_tilde)
 
     # z and u have size (m + n + 1)
     # v has shape (m + n)
+    if verbose:
+        print('pre-solve u_tilde', rhs)
+        print('u_tilde', u_tilde)
+        print('u', u)
+        print('z', z)
     return z, u, u_tilde, v
 
 

@@ -22,7 +22,7 @@ def test_sparse_pca():
     x_ws = np.ones(n)
     y_ws = np.ones(m)
     s_ws = np.zeros(m)
-    max_iters = 1000
+    max_iters = 500
     c, b = q_mat[0, :n], q_mat[0, n:]
     data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_ws, y=y_ws, s=s_ws)
     sol_hsde = scs_jax(data, hsde=True, iters=max_iters, plot=True)
@@ -38,10 +38,11 @@ def test_sparse_pca():
     prob = cp.Problem(cp.Minimize(-cp.trace(A_tensor[0, :, :] @ X)), constraints)
     # prob.solve(solver=cp.SCS, verbose=True, rho_x=1, normalize=False, adaptive_scale=False)
     # prob.solve(solver=cp.SCS, verbose=True, rho_x=1, normalize=False)
-    prob.solve()
+    prob.solve(solver=cp.SCS, verbose=True, rho_x=1e-6, scale=10, adaptive_scale=False)
     cvxpy_obj = prob.value
 
     assert jnp.abs((jax_obj - cvxpy_obj) / cvxpy_obj) <= 1e-4
+    assert False
     # assert jnp.all(jnp.diff(fp_res_hsde[1:]) < 1e-10)
 
 
