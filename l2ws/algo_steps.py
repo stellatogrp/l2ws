@@ -28,7 +28,7 @@ def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous, s
 
 
 def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, scale_vec, alpha,
-            lightweight=True):
+            lightweight=True, verbose=False):
     """
     q_r = r if hsde else q_r = q
     homogeneous tells us if we set tau = 1.0 or use the root_plus method
@@ -38,10 +38,11 @@ def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, scale_vec,
 
     if hsde:
         r = q_r
-        z_next, u, u_tilde, v = fixed_point_hsde(z, homogeneous, r, factor, proj, scale_vec, alpha)
+        z_next, u, u_tilde, v = fixed_point_hsde(
+            z, homogeneous, r, factor, proj, scale_vec, alpha, verbose=verbose)
     else:
         q = q_r
-        z_next, u, u_tilde, v = fixed_point(z, q, factor, proj, scale_vec, alpha)
+        z_next, u, u_tilde, v = fixed_point(z, q, factor, proj, scale_vec, alpha, verbose=verbose)
 
     diff = jnp.linalg.norm(z_next - z)
     loss_vec = loss_vec.at[i].set(diff)
@@ -52,8 +53,6 @@ def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, scale_vec,
         dr = jnp.linalg.norm(A.T @ u[n:] + P @ u[:n] + c)
         primal_residuals = primal_residuals.at[i].set(pr)
         dual_residuals = dual_residuals.at[i].set(dr)
-
-    # all_z = all_z.at[i, :].set(z)
     all_z = all_z.at[i, :].set(z_next)
     all_u = all_u.at[i, :].set(u)
     all_v = all_v.at[i, :].set(v)
@@ -63,7 +62,8 @@ def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, scale_vec,
 def k_steps_train(k, z0, q_r, factor, supervised, z_star, proj, jit, hsde, m, n, zero_cone_size,
                   rho_x=1, scale=1, alpha=1.5):
     iter_losses = jnp.zeros(k)
-    scale_vec = get_scale_vec(rho_x, scale, m, n, zero_cone_size)
+    scale_vec = get_scale_vec(rho_x, scale, m, n, zero_cone_size, hsde=hsde)
+
     fp_train_partial = partial(fp_train, q_r=q_r, factor=factor,
                                supervised=supervised, z_star=z_star, proj=proj, hsde=hsde,
                                homogeneous=True, scale_vec=scale_vec, alpha=alpha)
@@ -101,7 +101,12 @@ def k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit, hsde, zero_cone_size
     iter_losses = jnp.zeros(k)
     primal_residuals, dual_residuals = jnp.zeros(k), jnp.zeros(k)
     m, n = A.shape
-    scale_vec = jnp.ones(m + n)
+    scale_vec = get_scale_vec(rho_x, scale, m, n, zero_cone_size, hsde=hsde)
+
+    if jit:
+        verbose = False
+    else:
+        verbose = True
 
     if hsde:
         # first step: iteration 0
@@ -109,9 +114,9 @@ def k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit, hsde, zero_cone_size
         #   to match the SCS code which has the global variable FEASIBLE_ITERS
         #   which is set to 1
         homogeneous = False
-        scale_vec = get_scale_vec(rho_x, scale, m, n, zero_cone_size)
+
         z_next, u, u_tilde, v = fixed_point_hsde(
-            z0, homogeneous, q_r, factor, proj, scale_vec, alpha)
+            z0, homogeneous, q_r, factor, proj, scale_vec, alpha, verbose=verbose)
         all_z = all_z.at[0, :].set(z_next)
         all_u = all_u.at[0, :].set(u)
         all_v = all_v.at[0, :].set(v)
@@ -120,7 +125,8 @@ def k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit, hsde, zero_cone_size
 
     fp_eval_partial = partial(fp_eval, q_r=q_r, factor=factor,
                               proj=proj, P=P, A=A, c=c, b=b, hsde=hsde,
-                              homogeneous=True, scale_vec=scale_vec, alpha=alpha)
+                              homogeneous=True, scale_vec=scale_vec, alpha=alpha,
+                              verbose=verbose)
     val = z0, z0, iter_losses, all_z, all_u, all_v, primal_residuals, dual_residuals
     start_iter = 1 if hsde else 0
     if jit:
@@ -133,19 +139,48 @@ def k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit, hsde, zero_cone_size
     return z_final, iter_losses, primal_residuals, dual_residuals, all_z_plus_1, all_u, all_v
 
 
-def get_scale_vec(rho_x, scale, m, n, zero_cone_size):
+def get_scale_vec(rho_x, scale, m, n, zero_cone_size, hsde=True):
+    """
+    Returns the non-identity DR scaling vector
+        which is used as a diagonal matrix
+
+    scale_vec = (r_x, r_y)
+    where r_x = rho_x * ones(n)
+          r_y[:zero_cone_size] = 1 / (1000 * scale) * ones(zero_cone_size)
+          r_y[zero_cone_size:] = 1 / scale * ones(m - zero_cone_size)
+    scaling for y depends on if it's for the zero cone or not
+    """
     scale_vec = jnp.ones(m + n)
 
     # x-component of scale_vec set to rho_x
     scale_vec = scale_vec.at[:n].set(rho_x)
 
     # zero cone of y-component of scale_vec set to 1 / (1000 * scale)
-    scale_vec = scale_vec.at[n:n + zero_cone_size].set(1 / (1000 * scale))
+    if hsde:
+        zero_scale_factor = 1000
+    else:
+        zero_scale_factor = 1
+    scale_vec = scale_vec.at[n:n + zero_cone_size].set(1 / (zero_scale_factor * scale))
 
     # other parts of y-component of scale_vec set to 1 / scale
     scale_vec = scale_vec.at[n + zero_cone_size:].set(1 / scale)
 
     return scale_vec
+
+
+def get_scaled_factor(M, scale_vec):
+    """
+    given the non-identity DR scaling and M this method returns the factored matrix
+    of M + diag(scale_vec)
+    """
+    scale_vec_diag = jnp.diag(scale_vec)
+    factor = jsp.linalg.lu_factor(M + scale_vec_diag)
+    return factor
+
+
+def get_scaled_vec_and_factor(M, rho_x, scale, m, n, zero_cone_size, hsde=True):
+    scale_vec = get_scale_vec(rho_x, scale, m, n, zero_cone_size, hsde=hsde)
+    return get_scaled_factor(M, scale_vec), scale_vec
 
 
 def extract_sol(u, v, n, hsde):
@@ -253,19 +288,21 @@ def root_plus(mu, eta, p, r, scale_vec):
     return (-b + jnp.sqrt(b ** 2 - 4 * a * c)) / (2 * a)
 
 
-def fixed_point(z_init, q, factor, proj, scale_vec, alpha):
+def fixed_point(z_init, q, factor, proj, scale_vec, alpha, verbose=False):
     """
     implements 1 iteration of algorithm 1 in https://arxiv.org/pdf/2212.08260.pdf
     """
-    u_tilde_unscaled = lin_sys_solve(factor, z_init - q)
-    u_tilde = jnp.multiply(u_tilde_unscaled, scale_vec)
-    u_temp = 2*u_tilde - z_init
+    rhs = jnp.multiply(z_init - q, scale_vec)
+    u_tilde = lin_sys_solve(factor, rhs)
+    u_temp = 2 * u_tilde - z_init
     u = proj(u_temp)
-    v = u + z_init - 2*u_tilde
+    v = jnp.multiply(u + z_init - 2 * u_tilde, scale_vec)
     z = z_init + alpha * (u - u_tilde)
-    print('u_tilde', u_tilde)
-    print('u', u)
-    print('z', z)
+    if verbose:
+        print('pre-solve u_tilde', rhs)
+        print('u_tilde', u_tilde)
+        print('u', u)
+        print('z', z)
     return z, u, u_tilde, v
 
 

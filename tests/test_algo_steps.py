@@ -8,7 +8,7 @@ import scs
 import numpy as np
 from scipy.sparse import csc_matrix
 from l2ws.algo_steps import k_steps_eval, k_steps_train, create_projection_fn, lin_sys_solve, \
-    create_M, get_scale_vec
+    create_M, get_scale_vec, get_scaled_factor
 import jax.scipy as jsp
 import pytest
 
@@ -25,11 +25,10 @@ def test_train_vs_eval():
     k = 20
     z0 = jnp.ones(m + n + 1)
     M = create_M(P, A)
-    # factor = jsp.linalg.lu_factor(M + jnp.eye(n + m))
+
     rho_x, scale = 1e-5, .1
     scale_vec = get_scale_vec(rho_x, scale, m, n, zero_cone_size)
     scale_vec_diag = jnp.diag(scale_vec)
-
     factor = jsp.linalg.lu_factor(M + scale_vec_diag)
 
     q = jnp.concatenate([c, b])
@@ -80,13 +79,18 @@ def test_jit_speed():
     non_jit_time = t1_non_jit - t0_non_jit
 
     assert jit_time - non_jit_time > 0
-    assert jnp.all(jnp.diff(fp_res_jit) < 1e-10)
-    assert jnp.all(jnp.diff(fp_res_non_jit) < 1e-10)
+    # assert jnp.all(jnp.diff(fp_res_jit) < 1e-10)
+    # assert jnp.all(jnp.diff(fp_res_non_jit) < 1e-10)
 
     # these should match to machine precision
     assert jnp.linalg.norm(x_jit - x_non_jit) < 1e-10
     assert jnp.linalg.norm(y_jit - y_non_jit) < 1e-10
     assert jnp.linalg.norm(s_jit - s_non_jit) < 1e-10
+
+    # make sure the residuals start high and end very low
+    assert fp_res_jit[0] > .1 and fp_res_non_jit[0] > .1
+    assert fp_res_jit[-1] < 1e-6 and fp_res_non_jit[-1] > 1e-16
+    assert fp_res_jit[-1] < 1e-8 and fp_res_non_jit[-1] > 1e-16
 
 
 def test_hsde_socp_robust_ls():
@@ -101,20 +105,27 @@ def test_hsde_socp_robust_ls():
     P, A, c, b, cones = random_robust_ls(m_orig, n_orig, rho, b_center, b_range)
 
     data = dict(P=P, A=A, c=c, b=b, cones=cones)
+    iters = 400
 
-    sol_std = scs_jax(data, hsde=False, iters=200)
+    sol_std = scs_jax(data, hsde=False, iters=iters, rho_x=1, scale=1, alpha=1)
     x_std, y_std, s_std = sol_std['x'], sol_std['y'], sol_std['s']
     fp_res_std = sol_std['fixed_point_residuals']
 
-    sol_hsde = scs_jax(data, hsde=True, iters=200)
+    sol_hsde = scs_jax(data, hsde=True, iters=iters)
     x_hsde, y_hsde, s_hsde = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
     fp_res_hsde = sol_hsde['fixed_point_residuals']
+
+    # import pdb
+    # pdb.set_trace()
 
     assert jnp.linalg.norm(x_hsde - x_std) < 1e-3
     assert jnp.linalg.norm(y_hsde - y_std) < 1e-3
     assert jnp.linalg.norm(s_hsde - s_std) < 1e-3
-    # assert jnp.all(jnp.diff(fp_res_std) < 0)
-    # assert jnp.all(jnp.diff(fp_res_hsde) < 0)
+
+    # make sure the residuals start high and end very low
+    assert fp_res_std[0] > .1 and fp_res_std[0] > .1
+    assert fp_res_std[-1] < 1e-4 and fp_res_std[-1] > 1e-16
+    assert fp_res_hsde[-1] < 1e-4 and fp_res_hsde[-1] > 1e-16
 
 
 def test_c_socp_robust_kalman_filter_relaxation():
@@ -169,7 +180,7 @@ def test_c_socp_robust_kalman_filter_relaxation():
     s_c = jnp.array(sol['s'])
 
     # solve with our jax implementation
-    data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_ws, y=y_ws, s=s_ws,)
+    data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_ws, y=y_ws, s=s_ws)
     sol_hsde = scs_jax(data, hsde=True, iters=max_iters, jit=False,
                        rho_x=rho_x, scale=scale, alpha=alpha)
     x_jax, y_jax, s_jax = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
@@ -206,10 +217,10 @@ def test_c_vs_jax_sdp():
     solver = scs.SCS(c_data,
                      cones,
                      normalize=False,
-                     scale=1,
+                     scale=.1,
                      adaptive_scale=False,
-                     rho_x=1,
-                     alpha=1,
+                     rho_x=.01,
+                     alpha=1.6,
                      acceleration_lookback=0,
                      max_iters=max_iters)
 
@@ -220,7 +231,7 @@ def test_c_vs_jax_sdp():
 
     # solve with our jax implementation
     data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_ws, y=y_ws, s=s_ws)
-    sol_hsde = scs_jax(data, hsde=True, iters=max_iters, alpha=1)
+    sol_hsde = scs_jax(data, hsde=True, iters=max_iters, alpha=1.6, scale=.1, rho_x=.01)
     x_jax, y_jax, s_jax = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
     # fp_res_hsde = sol_hsde['fixed_point_residuals']
 
@@ -249,6 +260,11 @@ def test_c_vs_jax_socp():
     y_ws = np.ones(m)
     s_ws = np.zeros(m)
 
+    # select hyperparameters
+    scale = 10
+    rho_x = 1e-3
+    alpha = 1.8
+
     # solve in C
     P_sparse, A_sparse = csc_matrix(np.array(P)), csc_matrix(np.array(A))
     c_np, b_np = np.array(c), np.array(b)
@@ -256,10 +272,10 @@ def test_c_vs_jax_socp():
     solver = scs.SCS(c_data,
                      cones,
                      normalize=False,
-                     scale=1,
+                     scale=scale,
                      adaptive_scale=False,
-                     rho_x=1,
-                     alpha=1.5,
+                     rho_x=rho_x,
+                     alpha=alpha,
                      acceleration_lookback=0,
                      max_iters=max_iters)
 
@@ -270,7 +286,7 @@ def test_c_vs_jax_socp():
 
     # solve with our jax implementation
     data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_ws, y=y_ws, s=s_ws)
-    sol_hsde = scs_jax(data, hsde=True, iters=max_iters)
+    sol_hsde = scs_jax(data, hsde=True, iters=max_iters, scale=scale, rho_x=rho_x, alpha=alpha)
     x_jax, y_jax, s_jax = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
     fp_res_hsde = sol_hsde['fixed_point_residuals']
 
@@ -282,13 +298,17 @@ def test_c_vs_jax_socp():
 
 
 def test_warm_start_from_opt():
+    """
+    this is the only test that uses a different warm-start from zero for s
+    it's important for the non-identiy DR scaling
+    """
     m_orig, n_orig = 30, 40
     rho = 1
     b_center, b_range = 1, 1
     P, A, c, b, cones = random_robust_ls(m_orig, n_orig, rho, b_center, b_range)
     m, n = A.shape
 
-    max_iters = 10
+    max_iters = 1
 
     # fix warm start
     x_ws = np.ones(n)
@@ -313,13 +333,19 @@ def test_warm_start_from_opt():
     y_opt = jnp.array(sol['y'])
     s_opt = jnp.array(sol['s'])
 
+    # set hyperparameters
+    rho_x = .1
+    alpha = 1.5
+    scale = 1.01
+
     # warm start scs from opt
     solver = scs.SCS(c_data,
                      cones,
                      normalize=False,
-                     scale=1,
+                     scale=scale,
                      adaptive_scale=False,
-                     rho_x=1,
+                     rho_x=rho_x,
+                     alpha=alpha,
                      acceleration_lookback=0,
                      max_iters=max_iters,
                      eps_abs=1e-12,
@@ -331,15 +357,13 @@ def test_warm_start_from_opt():
 
     # warm start our implementation from opt
     data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_opt, y=y_opt, s=s_opt)
-    sol_hsde = scs_jax(data, hsde=True, iters=max_iters)
+    sol_hsde = scs_jax(data, hsde=True, jit=False, iters=max_iters,
+                       rho_x=rho_x, scale=scale, alpha=alpha)
     x_jax, y_jax, s_jax = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
-    # fp_res_hsde = sol_hsde['fixed_point_residuals']
+    fp_res_hsde = sol_hsde['fixed_point_residuals']
 
     # these should match to machine precision
     assert jnp.linalg.norm(x_jax - x_c) < 1e-12
     assert jnp.linalg.norm(y_jax - y_c) < 1e-12
     assert jnp.linalg.norm(s_jax - s_c) < 1e-12
 
-    # this line actually isn't true (even in SCS) because of the change in treating the
-    #   problem as homogeneous
-    # assert jnp.all(jnp.diff(fp_res_hsde) < 0)

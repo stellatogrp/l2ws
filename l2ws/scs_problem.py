@@ -1,13 +1,11 @@
-from functools import partial
 import jax.scipy as jsp
 import jax.numpy as jnp
 import cvxpy as cp
 from matplotlib import pyplot as plt
-from jax import random, lax
+from jax import random
 import jax
-from l2ws.algo_steps import create_M, create_projection_fn, lin_sys_solve, fixed_point, \
-    fixed_point_hsde, extract_sol, k_steps_eval, get_scale_vec
-from l2ws.utils.generic_utils import python_fori_loop
+from l2ws.algo_steps import create_M, create_projection_fn, lin_sys_solve, \
+    extract_sol, k_steps_eval, get_scale_vec, get_scaled_vec_and_factor
 
 
 class SCSinstance(object):
@@ -64,7 +62,7 @@ class SCSinstance(object):
                 self.prob.solution.attr['solver_specific_stats']['s'])
 
 
-def scs_jax(data, hsde=True, rho_x=1, scale=1, alpha=1.5, iters=5000, jit=True, plot=False):
+def scs_jax(data, hsde=True, rho_x=1e-6, scale=.1, alpha=1.5, iters=5000, jit=True, plot=False):
     P, A = data['P'], data['A']
     c, b = data['c'], data['b']
     cones = data['cones']
@@ -74,12 +72,8 @@ def scs_jax(data, hsde=True, rho_x=1, scale=1, alpha=1.5, iters=5000, jit=True, 
 
     M = create_M(P, A)
 
-    scale_vec = get_scale_vec(rho_x, scale, m, n, zero_cone_size)
-
-    # create diagonal matrix
-    scale_vec_diag = jnp.diag(scale_vec)
-
-    algo_factor = jsp.linalg.lu_factor(M + scale_vec_diag)
+    algo_factor, scale_vec = get_scaled_vec_and_factor(M, rho_x, scale, m, n, zero_cone_size,
+                                                       hsde=hsde)
     q = jnp.concatenate([c, b])
 
     proj = create_projection_fn(cones, n)
@@ -88,7 +82,7 @@ def scs_jax(data, hsde=True, rho_x=1, scale=1, alpha=1.5, iters=5000, jit=True, 
     if 'x' in data.keys() and 'y' in data.keys() and 's' in data.keys():
         # warm start with z = (x, y + s) or
         # z = (x, y + s, 1) with the hsde
-        z = jnp.concatenate([data['x'], data['y'] + data['s']])
+        z = jnp.concatenate([data['x'], data['y'] + data['s'] / scale_vec[n:]])
         if hsde:
             # we pick eta = 1 for feasibility of warm-start
             z = jnp.concatenate([z, jnp.array([1])])
@@ -127,6 +121,9 @@ def scs_jax(data, hsde=True, rho_x=1, scale=1, alpha=1.5, iters=5000, jit=True, 
 
 
 def ruiz_equilibrate(M, num_passes=20):
+    """
+    NOT USED ANYWHERE -- ONLY BRIEFLY TESTED
+    """
     p, p_ = M.shape
     D, E = jnp.eye(p), jnp.eye(p)
     val = M, E, D
