@@ -475,7 +475,7 @@ class Workspace:
 
         for epoch_batch in range(num_epochs_jit):
             epoch = int(epoch_batch * self.epochs_jit)
-            if epoch % self.eval_every_x_epochs == 0:
+            if epoch % self.eval_every_x_epochs == 0 and epoch > 0:
                 self.eval_iters_train_and_test(f"train_epoch_{epoch}", self.pretrain_on)
             if epoch > self.l2ws_model.dont_decay_until:
                 self.l2ws_model.decay_upon_plateau()
@@ -750,6 +750,7 @@ class Workspace:
 
     def test_eval_write(self):
         test_loss, time_per_iter = self.l2ws_model.short_test_eval()
+        # test_loss, time_per_iter = 1, 1
         last_epoch = np.array(self.l2ws_model.tr_losses_batch[-self.l2ws_model.num_batches:])
         moving_avg = last_epoch.mean()
         if self.test_writer is not None:

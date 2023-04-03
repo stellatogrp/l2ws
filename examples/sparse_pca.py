@@ -187,7 +187,7 @@ def setup_probs(setup_cfg):
     output_filename = f"{os.getcwd()}/data_setup"
 
     P, A, cones, q_mat, theta_mat_jax, A_tensor = multiple_random_sparse_pca(
-        n_orig, cfg.k, cfg.r, N)
+        n_orig, cfg.k, cfg.r, N, factor=False)
     P_sparse, A_sparse = csc_matrix(P), csc_matrix(A)
     m, n = A.shape
 

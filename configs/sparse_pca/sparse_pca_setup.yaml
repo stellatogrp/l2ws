@@ -1,5 +1,5 @@
-n_orig: 50
-k: 10
+n_orig: 60
+k: 5
 r: 10
 solve_acc_abs: 1e-4
 solve_acc_rel: 0
