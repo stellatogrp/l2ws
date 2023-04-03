@@ -102,7 +102,7 @@ def generate_A_tensor(N, n_orig, r):
     theta_mat = np.zeros((N, r_choose_2))
     for i in range(N):
         B = 2 * np.random.rand(r, r) - 1
-        Sigma = .1 * B @ B.T
+        Sigma = 1 * B @ B.T
         col_idx, row_idx = np.triu_indices(r)
         theta_mat[i, :] = Sigma[(row_idx, col_idx)]
         A_tensor[i, :, :] = F @ Sigma @ F.T
