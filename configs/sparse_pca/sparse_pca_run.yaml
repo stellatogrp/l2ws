@@ -46,3 +46,7 @@ normalize_inputs: True
 normalize_alpha: 'other'
 epochs_jit: 2
 accuracies: [.1, .01, .001, .0001]
+
+rho_x: 1
+scale: 1
+alpha_relax: 1
