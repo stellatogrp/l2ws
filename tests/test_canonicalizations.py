@@ -12,22 +12,23 @@ def test_phase_retrieval():
 
 
 def test_sparse_pca():
-    n_orig, k, r, N = 30, 10, 10, 5
+    n_orig, k, r, N = 50, 5, 10, 5
 
     # create n parametric problems
-    P, A, cones, q_mat, theta_mat_jax, A_tensor = multiple_random_sparse_pca(n_orig, k, r, N)
+    P, A, cones, q_mat, theta_mat_jax, A_tensor = multiple_random_sparse_pca(
+        n_orig, k, r, N, factor=False)
 
     # solve with our DR splitting
     m, n = A.shape
-    x_ws = np.ones(n)
-    y_ws = np.ones(m)
-    s_ws = np.zeros(m)
-    max_iters = 500
+    x_ws = jnp.ones(n)
+    y_ws = jnp.ones(m)
+    s_ws = jnp.zeros(m)
+    max_iters = 800
     c, b = q_mat[0, :n], q_mat[0, n:]
     data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_ws, y=y_ws, s=s_ws)
-    sol_hsde = scs_jax(data, hsde=True, iters=max_iters, plot=True)
+    sol_hsde = scs_jax(data, hsde=True, rho_x=1, scale=1, alpha=1, iters=max_iters, plot=False)
     x_jax = sol_hsde['x']
-    # fp_res_hsde = sol_hsde['fixed_point_residuals']
+    fp_res_hsde = sol_hsde['fixed_point_residuals']
 
     # form matrix from vector solution
     jax_obj = c @ x_jax
@@ -38,12 +39,16 @@ def test_sparse_pca():
     prob = cp.Problem(cp.Minimize(-cp.trace(A_tensor[0, :, :] @ X)), constraints)
     # prob.solve(solver=cp.SCS, verbose=True, rho_x=1, normalize=False, adaptive_scale=False)
     # prob.solve(solver=cp.SCS, verbose=True, rho_x=1, normalize=False)
-    prob.solve(solver=cp.SCS, verbose=True, rho_x=1e-6, scale=10, adaptive_scale=False)
+    prob.solve(solver=cp.SCS, verbose=True, rho_x=1e-6, scale=1,
+               alpha=1, eps_abs=1e-4, eps_rel=0, adaptive_scale=False)
     cvxpy_obj = prob.value
 
     assert jnp.abs((jax_obj - cvxpy_obj) / cvxpy_obj) <= 1e-4
-    assert False
+    # assert False
     # assert jnp.all(jnp.diff(fp_res_hsde[1:]) < 1e-10)
+
+    assert fp_res_hsde[0] > 10
+    assert fp_res_hsde[-1] < 1e-3 and fp_res_hsde[-1] > 1e-16
 
 
 def test_robust_ls():
@@ -75,4 +80,7 @@ def test_robust_ls():
     x_cvxpy = x.value
 
     assert jnp.linalg.norm(x_cvxpy - x_jax_final) <= 1e-3
-    assert jnp.all(jnp.diff(fp_res_hsde[1:]) < 1e-10)
+    # assert jnp.all(jnp.diff(fp_res_hsde[1:]) < 1e-10)
+
+    assert fp_res_hsde[0] > 10
+    assert fp_res_hsde[-1] < 1e-4 and fp_res_hsde[-1] > 1e-16

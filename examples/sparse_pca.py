@@ -54,8 +54,8 @@ def run(run_cfg):
     workspace.run()
 
 
-def multiple_random_sparse_pca(n_orig, k, r, N, seed=42):
-    out_dict = static_canon(n_orig, k)
+def multiple_random_sparse_pca(n_orig, k, r, N, factor=True, seed=42):
+    out_dict = static_canon(n_orig, k, factor=factor)
     # c, b = out_dict['c'], out_dict['b']
     P_sparse, A_sparse = out_dict['P_sparse'], out_dict['A_sparse']
     cones = out_dict['cones_dict']
@@ -129,7 +129,7 @@ def get_q_mat(A_tensor, prob, A_param, m, n):
     return q_mat
 
 
-def static_canon(n_orig, k):
+def static_canon(n_orig, k, factor=True):
     # create the cvxpy problem
     prob, A_param = cvxpy_prob(n_orig, k)
 
@@ -145,7 +145,11 @@ def static_canon(n_orig, k):
     m, n = A_sparse.shape
     P_jax, A_jax = jnp.array(P_sparse.todense()), jnp.array(A_sparse.todense())
     M = create_M(P_jax, A_jax)
-    algo_factor = jsp.linalg.lu_factor(M + jnp.eye(n + m))
+
+    if factor:
+        algo_factor = jsp.linalg.lu_factor(M + jnp.eye(n + m))
+    else:
+        algo_factor = None
 
     # set the dict
     cones = {'z': cones_cp.zero, 'l': cones_cp.nonneg, 'q': cones_cp.soc, 's': cones_cp.psd}

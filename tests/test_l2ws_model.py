@@ -6,11 +6,12 @@ import scs
 import numpy as np
 from scipy.sparse import csc_matrix
 from l2ws.l2ws_model import L2WSmodel
-from l2ws.algo_steps import create_projection_fn, create_M
+from l2ws.algo_steps import create_projection_fn, create_M, get_scaled_vec_and_factor
 import jax.scipy as jsp
 
 
-def multiple_random_robust_ls_setup(m_orig, n_orig, rho, b_center, b_range, N_train, N_test):
+def multiple_random_robust_ls_setup(m_orig, n_orig, rho, b_center, b_range, N_train, N_test, rho_x,
+                                    scale):
     N = N_train + N_test
     P, A, cones, q_mat, theta_mat, A_orig, b_orig_mat = multiple_random_robust_ls(
         m_orig, n_orig, rho, b_center, b_range, N)
@@ -20,7 +21,11 @@ def multiple_random_robust_ls_setup(m_orig, n_orig, rho, b_center, b_range, N_tr
     q_mat_train, q_mat_test = q_mat[:N_train, :], q_mat[N_train:N, :]
     train_inputs, test_inputs = theta_mat[:N_train, :], theta_mat[N_train:N, :]
     static_M = create_M(P, A)
-    static_algo_factor = jsp.linalg.lu_factor(static_M + jnp.eye(n + m))
+    # static_algo_factor = jsp.linalg.lu_factor(static_M + jnp.eye(n + m))
+    zero_cone_size = cones['z']
+    static_algo_factor, scale_vec = get_scaled_vec_and_factor(
+        static_M, rho_x, scale, m, n, zero_cone_size)
+
     static_prob_data = dict(P=P, A=A, cones=cones, proj=proj,
                             static_M=static_M, static_algo_factor=static_algo_factor,
                             m=m, n=n)
@@ -46,13 +51,19 @@ def test_minimal_l2ws_model():
     m_orig, n_orig = 30, 40
     rho, b_center, b_range = 1, 1, 1
 
+    # scs hyperparams
+    alpha_relax = 1.1
+    rho_x = 1.1
+    scale = .2
+
     static_prob_data, varying_prob_data = multiple_random_robust_ls_setup(
-        m_orig, n_orig, rho, b_center, b_range, N_train, N_test)
+        m_orig, n_orig, rho, b_center, b_range, N_train, N_test, rho_x, scale)
     q_mat_train, q_mat_test = varying_prob_data['q_mat_train'], varying_prob_data['q_mat_test']
     train_inputs, test_inputs = varying_prob_data['train_inputs'], varying_prob_data['test_inputs']
 
     m, n, cones = static_prob_data['m'], static_prob_data['n'], static_prob_data['cones']
     P, A = static_prob_data['P'], static_prob_data['A']
+    zero_cone_size = cones['z']
 
     # enter into the L2WSmodel
     input_dict = dict(m=m, n=n, hsde=True, static_flag=True, proj=static_prob_data['proj'],
@@ -60,7 +71,9 @@ def test_minimal_l2ws_model():
                       q_mat_train=q_mat_train, q_mat_test=q_mat_test,
                       train_inputs=train_inputs, test_inputs=test_inputs,
                       static_M=static_prob_data['static_M'],
-                      static_algo_factor=static_prob_data['static_algo_factor'])
+                      static_algo_factor=static_prob_data['static_algo_factor'],
+                      rho_x=rho_x, scale=scale, alpha_relax=alpha_relax,
+                      zero_cone_size=zero_cone_size)
     l2ws_model = L2WSmodel(input_dict)
 
     # evaluate test before training
@@ -103,13 +116,14 @@ def test_minimal_l2ws_model():
     max_iters = 6
     P_sparse, A_sparse = csc_matrix(np.array(P)), csc_matrix(np.array(A))
     scs_data = dict(P=P_sparse, A=A_sparse, b=np.zeros(m), c=np.zeros(n))
+
     solver = scs.SCS(scs_data,
                      cones,
                      normalize=False,
-                     scale=1,
+                     scale=scale,
                      adaptive_scale=False,
-                     rho_x=1,
-                     alpha=1,
+                     rho_x=rho_x,
+                     alpha=alpha_relax,
                      acceleration_lookback=0,
                      max_iters=max_iters,
                      eps_abs=1e-12,

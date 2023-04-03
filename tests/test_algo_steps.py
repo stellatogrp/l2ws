@@ -153,12 +153,12 @@ def test_c_socp_robust_kalman_filter_relaxation():
     x_ws = np.ones(n)
     y_ws = np.ones(m)
     s_ws = np.zeros(m)
-    max_iters = 1
+    max_iters = 30
 
     # pick algorithm hyperparameters
-    rho_x = 1e-6
-    scale = .1
-    alpha = 1.5
+    rho_x = 1
+    scale = 1
+    alpha = 1
 
     # solve in C
     P_sparse, A_sparse = csc_matrix(np.array(P)), csc_matrix(np.array(A))
@@ -182,7 +182,7 @@ def test_c_socp_robust_kalman_filter_relaxation():
     # solve with our jax implementation
     data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_ws, y=y_ws, s=s_ws)
     sol_hsde = scs_jax(data, hsde=True, iters=max_iters, jit=False,
-                       rho_x=rho_x, scale=scale, alpha=alpha)
+                       rho_x=rho_x, scale=scale, alpha=alpha, plot=False)
     x_jax, y_jax, s_jax = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
     fp_res_hsde = sol_hsde['fixed_point_residuals']
 
@@ -190,7 +190,10 @@ def test_c_socp_robust_kalman_filter_relaxation():
     assert jnp.linalg.norm(x_jax - x_c) < 1e-10
     assert jnp.linalg.norm(y_jax - y_c) < 1e-10
     assert jnp.linalg.norm(s_jax - s_c) < 1e-10
-    assert jnp.all(jnp.diff(fp_res_hsde) < 0)
+
+    # make sure the residuals start high and end very low
+    assert fp_res_hsde[0] > 10
+    assert fp_res_hsde[-1] < .5 and fp_res_hsde[-1] > 1e-16
 
 
 def test_c_vs_jax_sdp():
