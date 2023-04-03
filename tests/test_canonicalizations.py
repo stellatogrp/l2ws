@@ -12,11 +12,16 @@ def test_phase_retrieval():
 
 
 def test_sparse_pca():
-    n_orig, k, r, N = 50, 5, 10, 5
+    n_orig, k, r, N = 60, 5, 10, 5
 
     # create n parametric problems
     P, A, cones, q_mat, theta_mat_jax, A_tensor = multiple_random_sparse_pca(
         n_orig, k, r, N, factor=False)
+
+    # scs hyperparams
+    rho_x = 1
+    scale = 10
+    alpha = 1
 
     # solve with our DR splitting
     m, n = A.shape
@@ -26,7 +31,7 @@ def test_sparse_pca():
     max_iters = 800
     c, b = q_mat[0, :n], q_mat[0, n:]
     data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_ws, y=y_ws, s=s_ws)
-    sol_hsde = scs_jax(data, hsde=True, rho_x=1, scale=1, alpha=1, iters=max_iters, plot=False)
+    sol_hsde = scs_jax(data, hsde=True, rho_x=rho_x, scale=scale, alpha=alpha, iters=max_iters, plot=True)
     x_jax = sol_hsde['x']
     fp_res_hsde = sol_hsde['fixed_point_residuals']
 
@@ -39,8 +44,8 @@ def test_sparse_pca():
     prob = cp.Problem(cp.Minimize(-cp.trace(A_tensor[0, :, :] @ X)), constraints)
     # prob.solve(solver=cp.SCS, verbose=True, rho_x=1, normalize=False, adaptive_scale=False)
     # prob.solve(solver=cp.SCS, verbose=True, rho_x=1, normalize=False)
-    prob.solve(solver=cp.SCS, verbose=True, rho_x=1e-6, scale=1,
-               alpha=1, eps_abs=1e-4, eps_rel=0, adaptive_scale=False)
+    prob.solve(solver=cp.SCS, verbose=True, rho_x=rho_x, scale=scale,
+               alpha=alpha, eps_abs=1e-4, eps_rel=0, adaptive_scale=False)
     cvxpy_obj = prob.value
 
     assert jnp.abs((jax_obj - cvxpy_obj) / cvxpy_obj) <= 5e-4
