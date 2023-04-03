@@ -14,6 +14,7 @@ from l2ws.algo_steps import create_M
 from scipy.sparse import csc_matrix
 from examples.solve_script import setup_script
 from l2ws.launcher import Workspace
+from l2ws.algo_steps import get_scaled_vec_and_factor
 
 
 plt.rcParams.update(
@@ -43,7 +44,11 @@ def run(run_cfg):
     n_orig = setup_cfg['n_orig']
     k = setup_cfg['k']
 
-    static_dict = static_canon(n_orig, k)
+    # non-identity DR scaling
+    rho_x = run_cfg.get('rho_x', 1)
+    scale = run_cfg.get('scale', 1)
+
+    static_dict = static_canon(n_orig, k, rho_x=rho_x, scale=scale)
 
     # we directly save q now
     get_q = None
@@ -54,8 +59,8 @@ def run(run_cfg):
     workspace.run()
 
 
-def multiple_random_sparse_pca(n_orig, k, r, N, seed=42):
-    out_dict = static_canon(n_orig, k)
+def multiple_random_sparse_pca(n_orig, k, r, N, factor=True, seed=42):
+    out_dict = static_canon(n_orig, k, factor=factor)
     # c, b = out_dict['c'], out_dict['b']
     P_sparse, A_sparse = out_dict['P_sparse'], out_dict['A_sparse']
     cones = out_dict['cones_dict']
@@ -129,7 +134,7 @@ def get_q_mat(A_tensor, prob, A_param, m, n):
     return q_mat
 
 
-def static_canon(n_orig, k):
+def static_canon(n_orig, k, rho_x=1, scale=1, factor=True):
     # create the cvxpy problem
     prob, A_param = cvxpy_prob(n_orig, k)
 
@@ -145,7 +150,14 @@ def static_canon(n_orig, k):
     m, n = A_sparse.shape
     P_jax, A_jax = jnp.array(P_sparse.todense()), jnp.array(A_sparse.todense())
     M = create_M(P_jax, A_jax)
-    algo_factor = jsp.linalg.lu_factor(M + jnp.eye(n + m))
+    zero_cone_size = cones_cp.zero
+
+    if factor:
+        algo_factor, scale_vec = get_scaled_vec_and_factor(M, rho_x, scale, m, n,
+                                                           zero_cone_size)
+        # algo_factor = jsp.linalg.lu_factor(M + jnp.eye(n + m))
+    else:
+        algo_factor = None
 
     # set the dict
     cones = {'z': cones_cp.zero, 'l': cones_cp.nonneg, 'q': cones_cp.soc, 's': cones_cp.psd}

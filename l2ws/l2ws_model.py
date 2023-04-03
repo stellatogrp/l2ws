@@ -64,6 +64,14 @@ class L2WSmodel(object):
             self.matrix_invs_train = input_dict['matrix_invs_train']
             self.matrix_invs_test = input_dict['matrix_invs_test']
 
+        # hyperparameters of scs
+        self.rho_x = input_dict['rho_x']
+        self.scale = input_dict['scale']
+        self.alpha_relax = input_dict['alpha_relax']
+
+        # not a hyperparameter, but used for scale knob
+        self.zero_cone_size = input_dict['zero_cone_size']
+
     def initialize_neural_network(self, input_dict):
         nn_cfg = input_dict.get('nn_cfg', {})
 
@@ -461,17 +469,20 @@ class L2WSmodel(object):
     def create_end2end_loss_fn(self, bypass_nn, diff_required):
         supervised = self.supervised and diff_required
 
-        proj, n = self.proj, self.n,
+        proj, n, m = self.proj, self.n, self.m
         M_static, factor_static = self.static_M, self.static_algo_factor
         share_all = self.share_all
         Z_shared = self.Z_shared if share_all else None
         normalize_alpha = self.normalize_alpha if share_all else None
         loss_method, static_flag = self.loss_method, self.static_flag
         hsde, jit = self.hsde, self.jit
+        zero_cone_size, rho_x = self.zero_cone_size, self.rho_x
+        scale, alpha_relax = self.scale, self.alpha_relax
 
         def predict(params, input, q, iters, z_star, factor, M):
             P, A = M[:n, :n], -M[n:, :n]
             b, c = q[n:], q[:n]
+
             z0, alpha = predict_warm_start(params, input, bypass_nn, hsde,
                                            share_all, Z_shared, normalize_alpha)
             if hsde:
@@ -481,10 +492,12 @@ class L2WSmodel(object):
 
             if diff_required:
                 z_final, iter_losses = k_steps_train(
-                    iters, z0, q_r, factor, supervised, z_star, proj, jit, hsde)
+                    iters, z0, q_r, factor, supervised, z_star, proj, jit, hsde, m, n,
+                    zero_cone_size, rho_x, scale, alpha_relax)
             else:
                 k_eval_out = k_steps_eval(
-                    iters, z0, q_r, factor, proj, P, A, c, b, jit, hsde)
+                    iters, z0, q_r, factor, proj, P, A, c, b, jit, hsde,
+                    zero_cone_size, rho_x, scale, alpha_relax)
                 z_final, iter_losses = k_eval_out[0], k_eval_out[1]
                 primal_residuals, dual_residuals = k_eval_out[2], k_eval_out[3]
                 all_z_plus_1, all_u, all_v = k_eval_out[4], k_eval_out[5], k_eval_out[6]

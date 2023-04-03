@@ -33,7 +33,7 @@ test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 N_train: 10000
 N_test: 1000
-num_samples: 1000
+num_samples: 10
 prediction_variable: w
 angle_anchors: [0]
 supervised: False
@@ -46,3 +46,7 @@ normalize_inputs: True
 normalize_alpha: 'other'
 epochs_jit: 2
 accuracies: [.1, .01, .001, .0001]
+
+rho_x: 1
+scale: 1
+alpha_relax: 1

@@ -3,12 +3,10 @@ import hydra
 import cvxpy as cp
 from l2ws.scs_problem import SCSinstance, scs_jax
 import numpy as np
-import pdb
 from l2ws.launcher import Workspace
 from scipy import sparse
 import jax.numpy as jnp
 from scipy.sparse import csc_matrix
-import jax.scipy as jsp
 import time
 import matplotlib.pyplot as plt
 import os
@@ -19,6 +17,7 @@ from jax import vmap, jit
 import pandas as pd
 import matplotlib.colors as mc
 import colorsys
+from l2ws.algo_steps import get_scaled_vec_and_factor
 
 
 plt.rcParams.update(
@@ -74,7 +73,6 @@ def sample_theta(N, T, sigma, p, gamma, dt, w_noise_var, y_noise_var, B_const=1)
     for j in range(N):
         inds = np.random.rand(T) <= p
         outlier_v = sigma * np.random.randn(2, T)[:, inds]
-        # pdb.set_trace()
 
         # weird indexing to avoid transpose
         v[j:j+1, :, inds] = outlier_v
@@ -103,12 +101,10 @@ def sample_theta(N, T, sigma, p, gamma, dt, w_noise_var, y_noise_var, B_const=1)
         thetas = thetas.at[i, :].set(theta)
 
     w_trues = w
-    # pdb.set_trace()
     state_pos = jnp.array([0, 1])
     x_states = x_trues[:, state_pos, :]
     x_trues_rotated = rotation_vmap(x_states, angles, clockwise)
     w_trues_rotated = rotation_vmap(w_trues, angles, clockwise)
-    # pdb.set_trace()
 
     return thetas, y_mat, x_trues, w_trues, y_mat_rotated, x_trues_rotated, w_trues_rotated, angles
 
@@ -230,7 +226,6 @@ def test_kalman():
     # v4 = xp[T * (nx + nu + 1):-2*T]
     # u4 = xp[-T*2:-T]
     # z4 = xp[-T:]
-    pdb.set_trace()
 
 
 def plot_state(t, actual, estimated=None, filename=None):
@@ -577,23 +572,21 @@ def run(run_cfg):
             print(exc)
             setup_cfg = {}
 
+    # non-identity DR scaling
+    rho_x = run_cfg.get('rho_x', 1)
+    scale = run_cfg.get('scale', 1)
+
     static_dict = static_canon(
         setup_cfg['T'],
         setup_cfg['gamma'],
         setup_cfg['dt'],
         setup_cfg['mu'],
         setup_cfg['rho'],
-        setup_cfg['B_const']
+        setup_cfg['B_const'],
+        rho_x=rho_x,
+        scale=scale
     )
 
-    # get_q_single = partial(single_q,
-    #                        mu=setup_cfg['mu'],
-    #                        rho=setup_cfg['rho'],
-    #                        T=setup_cfg['T'],
-    #                        gamma=setup_cfg['gamma'],
-    #                        dt=setup_cfg['dt'])
-
-    # get_q = vmap(get_q_single, in_axes=0, out_axes=0)
     get_q = None
 
     """
@@ -865,7 +858,7 @@ def get_full_x(x0, x_w, y, T, Ad, Bd, rho):
     return x
 
 
-def static_canon(T, gamma, dt, mu, rho, B_const):
+def static_canon(T, gamma, dt, mu, rho, B_const, rho_x=1, scale=1):
     """
     variables
     (x_t, w_t, s_t, v_t,  u_t, z_t) in (nx + nu + no + 3)
@@ -951,7 +944,6 @@ def static_canon(T, gamma, dt, mu, rho, B_const):
     A_z_ineq = np.zeros((n_z_ineq, nvars))
     A_z_ineq[:, z_start:] = np.eye(n_z_ineq)
     b_z_ineq = rho * np.ones(n_z_ineq)
-    # pdb.set_trace()
 
     # u_ineq constraints
     n_u_ineq = T
@@ -994,7 +986,9 @@ def static_canon(T, gamma, dt, mu, rho, B_const):
     M = M.at[n:, :n].set(-A_jax)
 
     # factor for DR splitting
-    algo_factor = jsp.linalg.lu_factor(M + jnp.eye(n + m))
+    # algo_factor = jsp.linalg.lu_factor(M + jnp.eye(n + m))
+    algo_factor, scale_vec = get_scaled_vec_and_factor(M, rho_x, scale, m, n,
+                                                       cones['z'])
 
     A_sparse = csc_matrix(A)
     P_sparse = csc_matrix(P)
@@ -1051,6 +1045,23 @@ q_mat ?? we can directly get it from thetas in this case
 
 possibly for each example, pass in get_q_mat function
 """
+
+
+def multiple_random_robust_kalman(N, T, gamma, dt, mu, rho, sigma, p, w_noise_var, y_noise_var):
+    out_dict = static_canon(T, gamma, dt, mu, rho, B_const=1)
+    P = jnp.array(out_dict['P_sparse'].todense())
+    A = jnp.array(out_dict['A_sparse'].todense())
+    cones = out_dict['cones_dict']
+    out = sample_theta(N, T, sigma, p, gamma, dt,
+                       w_noise_var, y_noise_var, B_const=1)
+    thetas_np, y_mat, x_trues, w_trues, y_mat_rotated, x_trues_rotated, w_trues_rot, angles = out
+    theta_mat = jnp.array(thetas_np)
+
+    batch_q = vmap(single_q, in_axes=(0, None, None, None, None, None), out_axes=(0))
+
+    q_mat = batch_q(theta_mat, mu, rho, T, gamma, dt)
+
+    return P, A, cones, q_mat, theta_mat
 
 
 if __name__ == "__main__":

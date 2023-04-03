@@ -1,10 +1,8 @@
-from functools import partial
 from l2ws.scs_problem import SCSinstance
 import numpy as np
 from l2ws.launcher import Workspace
 import jax.numpy as jnp
 from scipy.sparse import csc_matrix
-import jax.scipy as jsp
 import time
 import matplotlib.pyplot as plt
 import os
@@ -13,6 +11,7 @@ import logging
 import yaml
 from jax import vmap
 import pandas as pd
+from l2ws.algo_steps import get_scaled_vec_and_factor
 
 
 plt.rcParams.update(
@@ -69,19 +68,17 @@ def run(run_cfg):
     # create the nominal matrix A
     A = (np.random.rand(m_orig, n_orig) * 2) - 1
 
-    static_dict = static_canon(A, rho)
+    # non-identity DR scaling
+    rho_x = run_cfg.get('rho_x', 1)
+    scale = run_cfg.get('scale', 1)
 
-    # we directly save q now, so no need for this
-    # get_q_single = partial(single_q,
-    #                        rho=setup_cfg['rho'],
-    #                        m_orig=setup_cfg['m_orig'],
-    #                        n_orig=setup_cfg['n_orig'],
-    #                        )
-    # get_q = vmap(get_q_single, in_axes=0, out_axes=0)
+    static_dict = static_canon(A, rho, rho_x=rho_x, scale=scale)
+
     get_q = None
 
     # static_flag = True
     #   means that the matrices don't change across problems
+
     static_flag = True
     workspace = Workspace(run_cfg, static_flag, static_dict, example, get_q)
 
@@ -135,7 +132,6 @@ def setup_probs(setup_cfg):
     q_mat = batch_q(thetas, cfg.rho, cfg.m_orig, cfg.n_orig)
 
     scs_instances = []
-
 
     if setup_cfg['solve']:
         for i in range(N):
@@ -194,8 +190,6 @@ def setup_probs(setup_cfg):
             n=n
         )
 
-    
-
     # save solve times
     df_solve_times = pd.DataFrame(solve_times, columns=['solve_times'])
     df_solve_times.to_csv('solve_times.csv')
@@ -240,7 +234,7 @@ def setup_probs(setup_cfg):
     plt.clf()
 
 
-def static_canon(A, rho):
+def static_canon(A, rho, rho_x=1, scale=1, factor=True):
     """
     Let A have shape (m_orig, n_orig)
     min_{x,u,v} u + rho v
@@ -312,7 +306,13 @@ def static_canon(A, rho):
     M = M.at[n:, :n].set(-A_jax)
 
     # factor for DR splitting
-    algo_factor = jsp.linalg.lu_factor(M + jnp.eye(n + m))
+    # algo_factor = jsp.linalg.lu_factor(M + jnp.eye(n + m))
+    if factor:
+        algo_factor, scale_vec = get_scaled_vec_and_factor(M, rho_x, scale, m, n,
+                                                           cones['z'])
+        # algo_factor = jsp.linalg.lu_factor(M + jnp.eye(n + m))
+    else:
+        algo_factor = None
 
     A_sparse = csc_matrix(A)
     P_sparse = csc_matrix(P)

@@ -105,8 +105,8 @@ class Workspace:
             M_tensor_train, M_tensor_test = None, None
             matrix_invs_train, matrix_invs_test = None, None
 
-            M_plus_I = static_M + jnp.eye(n + m)
-            static_algo_factor = jsp.linalg.lu_factor(M_plus_I)
+            # M_plus_I = static_M + jnp.eye(n + m)
+            # static_algo_factor = jsp.linalg.lu_factor(M_plus_I)
         else:
             # load the algo_factors -- check if factor or inverse
             M_tensor, q_mat = get_M_q(thetas)
@@ -142,6 +142,10 @@ class Workspace:
         sdp_bool = self.psd_size > 0
 
         train_inputs, test_inputs = self.normalize_inputs_fn(thetas, N_train, N_test)
+
+        rho_x = cfg.get('rho_x', 1)
+        scale = cfg.get('scale', 1)
+        alpha_relax = cfg.get('alpha_relax', 1)
 
         num_plot = 5
         self.plot_samples(num_plot, thetas, train_inputs,
@@ -181,7 +185,11 @@ class Workspace:
                       'share_all': share_all,
                       'pretrain_alpha': cfg.get('pretrain_alpha'),
                       'normalize_alpha': cfg.get('normalize_alpha'),
-                      'plateau_decay': cfg.plateau_decay
+                      'plateau_decay': cfg.plateau_decay,
+                      'rho_x': rho_x,
+                      'scale': scale,
+                      'alpha_relax': alpha_relax,
+                      'zero_cone_size': cones['z']
                       }
         self.l2ws_model = L2WSmodel(input_dict)
 
@@ -437,6 +445,7 @@ class Workspace:
 
         # no learning evaluation
         self.eval_iters_train_and_test('no_train', False)
+
 
         # fixed ws evaluation
         if self.l2ws_model.z_stars_train is not None:
