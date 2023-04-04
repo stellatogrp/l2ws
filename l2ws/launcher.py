@@ -146,6 +146,7 @@ class Workspace:
         rho_x = cfg.get('rho_x', 1)
         scale = cfg.get('scale', 1)
         alpha_relax = cfg.get('alpha_relax', 1)
+        self.skip_startup = cfg.get('skip_startup', False)
 
         num_plot = 5
         self.plot_samples(num_plot, thetas, train_inputs,
@@ -277,8 +278,9 @@ class Workspace:
             iter_losses_mean, primal_residuals, dual_residuals, train, col)
         iters_df, primal_residuals_df, dual_residuals_df = df_out
 
-        # write accuracies dataframe to csv
-        self.write_accuracies_csv(iter_losses_mean, train, col)
+        if not self.skip_startup:
+            # write accuracies dataframe to csv
+            self.write_accuracies_csv(iter_losses_mean, train, col)
 
         # plot the evaluation iterations
         self.plot_eval_iters(iters_df, primal_residuals_df,
@@ -344,7 +346,7 @@ class Workspace:
                          alpha=1,
                          acceleration_lookback=0,
                          eps_abs=1e-2,
-                         eps_rel=0)
+                         eps_rel=1e-2)
 
         num = 20
         solve_times = np.zeros(num)
@@ -443,17 +445,18 @@ class Workspace:
         # set pretrain_on boolean
         self.pretrain_on = self.pretrain_cfg.pretrain_iters > 0
 
-        # no learning evaluation
-        self.eval_iters_train_and_test('no_train', False)
+        if not self.skip_startup:
+            # no learning evaluation
+            self.eval_iters_train_and_test('no_train', False)
 
 
-        # fixed ws evaluation
-        if self.l2ws_model.z_stars_train is not None:
-            self.eval_iters_train_and_test('nearest_neighbor', False)
+            # fixed ws evaluation
+            if self.l2ws_model.z_stars_train is not None:
+                self.eval_iters_train_and_test('nearest_neighbor', False)
 
-        # pretrain evaluation
-        if self.pretrain_on:
-            self.pretrain()
+            # pretrain evaluation
+            if self.pretrain_on:
+                self.pretrain()
 
         # eval test data to start
         self.test_eval_write()
@@ -832,7 +835,8 @@ class Workspace:
     def plot_eval_iters(self, iters_df, primal_residuals_df, dual_residuals_df, plot_pretrain,
                         train, col):
         # plot of the fixed point residuals
-        plt.plot(iters_df['no_train'], 'k-', label='no learning')
+        if 'no_train' in iters_df.keys():
+            plt.plot(iters_df['no_train'], 'k-', label='no learning')
         if col != 'no_train' and 'nearest_neighbor' in iters_df.keys():
             plt.plot(iters_df['nearest_neighbor'], 'm-', label='nearest neighbor')
         if plot_pretrain:
@@ -852,10 +856,11 @@ class Workspace:
         plt.clf()
 
         # plot of the primal and dual residuals
-        plt.plot(primal_residuals_df['no_train'],
-                 'k+', label='no learning primal')
-        plt.plot(dual_residuals_df['no_train'],
-                 'ko', label='no learning dual')
+        # if 'no_train' in iters_df.keys():
+        #     plt.plot(primal_residuals_df['no_train'],
+        #             'k+', label='no learning primal')
+        #     plt.plot(dual_residuals_df['no_train'],
+        #             'ko', label='no learning dual')
 
         if plot_pretrain:
             plt.plot(
