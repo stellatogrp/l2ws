@@ -90,7 +90,8 @@ def generate_A_tensor(N, n_orig, r):
     We let theta = upper_tri(Sigma_i)
     """
     # first generate a random A matrix
-    A0 = np.random.rand(n_orig, n_orig)
+    # A0 = np.random.rand(n_orig, n_orig)
+    A0 = np.random.normal(size=(n_orig, n_orig))
 
     # take the SVD
     U, S, VT = np.linalg.svd(A0)
@@ -99,14 +100,20 @@ def generate_A_tensor(N, n_orig, r):
     F = U[:, :r]
     A_tensor = np.zeros((N, n_orig, n_orig))
     r_choose_2 = int(r * (r + 1) / 2)
-    theta_mat = np.zeros((N, r_choose_2))
+    # theta_mat = np.zeros((N, r_choose_2))
+    theta_mat = np.zeros((N, n_orig * r))
     for i in range(N):
-        B = 2 * np.random.rand(r, r) - 1
+        B = np.diag(np.random.rand(r)) #+ .1*np.random.rand(r, r) #np.diag(np.random.rand(r)) #2 * np.random.rand(r, r) - 1
         # B = np.random.normal(size=(r, r))
         Sigma = 1 * B @ B.T
         col_idx, row_idx = np.triu_indices(r)
-        theta_mat[i, :] = Sigma[(row_idx, col_idx)]
+        # theta_mat[i, :] = Sigma[(row_idx, col_idx)]
         A_tensor[i, :, :] = F @ Sigma @ F.T
+
+        curr_perturb = np.random.normal(size=(n_orig, r))
+        C = F + .1 * curr_perturb
+        A_tensor[i, :, :] = C @ C.T
+        theta_mat[i, :] = np.ravel(curr_perturb)
 
     return A_tensor, theta_mat
 
@@ -200,7 +207,7 @@ def setup_probs(setup_cfg):
     tol_abs = cfg.solve_acc_abs
     tol_rel = cfg.solve_acc_rel
     solver = scs.SCS(data, cones, normalize=False, alpha=1, scale=1,
-                     rho_x=1, eps_abs=tol_abs, eps_rel=tol_rel)
+                     rho_x=1, adaptive_scale=False, eps_abs=tol_abs, eps_rel=tol_rel)
 
     setup_script(q_mat, theta_mat_jax, solver, data, cones, output_filename, solve=cfg.solve)
 
