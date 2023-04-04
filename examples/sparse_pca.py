@@ -101,11 +101,13 @@ def generate_A_tensor(N, n_orig, r):
     r_choose_2 = int(r * (r + 1) / 2)
     theta_mat = np.zeros((N, r_choose_2))
     for i in range(N):
-        B = 1 * np.random.rand(r, r) #- 1
+        B = 2 * np.random.rand(r, r) - 1
+        # B = np.random.normal(size=(r, r))
         Sigma = 1 * B @ B.T
         col_idx, row_idx = np.triu_indices(r)
         theta_mat[i, :] = Sigma[(row_idx, col_idx)]
         A_tensor[i, :, :] = F @ Sigma @ F.T
+
     return A_tensor, theta_mat
 
 
@@ -197,6 +199,10 @@ def setup_probs(setup_cfg):
     data = dict(P=P_sparse, A=A_sparse, b=b_np, c=c_np)
     tol_abs = cfg.solve_acc_abs
     tol_rel = cfg.solve_acc_rel
-    solver = scs.SCS(data, cones, eps_abs=tol_abs, eps_rel=tol_rel)
+    solver = scs.SCS(data, cones, normalize=False, alpha=1, scale=1,
+                     rho_x=1, eps_abs=tol_abs, eps_rel=tol_rel)
 
     setup_script(q_mat, theta_mat_jax, solver, data, cones, output_filename, solve=cfg.solve)
+
+    import pdb
+    pdb.set_trace()
