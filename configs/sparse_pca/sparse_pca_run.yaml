@@ -25,15 +25,21 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 30
+train_unrolls: 5
 eval_unrolls: 1000
 eval_every_x_epochs: 5
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
+<<<<<<< HEAD
 N_train: 50
 N_test: 10
 num_samples: 10
+=======
+N_train: 10000
+N_test: 50
+num_samples: 50
+>>>>>>> 2d5d42a815f4bc38a07e515255cd607a277c540a
 prediction_variable: w
 angle_anchors: [0]
 supervised: False
