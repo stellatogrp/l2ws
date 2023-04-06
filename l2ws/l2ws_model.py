@@ -24,17 +24,17 @@ class L2WSmodel(object):
         # essential pieces for the model
         self.initialize_essentials(dict)
 
-        # create_all_loss_fns
-        self.create_all_loss_fns(dict)
-
-        # neural network setup
-        self.initialize_neural_network(dict)
-
         # optimal solutions (not needed as input)
         self.setup_optimal_solutions(dict)
 
         # share all method
         self.setup_share_all(dict)
+
+        # create_all_loss_fns
+        self.create_all_loss_fns(dict)
+
+        # neural network setup
+        self.initialize_neural_network(dict)
 
         # init to track training
         self.init_train_tracking()
