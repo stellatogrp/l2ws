@@ -1,6 +1,6 @@
-n_orig: 30
-k: 10
-r: 10
+n_orig: 5
+d_mul: 5  # number of constraints will equal d_mul * n_orig
+
 ###### change the above for phase_retrieval
 
 solve_acc_abs: 1e-4
