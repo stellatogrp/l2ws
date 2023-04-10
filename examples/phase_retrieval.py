@@ -61,7 +61,7 @@ def run(run_cfg):
     workspace.run()
 
 
-def multiple_random_phase_retrieval(n_orig, d_mul, N, seed=42):
+def multiple_random_phase_retrieval(n_orig, d_mul, x_var, N, seed=42):
     ######################### TODO
     out_dict = static_canon(n_orig, d_mul)
     # # c, b = out_dict['c'], out_dict['b']
@@ -73,8 +73,8 @@ def multiple_random_phase_retrieval(n_orig, d_mul, N, seed=42):
 
 
     # get theta_mat and b_vals together
-    theta_mat, b_matrix = generate_theta_mat_b_vals(N, A_tensor, n_orig, d_mul)
-    theta_mat_jax = jnp.array(theta_mat)
+    b_matrix = generate_theta_mat_b_vals(N, A_tensor, x_var, n_orig, d_mul)
+    theta_mat_jax = jnp.array(b_matrix)
 
     # convert to q_mat
     m, n = A.shape
@@ -143,22 +143,22 @@ def cvxpy_prob(n_orig, d_mul, seed=42):
     return prob, A_tensor, b_param
 
 
-def generate_theta_mat_b_vals(N, A_tensor, n_orig, d_mul):
+def generate_theta_mat_b_vals(N, A_tensor, x_var, n_orig, d_mul):
     d = n_orig * d_mul
     b_matrix = np.zeros((N, d))
-    n_orig_choose_2 = int(n_orig * (n_orig + 1) / 2)
-    theta_mat = np.zeros((N, n_orig_choose_2), dtype='complex_')
+    # n_orig_choose_2 = int(n_orig * (n_orig + 1) / 2)
+    # theta_mat = np.zeros((N, n_orig_choose_2), dtype='complex_')
     for i in range(N):
         # this is where the parameterization comes in
         # could modify where the xi comes from
-        xi = np.random.normal(size=(n_orig)) + 1j * np.random.normal(size=(n_orig))
+        xi = np.random.normal(size=(n_orig), scale=np.sqrt(x_var)) + 1j * np.random.normal(size=(n_orig), scale=np.sqrt(x_var))
         Xi = np.outer(xi, xi.conjugate())
-        col_idx, row_idx = np.triu_indices(n_orig)
-        theta_mat[i, :] = Xi[(col_idx, row_idx)]
+        # col_idx, row_idx = np.triu_indices(n_orig)
+        # theta_mat[i, :] = Xi[(col_idx, row_idx)]
         for j in range(d):
             # the trace will be real for hermitian matrices, but we use np.real to remove small complex floats
             b_matrix[i, j] = np.real(np.trace(A_tensor[j] @ Xi))
-    return theta_mat, b_matrix
+    return b_matrix
 
 
 def get_q_mat(b_matrix, prob, b_param, m, n):
@@ -233,6 +233,7 @@ def setup_probs(setup_cfg):
     N = N_train + N_test
     n_orig = cfg.n_orig
     d_mul = cfg.d_mul
+    x_var = cfg.x_var
     # d_orig = n_orig * d_mul
 
     np.random.seed(cfg.seed)
@@ -243,7 +244,7 @@ def setup_probs(setup_cfg):
 
     ################## TODO add extra params to generation
     P, A, cones, q_mat, theta_mat_jax = multiple_random_phase_retrieval(
-        n_orig, d_mul, N) 
+        n_orig, d_mul, x_var, N) 
 
     P_sparse, A_sparse = csc_matrix(P), csc_matrix(A)
     m, n = A.shape

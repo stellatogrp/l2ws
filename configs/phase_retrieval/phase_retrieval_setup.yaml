@@ -1,11 +1,11 @@
 n_orig: 5
 d_mul: 5  # number of constraints will equal d_mul * n_orig
-
+x_var: 1  # variance in the Gaussians for X
 ###### change the above for phase_retrieval
 
 solve_acc_abs: 1e-4
 solve_acc_rel: 0
 N_train: 100
-N_test: 20
+N_test: 10
 seed: 42
 solve: True
