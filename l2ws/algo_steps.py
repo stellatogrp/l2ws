@@ -35,15 +35,27 @@ def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous, s
 #     """
 
 
-def fp_train_ista(i, val, supervised, z_star, A, b, lambd, t):
+def fp_train_ista(i, val, supervised, z_star, A, b, lambd, step):
     z, loss_vec = val
-    z_next = fixed_point_ista(z, A, b, lambd, t)
+    z_next = fixed_point_ista(z, A, b, lambd, step)
     if supervised:
         diff = jnp.linalg.norm(z - z_star)
     else:
         diff = jnp.linalg.norm(z_next - z)
     loss_vec = loss_vec.at[i].set(diff)
     return z_next, loss_vec
+
+
+def fp_eval_ista(i, val, supervised, z_star, A, b, lambd, step):
+    z, loss_vec, z_all = val
+    z_next = fixed_point_ista(z, A, b, lambd, step)
+    if supervised:
+        diff = jnp.linalg.norm(z - z_star)
+    else:
+        diff = jnp.linalg.norm(z_next - z)
+    loss_vec = loss_vec.at[i].set(diff)
+    z_all = z_all.at[i, :].set(z_next)
+    return z_next, loss_vec, z_all
 
 
 def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, scale_vec, alpha,
@@ -109,26 +121,14 @@ def k_steps_train(k, z0, q_r, factor, supervised, z_star, proj, jit, hsde, m, n,
 
 def k_steps_train_ista(k, z0, b, lambd, A, t, supervised, z_star, jit):
     iter_losses = jnp.zeros(k)
-    # scale_vec = get_scale_vec(rho_x, scale, m, n, zero_cone_size, hsde=hsde)
-
-    fp_train_partial = partial(fp_train_ista, 
-                               supervised=supervised, 
+    fp_train_partial = partial(fp_train_ista,
+                               supervised=supervised,
                                z_star=z_star,
-                               A=A, b=b,
-                               lambd=lambd, 
+                               A=A,
+                               b=b,
+                               lambd=lambd,
                                t=t
                                )
-
-    # if hsde:
-    #     # first step: iteration 0
-    #     # we set homogeneous = False for the first iteration
-    #     #   to match the SCS code which has the global variable FEASIBLE_ITERS
-    #     #   which is set to 1
-    #     homogeneous = False
-    #     z_next, u, u_tilde, v = fixed_point_hsde(
-    #         z0, homogeneous, q_r, factor, proj, scale_vec, alpha)
-    #     iter_losses = iter_losses.at[0].set(jnp.linalg.norm(z_next - z0))
-    #     z0 = z_next
     val = z0, iter_losses
     start_iter = 0
     if jit:
@@ -137,6 +137,29 @@ def k_steps_train_ista(k, z0, b, lambd, A, t, supervised, z_star, jit):
         out = python_fori_loop(start_iter, k, fp_train_partial, val)
     z_final, iter_losses = out
     return z_final, iter_losses
+
+
+def k_steps_eval_ista(k, z0, b, lambd, A, t, supervised, z_star, jit):
+    iter_losses = jnp.zeros(k)
+    z_all_plus_1 = jnp.zeros((k, z0.size + 1))
+    z_all_plus_1 = z_all_plus_1.at[0, :].set(z0)
+    fp_eval_partial = partial(fp_eval_ista,
+                              supervised=supervised,
+                              z_star=z_star,
+                              A=A,
+                              b=b,
+                              lambd=lambd,
+                              t=t
+                              )
+    val = z0, iter_losses, z_all
+    start_iter = 0
+    if jit:
+        out = lax.fori_loop(start_iter, k, fp_eval_partial, val)
+    else:
+        out = python_fori_loop(start_iter, k, fp_eval_partial, val)
+    z_final, iter_losses, z_all = out
+    z_all_plus_1 = z_all_plus_1.at[1:, :].set(z_all)
+    return z_final, iter_losses, z_all_plus_1
 
 
 def k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit, hsde, zero_cone_size,
@@ -339,11 +362,11 @@ def root_plus(mu, eta, p, r, scale_vec):
     return (-b + jnp.sqrt(b ** 2 - 4 * a * c)) / (2 * a)
 
 
-def fixed_point_ista(z, A, b, lambd, t):
+def fixed_point_ista(z, A, b, lambd, step):
     """
     applies the ista fixed point operator
     """
-    return soft_threshold(z + t * A.T.dot(b - A.dot(z)), t * lambd)
+    return soft_threshold(z + step * A.T.dot(b - A.dot(z)), step * lambd)
 
 
 def soft_threshold(z, alpha):

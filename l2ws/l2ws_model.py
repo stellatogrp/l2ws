@@ -14,7 +14,7 @@ import pandas as pd
 from jax.config import config
 from scipy.spatial import distance_matrix
 import logging
-from l2ws.algo_steps import k_steps_train, k_steps_eval, lin_sys_solve
+from l2ws.algo_steps import k_steps_train, k_steps_eval, lin_sys_solve, k_steps_train_ista, k_steps_eval_ista
 from functools import partial
 config.update("jax_enable_x64", True)
 
@@ -24,11 +24,14 @@ class L2WSmodel(object):
         # essential pieces for the model
         self.initialize_essentials(dict)
 
+        # initialize algorithm specifics
+        self.initialize_algo(dict)
+
         # optimal solutions (not needed as input)
         self.setup_optimal_solutions(dict)
 
         # share all method
-        self.setup_share_all(dict)
+        # self.setup_share_all(dict)
 
         # create_all_loss_fns
         self.create_all_loss_fns(dict)
@@ -40,19 +43,41 @@ class L2WSmodel(object):
         self.init_train_tracking()
 
     def initialize_essentials(self, input_dict):
-        """
-        the input_dict is required to contain these keys
-        otherwise there is an error
-        """
-        self.hsde, self.jit = input_dict.get('hsde', True), input_dict.get('jit', True)
-        self.m, self.n = input_dict['m'], input_dict['n']
-        self.proj, self.static_flag = input_dict['proj'], input_dict['static_flag']
-        self.q_mat_train, self.q_mat_test = input_dict['q_mat_train'], input_dict['q_mat_test']
+        self.jit = input_dict.get('jit', True)
         self.eval_unrolls = input_dict.get('eval_unrolls', 500)
         self.train_unrolls = input_dict['train_unrolls']
         self.train_inputs, self.test_inputs = input_dict['train_inputs'], input_dict['test_inputs']
         self.N_train, self.N_test = self.train_inputs.shape[0], self.test_inputs.shape[0]
         self.share_all = input_dict.get('share_all', False)
+        self.algorithm = input_dict['algorithm']
+
+
+    def initialize_algo(self, input_dict):
+        if self.algorithm == 'scs':
+            self.initialize_scs(input_dict)
+        elif self.algorithm == 'ista':
+            self.initialize_ista(input_dict)
+
+
+    def initialize_ista(self, input_dict):
+        self.A = input_dict['A']
+        self.b_mat_train, self.b_mat_test = input_dict['b_mat_train'], input_dict['b_mat_test']
+        self.lambd = input_dict['lambd']
+        self.ista_step = input_dict['ista_step']
+
+        self.m, self.n = self.A.shape
+        self.output_size = self.n
+
+
+    def initialize_scs(self, input_dict):
+        """
+        the input_dict is required to contain these keys
+        otherwise there is an error
+        """
+        self.hsde = input_dict.get('hsde', True)
+        self.m, self.n = input_dict['m'], input_dict['n']
+        self.proj, self.static_flag = input_dict['proj'], input_dict['static_flag']
+        self.q_mat_train, self.q_mat_test = input_dict['q_mat_train'], input_dict['q_mat_test']
 
         if self.static_flag:
             self.static_M = input_dict['static_M']
@@ -71,6 +96,8 @@ class L2WSmodel(object):
 
         # not a hyperparameter, but used for scale knob
         self.zero_cone_size = input_dict['zero_cone_size']
+
+        self.output_size = self.n + self.m
 
     def initialize_neural_network(self, input_dict):
         nn_cfg = input_dict.get('nn_cfg', {})
@@ -98,7 +125,7 @@ class L2WSmodel(object):
         if self.share_all:
             output_size = self.num_clusters
         else:
-            output_size = self.n + self.m
+            output_size = self.output_size
         hidden_layer_sizes = nn_cfg.get('intermediate_layer_sizes', [])
         layer_sizes = [input_size] + hidden_layer_sizes + [output_size]
 
@@ -143,14 +170,19 @@ class L2WSmodel(object):
         self.loss_method = dict.get('loss_method', 'fixed_k')
         self.supervised = dict.get('supervised', False)
 
+        if self.algorithm == 'scs':
+            e2e_loss_fn = self.create_end2end_loss_fn
+        elif self.algorithm == 'ista':
+            e2e_loss_fn = self.create_end2end_loss_fn_ista
+
         # end-to-end loss fn for training
-        self.loss_fn_train = self.create_end2end_loss_fn(bypass_nn=False, diff_required=True)
+        self.loss_fn_train = e2e_loss_fn(bypass_nn=False, diff_required=True)
 
         # end-to-end loss fn for evaluation
-        self.loss_fn_eval = self.create_end2end_loss_fn(bypass_nn=False, diff_required=False)
+        self.loss_fn_eval = e2e_loss_fn(bypass_nn=False, diff_required=False)
 
         # end-to-end added fixed warm start eval - bypasses neural network
-        self.loss_fn_fixed_ws = self.create_end2end_loss_fn(bypass_nn=True, diff_required=False)
+        self.loss_fn_fixed_ws = e2e_loss_fn(bypass_nn=True, diff_required=False)
 
     def init_train_tracking(self):
         self.epoch = 0
@@ -515,6 +547,54 @@ class L2WSmodel(object):
                 return loss, iter_losses, angles, primal_residuals, dual_residuals, out
         loss_fn = predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
         return loss_fn
+    
+    def create_end2end_loss_fn_ista(self, bypass_nn, diff_required):
+        supervised = self.supervised and diff_required
+
+        jit = self.jit
+        share_all = self.share_all
+        # Z_shared = self.Z_shared if share_all else None
+        # normalize_alpha = self.normalize_alpha if share_all else None
+        loss_method = self.loss_method
+
+        ista_step = self.ista_step
+        lambd = self.lambd
+        A = self.A
+        # proj, n, m = self.proj, self.n, self.m
+        # M_static, factor_static = self.static_M, self.static_algo_factor
+        # zero_cone_size, rho_x = self.zero_cone_size, self.rho_x
+        # scale, alpha_relax = self.scale, self.alpha_relax
+
+        def predict(params, input, b, iters, z_star):
+            z0 = predict_warm_start(params, input, bypass_nn)
+
+            if diff_required:
+                z_final, iter_losses = k_steps_train_ista(iters, z0, b, lambd, A, 
+                                                          ista_step, supervised, z_star, jit)
+            else:
+                z_final, iter_losses, z_all_plus_1 = k_steps_eval_ista(iters, z0, b, lambd, A,
+                                                                ista_step, supervised, z_star, jit)
+                # k_eval_out = k_steps_eval(
+                #     iters, z0, q_r, factor, proj, P, A, c, b, jit, hsde,
+                #     zero_cone_size, rho_x, scale, alpha_relax)
+                # z_final, iter_losses = k_eval_out[0], k_eval_out[1]
+                # primal_residuals, dual_residuals = k_eval_out[2], k_eval_out[3]
+                # all_z_plus_1, all_u, all_v = k_eval_out[4], k_eval_out[5], k_eval_out[6]
+
+                # compute angle(z^{k+1} - z^k, z^k - z^{k-1})
+                diffs = jnp.diff(z_all_plus_1, axis=0)
+                angles = batch_angle(diffs[:-1], diffs[1:])
+
+            loss = final_loss(loss_method, z_final, iter_losses, supervised, z0, z_star)
+
+            if diff_required:
+                return loss
+            else:
+                # out = z_all_plus_1, z_final
+                return loss, iter_losses, angles, z_all_plus_1
+        # loss_fn = predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
+        loss_fn = predict_2_loss_ista(predict, diff_required)
+        return loss_fn
 
 
 def compute_angle(d1, d2):
@@ -608,6 +688,38 @@ def get_out_axes_shape(diff_required):
     return out_axes
 
 
+def get_out_axes_shape_ista(diff_required):
+    if diff_required:
+        # out_axes for (loss)
+        out_axes = (0)
+    else:
+        # out_axes for
+        #   (loss, iter_losses, angles, primal_residuals, dual_residuals, out)
+        #   out = (all_z_, z_next, alpha, all_u, all_v)
+        out_axes = (0, 0, 0, 0)
+    return out_axes
+
+
+def predict_2_loss_ista(predict, diff_required):
+    out_axes = get_out_axes_shape_ista(diff_required)
+    batch_predict = vmap(predict, 
+                         in_axes=(None, 0, 0, None, 0), 
+                         out_axes=out_axes)
+
+    @partial(jit, static_argnums=(3,))
+    def loss_fn(params, inputs, b, iters, z_stars):
+        if diff_required:
+            losses = batch_predict(params, inputs, b, iters, z_stars)
+            return losses.mean()
+        else:
+            predict_out = batch_predict(
+                params, inputs, b, iters, z_stars)
+            losses, iter_losses, angles, z_all = predict_out
+            # loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
+            return losses.mean(), losses, iter_losses, angles, z_all
+    return loss_fn
+
+
 def create_static_loss_fn(predict, diff_required, factor_static, M_static):
     out_axes = get_out_axes_shape(diff_required)
     predict_final = partial(predict,
@@ -650,7 +762,7 @@ def create_dynamic_loss_fn(predict, diff_required):
     return loss_fn
 
 
-def predict_warm_start(params, input, bypass_nn, hsde, share_all, Z_shared, normalize_alpha):
+def predict_warm_start(params, input, bypass_nn, hsde=None, share_all=False, Z_shared=None, normalize_alpha=None):
     """
     gets the warm-start
     bypass_nn means we ignore the neural network and set z0=input
