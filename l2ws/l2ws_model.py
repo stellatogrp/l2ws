@@ -50,6 +50,7 @@ class L2WSmodel(object):
         self.N_train, self.N_test = self.train_inputs.shape[0], self.test_inputs.shape[0]
         self.share_all = input_dict.get('share_all', False)
         self.algorithm = input_dict['algorithm']
+        self.batch_angle = vmap(self.compute_angle, in_axes=(0, 0), out_axes=(0))
 
 
     def initialize_algo(self, input_dict):
@@ -165,15 +166,21 @@ class L2WSmodel(object):
         else:
             self.z_stars_train, self.z_stars_test = None, None
 
+    # def create_end2end_loss_fn(self, bypass_nn, diff_required):
+    #     raise NotImplementedError("Subclass needs to define this.")
+
     def create_all_loss_fns(self, dict):
         # to describe the final loss function (not the end-to-end loss fn)
         self.loss_method = dict.get('loss_method', 'fixed_k')
         self.supervised = dict.get('supervised', False)
 
-        if self.algorithm == 'scs':
-            e2e_loss_fn = self.create_end2end_loss_fn
-        elif self.algorithm == 'ista':
-            e2e_loss_fn = self.create_end2end_loss_fn_ista
+        # if self.algorithm == 'scs':
+        #     e2e_loss_fn = self.create_end2end_loss_fn
+        # elif self.algorithm == 'ista':
+        #     e2e_loss_fn = self.create_end2end_loss_fn_ista
+        e2e_loss_fn = self.create_end2end_loss_fn
+
+        
 
         # end-to-end loss fn for training
         self.loss_fn_train = e2e_loss_fn(bypass_nn=False, diff_required=True)
@@ -428,359 +435,79 @@ class L2WSmodel(object):
         """
         batch_indices = jnp.arange(self.N_train)
         return self.train_batch(batch_indices, params, state)
-
-    def train_batch(self, batch_indices, params, state):
-        batch_inputs = self.train_inputs[batch_indices, :]
-        batch_q_data = self.q_mat_train[batch_indices, :]
-        batch_z_stars = self.z_stars_train[batch_indices, :] if self.supervised else None
-        results = self.optimizer.update(params=params,
-                                        state=state,
-                                        inputs=batch_inputs,
-                                        q=batch_q_data,
-                                        iters=self.train_unrolls,
-                                        z_stars=batch_z_stars)
-        params, state = results
-        return state.value, params, state
-
-    def short_test_eval(self):
-        z_stars_test = self.z_stars_test if self.supervised else None
-        if self.static_flag:
-            test_loss, test_out, time_per_prob = self.static_eval(self.train_unrolls,
-                                                                  self.test_inputs,
-                                                                  self.q_mat_test,
-                                                                  z_stars_test)
-        else:
-            eval_out = self.dynamic_eval(self.train_unrolls,
-                                         self.test_inputs,
-                                         self.matrix_invs_test,
-                                         self.M_tensor_test,
-                                         self.q_mat_test)
-            test_loss, test_out, time_per_prob = eval_out
-        self.te_losses.append(test_loss)
-
-        time_per_iter = time_per_prob / self.train_unrolls
-        return test_loss, time_per_iter
-
-    def evaluate(self, k, inputs, matrix_inv, M, q, z_stars, fixed_ws, tag='test'):
-        if self.static_flag:
-            return self.static_eval(k, inputs, q, z_stars, tag=tag, fixed_ws=fixed_ws)
-        else:
-            return self.dynamic_eval(k, inputs, matrix_inv, M, q, tag=tag, fixed_ws=fixed_ws)
-
-    def static_eval(self, k, inputs, q, z_stars, tag='test', fixed_ws=False):
-        if fixed_ws:
-            curr_loss_fn = self.loss_fn_fixed_ws
-        else:
-            curr_loss_fn = self.loss_fn_eval
-        num_probs, _ = inputs.shape
-
-        test_time0 = time.time()
-
-        loss, out = curr_loss_fn(
-            self.params, inputs, q, k, z_stars)
-        time_per_prob = (time.time() - test_time0)/num_probs
-        print('eval time per prob', time_per_prob)
-        print(f"[Epoch {self.epoch}] [k {k}] {tag} loss: {loss:.6f}")
-        return loss, out, time_per_prob
-
-    def dynamic_eval(self, k, inputs, matrix_inv, M, q, tag='test', fixed_ws=False):
-        if fixed_ws:
-            curr_loss_fn = self.loss_fn_fixed_ws
-        else:
-            curr_loss_fn = self.loss_fn_eval
-        num_probs, _ = inputs.shape
-        test_time0 = time.time()
-        loss, out = curr_loss_fn(
-            self.params, inputs, matrix_inv, M, q, k)
-        time_per_prob = (time.time() - test_time0)/num_probs
-        print('eval time per prob', time_per_prob)
-        print(f"[Epoch {self.epoch}] [k {k}] {tag} loss: {loss:.6f}")
-
-        return loss, out, time_per_prob
-
-    def create_end2end_loss_fn(self, bypass_nn, diff_required):
-        supervised = self.supervised and diff_required
-
-        proj, n, m = self.proj, self.n, self.m
-        M_static, factor_static = self.static_M, self.static_algo_factor
-        share_all = self.share_all
-        Z_shared = self.Z_shared if share_all else None
-        normalize_alpha = self.normalize_alpha if share_all else None
-        loss_method, static_flag = self.loss_method, self.static_flag
-        hsde, jit = self.hsde, self.jit
-        zero_cone_size, rho_x = self.zero_cone_size, self.rho_x
-        scale, alpha_relax = self.scale, self.alpha_relax
-
-        def predict(params, input, q, iters, z_star, factor, M):
-            P, A = M[:n, :n], -M[n:, :n]
-            b, c = q[n:], q[:n]
-
-            z0, alpha = predict_warm_start(params, input, bypass_nn, hsde,
-                                           share_all, Z_shared, normalize_alpha)
-            if hsde:
-                q_r = lin_sys_solve(factor, q)
-            else:
-                q_r = q
-
-            if diff_required:
-                z_final, iter_losses = k_steps_train(
-                    iters, z0, q_r, factor, supervised, z_star, proj, jit, hsde, m, n,
-                    zero_cone_size, rho_x, scale, alpha_relax)
-            else:
-                k_eval_out = k_steps_eval(
-                    iters, z0, q_r, factor, proj, P, A, c, b, jit, hsde,
-                    zero_cone_size, rho_x, scale, alpha_relax)
-                z_final, iter_losses = k_eval_out[0], k_eval_out[1]
-                primal_residuals, dual_residuals = k_eval_out[2], k_eval_out[3]
-                all_z_plus_1, all_u, all_v = k_eval_out[4], k_eval_out[5], k_eval_out[6]
-
-                # compute angle(z^{k+1} - z^k, z^k - z^{k-1})
-                diffs = jnp.diff(all_z_plus_1, axis=0)
-                angles = batch_angle(diffs[:-1], diffs[1:])
-
-            loss = final_loss(loss_method, z_final, iter_losses, supervised, z0, z_star)
-
-            if diff_required:
-                return loss
-            else:
-                out = all_z_plus_1, z_final, alpha, all_u, all_v
-                return loss, iter_losses, angles, primal_residuals, dual_residuals, out
-        loss_fn = predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
-        return loss_fn
     
-    def create_end2end_loss_fn_ista(self, bypass_nn, diff_required):
-        supervised = self.supervised and diff_required
-
-        jit = self.jit
-        share_all = self.share_all
-        # Z_shared = self.Z_shared if share_all else None
-        # normalize_alpha = self.normalize_alpha if share_all else None
-        loss_method = self.loss_method
-
-        ista_step = self.ista_step
-        lambd = self.lambd
-        A = self.A
-        # proj, n, m = self.proj, self.n, self.m
-        # M_static, factor_static = self.static_M, self.static_algo_factor
-        # zero_cone_size, rho_x = self.zero_cone_size, self.rho_x
-        # scale, alpha_relax = self.scale, self.alpha_relax
-
-        def predict(params, input, b, iters, z_star):
-            z0 = predict_warm_start(params, input, bypass_nn)
-
-            if diff_required:
-                z_final, iter_losses = k_steps_train_ista(iters, z0, b, lambd, A, 
-                                                          ista_step, supervised, z_star, jit)
+    def predict_warm_start(self, params, input, bypass_nn, hsde=None, share_all=False, Z_shared=None, normalize_alpha=None):
+        """
+        gets the warm-start
+        bypass_nn means we ignore the neural network and set z0=input
+        """
+        alpha = None
+        if bypass_nn:
+            z0 = input
+        else:
+            if share_all:
+                alpha_raw = predict_y(params, input)
+                alpha = self.normalize_alpha_fn(alpha_raw, normalize_alpha)
+                z0 = Z_shared @ alpha
             else:
-                z_final, iter_losses, z_all_plus_1 = k_steps_eval_ista(iters, z0, b, lambd, A,
-                                                                ista_step, supervised, z_star, jit)
-                # k_eval_out = k_steps_eval(
-                #     iters, z0, q_r, factor, proj, P, A, c, b, jit, hsde,
-                #     zero_cone_size, rho_x, scale, alpha_relax)
-                # z_final, iter_losses = k_eval_out[0], k_eval_out[1]
-                # primal_residuals, dual_residuals = k_eval_out[2], k_eval_out[3]
-                # all_z_plus_1, all_u, all_v = k_eval_out[4], k_eval_out[5], k_eval_out[6]
-
-                # compute angle(z^{k+1} - z^k, z^k - z^{k-1})
-                diffs = jnp.diff(z_all_plus_1, axis=0)
-                angles = batch_angle(diffs[:-1], diffs[1:])
-
-            loss = final_loss(loss_method, z_final, iter_losses, supervised, z0, z_star)
-
-            if diff_required:
-                return loss
-            else:
-                # out = z_all_plus_1, z_final
-                return loss, iter_losses, angles, z_all_plus_1
-        # loss_fn = predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
-        loss_fn = predict_2_loss_ista(predict, diff_required)
-        return loss_fn
-
-
-def compute_angle(d1, d2):
-    cos = d1 @ d2 / (jnp.linalg.norm(d1) * jnp.linalg.norm(d2))
-    angle = jnp.arccos(cos)
-    return angle
-
-
-batch_angle = vmap(compute_angle, in_axes=(0, 0), out_axes=(0))
-
-
-def final_loss(loss_method, z_last, iter_losses, supervised, z0, z_star):
-    """
-    encodes several possible loss functions
-
-    z_last is the last iterate from DR splitting
-    z_penultimate is the second to last iterate from DR splitting
-
-    z_star is only used if supervised
-
-    z0 is only used if the loss_method is first_2_last
-    """
-    if supervised:
-        if loss_method == 'constant_sum':
-            loss = iter_losses.sum()
-        elif loss_method == 'fixed_k':
-            loss = jnp.linalg.norm(z_last - z_star)
-    else:
-        if loss_method == 'increasing_sum':
-            weights = (1+jnp.arange(iter_losses.size))
-            loss = iter_losses @ weights
-        elif loss_method == 'constant_sum':
-            loss = iter_losses.sum()
-        elif loss_method == 'fixed_k':
-            loss = iter_losses[-1]
-        elif loss_method == 'first_2_last':
-            loss = jnp.linalg.norm(z_last - z0)
-    return loss
-
-
-def normalize_alpha_fn(alpha, normalize_alpha):
-    """
-    normalizes the alpha vector according to the method prescribed
-        in the normalize_alpha input
-    """
-    if normalize_alpha == 'conic':
-        alpha = jnp.maximum(0, alpha)
-    elif normalize_alpha == 'sum':
-        alpha = alpha / alpha.sum()
-    elif normalize_alpha == 'convex':
-        alpha = jnp.maximum(0, alpha)
-        alpha = alpha / alpha.sum()
-    elif normalize_alpha == 'softmax':
-        alpha = jax.nn.softmax(alpha)
-    return alpha
-
-
-def predict_2_loss(predict, static_flag, diff_required, factor_static, M_static):
-    """
-    given the predict fn this returns the loss fn
-
-    basically breaks the prediction fn into multiple cases
-        - diff_required used for training, but not evaluation
-        - static_flag is True if the matrices (P, A) are the same for each problem
-            factor_static and M_static are shared for all problems and passed in
-
-    for the evaluation, we store a lot more information
-    for the training, we store nothing - just return the loss
-        this could be changed - need to turn the boolean has_aux=True
-            in self.optimizer = OptaxSolver(opt=optax.adam(
-                self.lr), fun=self.loss_fn_train, has_aux=False)
-
-    in all forward passes, the number of iterations is static
-    """
-    if static_flag:
-        loss_fn = create_static_loss_fn(predict, diff_required, factor_static, M_static)
-    else:
-        loss_fn = create_dynamic_loss_fn(predict, diff_required)
-    return loss_fn
-
-
-def get_out_axes_shape(diff_required):
-    if diff_required:
-        # out_axes for (loss)
-        out_axes = (0)
-    else:
-        # out_axes for
-        #   (loss, iter_losses, angles, primal_residuals, dual_residuals, out)
-        #   out = (all_z_, z_next, alpha, all_u, all_v)
-        out_axes = (0, 0, 0, 0, 0, (0, 0, 0, 0, 0))
-    return out_axes
-
-
-def get_out_axes_shape_ista(diff_required):
-    if diff_required:
-        # out_axes for (loss)
-        out_axes = (0)
-    else:
-        # out_axes for
-        #   (loss, iter_losses, angles, primal_residuals, dual_residuals, out)
-        #   out = (all_z_, z_next, alpha, all_u, all_v)
-        out_axes = (0, 0, 0, 0)
-    return out_axes
-
-
-def predict_2_loss_ista(predict, diff_required):
-    out_axes = get_out_axes_shape_ista(diff_required)
-    batch_predict = vmap(predict, 
-                         in_axes=(None, 0, 0, None, 0), 
-                         out_axes=out_axes)
-
-    @partial(jit, static_argnums=(3,))
-    def loss_fn(params, inputs, b, iters, z_stars):
-        if diff_required:
-            losses = batch_predict(params, inputs, b, iters, z_stars)
-            return losses.mean()
+                nn_output = predict_y(params, input)
+                z0 = nn_output
+        if hsde:
+            z0_full = jnp.ones(z0.size + 1)
+            z0_full = z0_full.at[:z0.size].set(z0)
         else:
-            predict_out = batch_predict(
-                params, inputs, b, iters, z_stars)
-            losses, iter_losses, angles, z_all = predict_out
-            # loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
-            return losses.mean(), losses, iter_losses, angles, z_all
-    return loss_fn
+            z0_full = z0
+        return z0_full, alpha
 
 
-def create_static_loss_fn(predict, diff_required, factor_static, M_static):
-    out_axes = get_out_axes_shape(diff_required)
-    predict_final = partial(predict,
-                            factor=factor_static,
-                            M=M_static
-                            )
-    batch_predict = vmap(predict_final, in_axes=(
-        None, 0, 0, None, 0), out_axes=out_axes)
+    def compute_angle(self, d1, d2):
+        cos = d1 @ d2 / (jnp.linalg.norm(d1) * jnp.linalg.norm(d2))
+        angle = jnp.arccos(cos)
+        return angle
 
-    @partial(jit, static_argnums=(3,))
-    def loss_fn(params, inputs, q, iters, z_stars):
-        if diff_required:
-            losses = batch_predict(params, inputs, q, iters, z_stars)
-            return losses.mean()
+
+    def final_loss(self, loss_method, z_last, iter_losses, supervised, z0, z_star):
+        """
+        encodes several possible loss functions
+
+        z_last is the last iterate from DR splitting
+        z_penultimate is the second to last iterate from DR splitting
+
+        z_star is only used if supervised
+
+        z0 is only used if the loss_method is first_2_last
+        """
+        if supervised:
+            if loss_method == 'constant_sum':
+                loss = iter_losses.sum()
+            elif loss_method == 'fixed_k':
+                loss = jnp.linalg.norm(z_last - z_star)
         else:
-            predict_out = batch_predict(
-                params, inputs, q, iters, z_stars)
-            losses, iter_losses, angles, primal_residuals, dual_residuals, out = predict_out
-            loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
-            return losses.mean(), loss_out
-    return loss_fn
+            if loss_method == 'increasing_sum':
+                weights = (1+jnp.arange(iter_losses.size))
+                loss = iter_losses @ weights
+            elif loss_method == 'constant_sum':
+                loss = iter_losses.sum()
+            elif loss_method == 'fixed_k':
+                loss = iter_losses[-1]
+            elif loss_method == 'first_2_last':
+                loss = jnp.linalg.norm(z_last - z0)
+        return loss
 
 
-def create_dynamic_loss_fn(predict, diff_required):
-    out_axes = get_out_axes_shape(diff_required)
-    batch_predict = vmap(predict, in_axes=(
-        None, 0, 0, None, 0, 0), out_axes=out_axes)
-
-    @partial(jax.jit, static_argnums=(5,))
-    def loss_fn(params, inputs, factor, M, q, iters):
-        if diff_required:
-            losses = batch_predict(params, inputs, q, iters, factor, M)
-            return losses.mean()
-        else:
-            predict_out = batch_predict(
-                params, inputs, q, iters, factor, M)
-            losses, iter_losses, angles, primal_residuals, dual_residuals, out = predict_out
-            loss_out = out, losses, iter_losses, angles, primal_residuals, dual_residuals
-            return losses.mean(), loss_out
-    return loss_fn
-
-
-def predict_warm_start(params, input, bypass_nn, hsde=None, share_all=False, Z_shared=None, normalize_alpha=None):
-    """
-    gets the warm-start
-    bypass_nn means we ignore the neural network and set z0=input
-    """
-    alpha = None
-    if bypass_nn:
-        z0 = input
-    else:
-        if share_all:
-            alpha_raw = predict_y(params, input)
-            alpha = normalize_alpha_fn(alpha_raw, normalize_alpha)
-            z0 = Z_shared @ alpha
-        else:
-            nn_output = predict_y(params, input)
-            z0 = nn_output
-    if hsde:
-        z0_full = jnp.ones(z0.size + 1)
-        z0_full = z0_full.at[:z0.size].set(z0)
-    else:
-        z0_full = z0
-    return z0_full, alpha
+    def normalize_alpha_fn(self, alpha, normalize_alpha):
+        """
+        normalizes the alpha vector according to the method prescribed
+            in the normalize_alpha input
+        """
+        if normalize_alpha == 'conic':
+            alpha = jnp.maximum(0, alpha)
+        elif normalize_alpha == 'sum':
+            alpha = alpha / alpha.sum()
+        elif normalize_alpha == 'convex':
+            alpha = jnp.maximum(0, alpha)
+            alpha = alpha / alpha.sum()
+        elif normalize_alpha == 'softmax':
+            alpha = jax.nn.softmax(alpha)
+        return alpha
+    
