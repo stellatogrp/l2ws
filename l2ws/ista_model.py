@@ -1,14 +1,23 @@
 from l2ws.l2ws_model import L2WSmodel
 import time
 import jax.numpy as jnp
-from l2ws.algo_steps import k_steps_eval_ista, k_steps_train_ista, lin_sys_solve
+from l2ws.algo_steps import k_steps_eval_ista, k_steps_train_ista, k_steps_eval_fista, k_steps_train_fista
 from functools import partial
 from jax import vmap, jit
 
 
 class ISTAmodel(L2WSmodel):
     def __init__(self, input_dict):
+        self.fista = input_dict['algorithm'] == 'fista'
         super(ISTAmodel, self).__init__(input_dict)
+
+    def setup_optimal_solutions(self, dict):
+        if dict.get('z_stars_train', None) is not None:
+            self.z_stars_train = jnp.array(dict['z_stars_train'])
+            self.z_stars_test = jnp.array(dict['z_stars_test'])
+        else:
+            self.z_stars_train, self.z_stars_test = None, None
+        
 
     def train_batch(self, batch_indices, params, state):
         batch_inputs = self.train_inputs[batch_indices, :]
@@ -23,9 +32,13 @@ class ISTAmodel(L2WSmodel):
         params, state = results
 
         return state.value, params, state
+    
+    def evaluate(self, k, inputs, b, z_stars, fixed_ws, tag='test'):
+        return self.static_eval(k, inputs, b, z_stars, tag=tag, fixed_ws=fixed_ws)
 
     def short_test_eval(self):
         z_stars_test = self.z_stars_test if self.supervised else None
+        
         test_loss, test_out, time_per_prob = self.static_eval(self.train_unrolls,
                                                               self.test_inputs,
                                                               self.b_mat_test,
@@ -51,7 +64,7 @@ class ISTAmodel(L2WSmodel):
         return loss, out, time_per_prob
 
     def create_end2end_loss_fn(self, bypass_nn, diff_required):
-        supervised = self.supervised and diff_required
+        supervised = self.supervised #and diff_required
 
         jit = self.jit
         share_all = self.share_all
@@ -66,10 +79,18 @@ class ISTAmodel(L2WSmodel):
 
 
             if diff_required:
-                z_final, iter_losses = k_steps_train_ista(iters, z0, b, lambd, A,
+                if self.fista:
+                    z_final, iter_losses = k_steps_train_fista(iters, z0, b, lambd, A,
+                                                          ista_step, supervised, z_star, jit)
+                else:
+                    z_final, iter_losses = k_steps_train_ista(iters, z0, b, lambd, A,
                                                           ista_step, supervised, z_star, jit)
             else:
-                z_final, iter_losses, z_all_plus_1 = k_steps_eval_ista(iters, z0, b, lambd, A,
+                if self.fista:
+                    z_final, iter_losses, z_all_plus_1 = k_steps_eval_fista(iters, z0, b, lambd, A,
+                                                                       ista_step, supervised, z_star, jit)
+                else:
+                    z_final, iter_losses, z_all_plus_1 = k_steps_eval_ista(iters, z0, b, lambd, A,
                                                                        ista_step, supervised, z_star, jit)
 
                 # compute angle(z^{k+1} - z^k, z^k - z^{k-1})

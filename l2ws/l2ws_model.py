@@ -56,7 +56,7 @@ class L2WSmodel(object):
     def initialize_algo(self, input_dict):
         if self.algorithm == 'scs':
             self.initialize_scs(input_dict)
-        elif self.algorithm == 'ista':
+        elif self.algorithm == 'ista' or self.algorithm == 'fista':
             self.initialize_ista(input_dict)
 
 
@@ -128,6 +128,8 @@ class L2WSmodel(object):
         else:
             output_size = self.output_size
         hidden_layer_sizes = nn_cfg.get('intermediate_layer_sizes', [])
+        # import pdb
+        # pdb.set_trace()
         layer_sizes = [input_size] + hidden_layer_sizes + [output_size]
 
         # initialize weights of neural network
@@ -155,16 +157,18 @@ class L2WSmodel(object):
             if self.pretrain_alpha:
                 self.pretrain_alphas(1000, None, share_all=True)
 
-    def setup_optimal_solutions(self, dict):
-        if dict.get('x_stars_train', None) is not None:
-            self.y_stars_train, self.y_stars_test = dict['y_stars_train'], dict['y_stars_test']
-            self.x_stars_train, self.x_stars_test = dict['x_stars_train'], dict['x_stars_test']
-            self.z_stars_train = jnp.array(dict['z_stars_train'])
-            self.z_stars_test = jnp.array(dict['z_stars_test'])
-            self.u_stars_train = jnp.hstack([self.x_stars_train, self.y_stars_train])
-            self.u_stars_test = jnp.hstack([self.x_stars_test, self.y_stars_test])
-        else:
-            self.z_stars_train, self.z_stars_test = None, None
+    # def setup_optimal_solutions(self, dict):
+    #     if dict.get('z_stars_train', None) is not None:
+    #         self.y_stars_train, self.y_stars_test = dict['y_stars_train'], dict['y_stars_test']
+    #         self.x_stars_train, self.x_stars_test = dict['x_stars_train'], dict['x_stars_test']
+    #         self.z_stars_train = jnp.array(dict['z_stars_train'])
+    #         self.z_stars_test = jnp.array(dict['z_stars_test'])
+    #         self.u_stars_train = jnp.hstack([self.x_stars_train, self.y_stars_train])
+    #         self.u_stars_test = jnp.hstack([self.x_stars_test, self.y_stars_test])
+    #     else:
+    #         self.z_stars_train, self.z_stars_test = None, None
+    #     import pdb
+    #     pdb.set_trace()
 
     # def create_end2end_loss_fn(self, bypass_nn, diff_required):
     #     raise NotImplementedError("Subclass needs to define this.")

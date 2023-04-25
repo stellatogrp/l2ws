@@ -6,6 +6,9 @@ import jax.scipy as jsp
 from l2ws.utils.generic_utils import python_fori_loop
 TAU_FACTOR = 10
 
+def eval_ista_obj(z, A, b, lambd):
+    return .5 * jnp.linalg.norm(A @ z - b) ** 2 + lambd * jnp.linalg.norm(z, ord=1)
+
 
 def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous, scale_vec, alpha):
     """
@@ -27,14 +30,6 @@ def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous, s
     return z_next, loss_vec
 
 
-# def solve_ista(A, b, lambd, t, max_iters=100):
-#     """
-#     solves the optimization problem
-#     min 1/2 ||Ax - b||_2^2 + lambd||x||_1
-#     with the ista algorithm
-#     """
-
-
 def fp_train_ista(i, val, supervised, z_star, A, b, lambd, ista_step):
     z, loss_vec = val
     z_next = fixed_point_ista(z, A, b, lambd, ista_step)
@@ -44,6 +39,18 @@ def fp_train_ista(i, val, supervised, z_star, A, b, lambd, ista_step):
         diff = jnp.linalg.norm(z_next - z)
     loss_vec = loss_vec.at[i].set(diff)
     return z_next, loss_vec
+
+
+def fp_train_fista(i, val, supervised, z_star, A, b, lambd, ista_step):
+    z, y, t, loss_vec = val
+    z_next, y_next, t_next = fixed_point_fista(z, y, t, A, b, lambd, ista_step)
+    if supervised:
+        diff = jnp.linalg.norm(z - z_star)
+    else:
+        diff = jnp.linalg.norm(z_next - z)
+    # diff = eval_ista_obj(z_next, A, b, lambd)
+    loss_vec = loss_vec.at[i].set(diff)
+    return z_next, y_next, t_next, loss_vec
 
 
 def fp_eval_ista(i, val, supervised, z_star, A, b, lambd, ista_step):
@@ -56,6 +63,19 @@ def fp_eval_ista(i, val, supervised, z_star, A, b, lambd, ista_step):
     loss_vec = loss_vec.at[i].set(diff)
     z_all = z_all.at[i, :].set(z_next)
     return z_next, loss_vec, z_all
+
+
+def fp_eval_fista(i, val, supervised, z_star, A, b, lambd, ista_step):
+    z, y, t, loss_vec, z_all = val
+    z_next, y_next, t_next = fixed_point_fista(z, y, t, A, b, lambd, ista_step)
+    if supervised:
+        diff = jnp.linalg.norm(z - z_star)
+    else:
+        diff = jnp.linalg.norm(z_next - z)
+    # diff = eval_ista_obj(z_next, A, b, lambd)
+    loss_vec = loss_vec.at[i].set(diff)
+    z_all = z_all.at[i, :].set(z_next)
+    return z_next, y_next, t_next, loss_vec, z_all
 
 
 def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, scale_vec, alpha,
@@ -119,6 +139,27 @@ def k_steps_train(k, z0, q_r, factor, supervised, z_star, proj, jit, hsde, m, n,
     return z_final, iter_losses
 
 
+def k_steps_train_fista(k, z0, b, lambd, A, ista_step, supervised, z_star, jit):
+    iter_losses = jnp.zeros(k)
+
+    fp_train_partial = partial(fp_train_fista,
+                               supervised=supervised,
+                               z_star=z_star,
+                               A=A,
+                               b=b,
+                               lambd=lambd,
+                               ista_step=ista_step
+                               )
+    val = z0, z0, 1, iter_losses
+    start_iter = 0
+    if jit:
+        out = lax.fori_loop(start_iter, k, fp_train_partial, val)
+    else:
+        out = python_fori_loop(start_iter, k, fp_train_partial, val)
+    z_final, y_final, t_final, iter_losses = out
+    return z_final, iter_losses
+
+
 def k_steps_train_ista(k, z0, b, lambd, A, ista_step, supervised, z_star, jit):
     iter_losses = jnp.zeros(k)
 
@@ -138,6 +179,30 @@ def k_steps_train_ista(k, z0, b, lambd, A, ista_step, supervised, z_star, jit):
         out = python_fori_loop(start_iter, k, fp_train_partial, val)
     z_final, iter_losses = out
     return z_final, iter_losses
+
+
+def k_steps_eval_fista(k, z0, b, lambd, A, ista_step, supervised, z_star, jit):
+    iter_losses = jnp.zeros(k)
+    z_all_plus_1 = jnp.zeros((k + 1, z0.size))
+    z_all_plus_1 = z_all_plus_1.at[0, :].set(z0)
+    fp_eval_partial = partial(fp_eval_fista,
+                              supervised=supervised,
+                              z_star=z_star,
+                              A=A,
+                              b=b,
+                              lambd=lambd,
+                              ista_step=ista_step
+                              )
+    z_all = jnp.zeros((k, z0.size))
+    val = z0, z0, 1, iter_losses, z_all
+    start_iter = 0
+    if jit:
+        out = lax.fori_loop(start_iter, k, fp_eval_partial, val)
+    else:
+        out = python_fori_loop(start_iter, k, fp_eval_partial, val)
+    z_final, y_final, t_final, iter_losses, z_all = out
+    z_all_plus_1 = z_all_plus_1.at[1:, :].set(z_all)
+    return z_final, iter_losses, z_all_plus_1
 
 
 def k_steps_eval_ista(k, z0, b, lambd, A, ista_step, supervised, z_star, jit):
@@ -369,6 +434,16 @@ def fixed_point_ista(z, A, b, lambd, ista_step):
     applies the ista fixed point operator
     """
     return soft_threshold(z + ista_step * A.T.dot(b - A.dot(z)), ista_step * lambd)
+
+
+def fixed_point_fista(z, y, t, A, b, lambd, ista_step):
+    """
+    applies the fista fixed point operator
+    """
+    z_next = fixed_point_ista(y, A, b, lambd, ista_step)
+    t_next = .5 * (1 + jnp.sqrt(1 + 4 * t ** 2))
+    y_next = z_next + (t - 1) / t_next * (z_next - z)
+    return z_next, y_next, t_next
 
 
 def soft_threshold(z, alpha):

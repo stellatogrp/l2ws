@@ -10,6 +10,17 @@ class SCSmodel(L2WSmodel):
     def __init__(self, input_dict):
         super(SCSmodel, self).__init__(input_dict)
 
+    def setup_optimal_solutions(self, dict):
+        if dict.get('x_stars_train', None) is not None:
+            self.y_stars_train, self.y_stars_test = dict['y_stars_train'], dict['y_stars_test']
+            self.x_stars_train, self.x_stars_test = dict['x_stars_train'], dict['x_stars_test']
+            self.z_stars_train = jnp.array(dict['z_stars_train'])
+            self.z_stars_test = jnp.array(dict['z_stars_test'])
+            self.u_stars_train = jnp.hstack([self.x_stars_train, self.y_stars_train])
+            self.u_stars_test = jnp.hstack([self.x_stars_test, self.y_stars_test])
+        else:
+            self.z_stars_train, self.z_stars_test = None, None
+
     def train_batch(self, batch_indices, params, state):
         batch_inputs = self.train_inputs[batch_indices, :]
         batch_q_data = self.q_mat_train[batch_indices, :]
