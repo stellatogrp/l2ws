@@ -136,3 +136,4 @@ outputs/
 data/
 scs-python/
 outputs
+notebooks/mnist_data/
