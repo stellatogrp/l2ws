@@ -36,15 +36,15 @@ def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous, s
 def k_steps_train_osqp():
     pass
 
-def k_steps_eval_osqp(k, xy0, factor, A, q, rho, sigma, supervised, z_star, jit):
+def k_steps_eval_osqp(k, z0, factor, A, q, rho, sigma, supervised, z_star, jit):
     iter_losses = jnp.zeros(k)
     m, n = A.shape
 
     # initialize z0
-    z0 = jnp.zeros((n + 2 * m))
-    z0 = z0.at[:m + n].set(xy0)
-    w = A @ xy0[:n]
-    z0 = z0.at[m + n:].set(w)
+    z_init = jnp.zeros((n + 2 * m))
+    z_init = z_init.at[:m + n].set(z0)
+    w = A @ z0[:n]
+    z_init = z_init.at[m + n:].set(w)
 
     z_all_plus_1 = jnp.zeros((k + 1, z0.size))
     z_all_plus_1 = z_all_plus_1.at[0, :].set(z0)
@@ -198,12 +198,12 @@ def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, scale_vec,
     return z_next, z_prev, loss_vec, all_z, all_u, all_v, primal_residuals, dual_residuals
 
 
-def k_steps_train(k, z0, q_r, factor, supervised, z_star, proj, jit, hsde, m, n, zero_cone_size,
+def k_steps_train(k, z0, q, factor, supervised, z_star, proj, jit, hsde, m, n, zero_cone_size,
                   rho_x=1, scale=1, alpha=1.0):
     iter_losses = jnp.zeros(k)
     scale_vec = get_scale_vec(rho_x, scale, m, n, zero_cone_size, hsde=hsde)
 
-    fp_train_partial = partial(fp_train, q_r=q_r, factor=factor,
+    fp_train_partial = partial(fp_train, q_r=q, factor=factor,
                                supervised=supervised, z_star=z_star, proj=proj, hsde=hsde,
                                homogeneous=True, scale_vec=scale_vec, alpha=alpha)
 
@@ -214,7 +214,7 @@ def k_steps_train(k, z0, q_r, factor, supervised, z_star, proj, jit, hsde, m, n,
         #   which is set to 1
         homogeneous = False
         z_next, u, u_tilde, v = fixed_point_hsde(
-            z0, homogeneous, q_r, factor, proj, scale_vec, alpha)
+            z0, homogeneous, q, factor, proj, scale_vec, alpha)
         iter_losses = iter_losses.at[0].set(jnp.linalg.norm(z_next - z0))
         z0 = z_next
     val = z0, iter_losses
@@ -227,14 +227,14 @@ def k_steps_train(k, z0, q_r, factor, supervised, z_star, proj, jit, hsde, m, n,
     return z_final, iter_losses
 
 
-def k_steps_train_fista(k, z0, b, lambd, A, ista_step, supervised, z_star, jit):
+def k_steps_train_fista(k, z0, q, lambd, A, ista_step, supervised, z_star, jit):
     iter_losses = jnp.zeros(k)
 
     fp_train_partial = partial(fp_train_fista,
                                supervised=supervised,
                                z_star=z_star,
                                A=A,
-                               b=b,
+                               b=q,
                                lambd=lambd,
                                ista_step=ista_step
                                )
@@ -248,14 +248,14 @@ def k_steps_train_fista(k, z0, b, lambd, A, ista_step, supervised, z_star, jit):
     return z_final, iter_losses
 
 
-def k_steps_train_ista(k, z0, b, lambd, A, ista_step, supervised, z_star, jit):
+def k_steps_train_ista(k, z0, q, lambd, A, ista_step, supervised, z_star, jit):
     iter_losses = jnp.zeros(k)
 
     fp_train_partial = partial(fp_train_ista,
                                supervised=supervised,
                                z_star=z_star,
                                A=A,
-                               b=b,
+                               b=q,
                                lambd=lambd,
                                ista_step=ista_step
                                )
@@ -269,7 +269,7 @@ def k_steps_train_ista(k, z0, b, lambd, A, ista_step, supervised, z_star, jit):
     return z_final, iter_losses
 
 
-def k_steps_eval_fista(k, z0, b, lambd, A, ista_step, supervised, z_star, jit):
+def k_steps_eval_fista(k, z0, q, lambd, A, ista_step, supervised, z_star, jit):
     iter_losses = jnp.zeros(k)
     z_all_plus_1 = jnp.zeros((k + 1, z0.size))
     z_all_plus_1 = z_all_plus_1.at[0, :].set(z0)
@@ -277,7 +277,7 @@ def k_steps_eval_fista(k, z0, b, lambd, A, ista_step, supervised, z_star, jit):
                               supervised=supervised,
                               z_star=z_star,
                               A=A,
-                              b=b,
+                              b=q,
                               lambd=lambd,
                               ista_step=ista_step
                               )
@@ -293,7 +293,7 @@ def k_steps_eval_fista(k, z0, b, lambd, A, ista_step, supervised, z_star, jit):
     return z_final, iter_losses, z_all_plus_1
 
 
-def k_steps_eval_ista(k, z0, b, lambd, A, ista_step, supervised, z_star, jit):
+def k_steps_eval_ista(k, z0, q, lambd, A, ista_step, supervised, z_star, jit):
     iter_losses = jnp.zeros(k)
     z_all_plus_1 = jnp.zeros((k + 1, z0.size))
     z_all_plus_1 = z_all_plus_1.at[0, :].set(z0)
@@ -301,7 +301,7 @@ def k_steps_eval_ista(k, z0, b, lambd, A, ista_step, supervised, z_star, jit):
                               supervised=supervised,
                               z_star=z_star,
                               A=A,
-                              b=b,
+                              b=q,
                               lambd=lambd,
                               ista_step=ista_step
                               )
@@ -317,7 +317,7 @@ def k_steps_eval_ista(k, z0, b, lambd, A, ista_step, supervised, z_star, jit):
     return z_final, iter_losses, z_all_plus_1
 
 
-def k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit, hsde, zero_cone_size,
+def k_steps_eval(k, z0, q, factor, proj, P, A, c, b, jit, hsde, zero_cone_size,
                  rho_x=1, scale=1, alpha=1.0):
     """
     if k = 500 we store u_1, ..., u_500 and z_0, z_1, ..., z_500
@@ -345,14 +345,14 @@ def k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit, hsde, zero_cone_size
         homogeneous = False
 
         z_next, u, u_tilde, v = fixed_point_hsde(
-            z0, homogeneous, q_r, factor, proj, scale_vec, alpha, verbose=verbose)
+            z0, homogeneous, q, factor, proj, scale_vec, alpha, verbose=verbose)
         all_z = all_z.at[0, :].set(z_next)
         all_u = all_u.at[0, :].set(u)
         all_v = all_v.at[0, :].set(v)
         iter_losses = iter_losses.at[0].set(jnp.linalg.norm(z_next - z0))
         z0 = z_next
 
-    fp_eval_partial = partial(fp_eval, q_r=q_r, factor=factor,
+    fp_eval_partial = partial(fp_eval, q_r=q, factor=factor,
                               proj=proj, P=P, A=A, c=c, b=b, hsde=hsde,
                               homogeneous=True, scale_vec=scale_vec, alpha=alpha,
                               verbose=verbose)

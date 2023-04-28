@@ -52,53 +52,82 @@ class L2WSmodel(object):
         self.algorithm = input_dict['algorithm']
         self.batch_angle = vmap(self.compute_angle, in_axes=(0, 0), out_axes=(0))
 
-
-    def initialize_algo(self, input_dict):
-        if self.algorithm == 'scs':
-            self.initialize_scs(input_dict)
-        elif self.algorithm == 'ista' or self.algorithm == 'fista':
-            self.initialize_ista(input_dict)
-
-
-    def initialize_ista(self, input_dict):
-        self.A = input_dict['A']
-        self.b_mat_train, self.b_mat_test = input_dict['b_mat_train'], input_dict['b_mat_test']
-        self.lambd = input_dict['lambd']
-        self.ista_step = input_dict['ista_step']
-
-        self.m, self.n = self.A.shape
-        self.output_size = self.n
-
-
-    def initialize_scs(self, input_dict):
-        """
-        the input_dict is required to contain these keys
-        otherwise there is an error
-        """
-        self.hsde = input_dict.get('hsde', True)
-        self.m, self.n = input_dict['m'], input_dict['n']
-        self.proj, self.static_flag = input_dict['proj'], input_dict['static_flag']
-        self.q_mat_train, self.q_mat_test = input_dict['q_mat_train'], input_dict['q_mat_test']
-
-        if self.static_flag:
-            self.static_M = input_dict['static_M']
-            self.static_algo_factor = input_dict['static_algo_factor']
+    def setup_optimal_solutions(self, dict):
+        if dict.get('z_stars_train', None) is not None:
+            self.z_stars_train = jnp.array(dict['z_stars_train'])
+            self.z_stars_test = jnp.array(dict['z_stars_test'])
         else:
-            self.M_tensor_train = input_dict['M_tensor_train']
-            self.M_tensor_test = input_dict['M_tensor_test']
-            self.static_M, self.static_algo_factor = None, None
-            self.matrix_invs_train = input_dict['matrix_invs_train']
-            self.matrix_invs_test = input_dict['matrix_invs_test']
+            self.z_stars_train, self.z_stars_test = None, None
 
-        # hyperparameters of scs
-        self.rho_x = input_dict['rho_x']
-        self.scale = input_dict['scale']
-        self.alpha_relax = input_dict['alpha_relax']
+    def create_end2end_loss_fn(self, bypass_nn, diff_required):
+        supervised = self.supervised #and diff_required
+        loss_method = self.loss_method
 
-        # not a hyperparameter, but used for scale knob
-        self.zero_cone_size = input_dict['zero_cone_size']
+        def predict(params, input, q, iters, z_star):
+            z0, alpha = self.predict_warm_start(params, input, bypass_nn)
 
-        self.output_size = self.n + self.m
+            if diff_required:
+                z_final, iter_losses = self.k_steps_train_fn(k=iters, z0=z0, q=q, supervised=supervised, z_star=z_star)
+            else:
+                z_final, iter_losses, z_all_plus_1 = self.k_steps_eval_fn(k=iters, z0=z0, q=q, supervised=supervised, z_star=z_star)
+
+                # compute angle(z^{k+1} - z^k, z^k - z^{k-1})
+                diffs = jnp.diff(z_all_plus_1, axis=0)
+                angles = self.batch_angle(diffs[:-1], diffs[1:])
+
+            loss = self.final_loss(loss_method, z_final, iter_losses, supervised, z0, z_star)
+
+            if diff_required:
+                return loss
+            else:
+                # out = z_all_plus_1, z_final
+                return loss, iter_losses, angles, z_all_plus_1
+        # loss_fn = predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
+        # loss_fn = self.predict_2_loss_ista(predict, diff_required)
+        loss_fn = self.predict_2_loss(predict, diff_required)
+        return loss_fn
+
+    def train_batch(self, batch_indices, params, state):
+        batch_inputs = self.train_inputs[batch_indices, :]
+        batch_q_data = self.q_mat_train[batch_indices, :]
+        batch_z_stars = self.z_stars_train[batch_indices, :] if self.supervised else None
+        results = self.optimizer.update(params=params,
+                                        state=state,
+                                        inputs=batch_inputs,
+                                        b=batch_q_data,
+                                        iters=self.train_unrolls,
+                                        z_stars=batch_z_stars)
+        params, state = results
+        return state.value, params, state
+
+    def evaluate(self, k, inputs, b, z_stars, fixed_ws, tag='test'):
+        return self.static_eval(k, inputs, b, z_stars, tag=tag, fixed_ws=fixed_ws)
+
+    def short_test_eval(self):
+        z_stars_test = self.z_stars_test if self.supervised else None
+        
+        test_loss, test_out, time_per_prob = self.static_eval(self.train_unrolls,
+                                                              self.test_inputs,
+                                                              self.q_mat_test,
+                                                              z_stars_test)
+        self.te_losses.append(test_loss)
+
+        time_per_iter = time_per_prob / self.train_unrolls
+        return test_loss, time_per_iter
+    
+    def static_eval(self, k, inputs, b, z_stars, tag='test', fixed_ws=False):
+        if fixed_ws:
+            curr_loss_fn = self.loss_fn_fixed_ws
+        else:
+            curr_loss_fn = self.loss_fn_eval
+        num_probs, _ = inputs.shape
+
+        test_time0 = time.time()
+
+        loss, out = curr_loss_fn(self.params, inputs, b, k, z_stars)
+        time_per_prob = (time.time() - test_time0)/num_probs
+
+        return loss, out, time_per_prob
 
     def initialize_neural_network(self, input_dict):
         nn_cfg = input_dict.get('nn_cfg', {})
@@ -128,8 +157,7 @@ class L2WSmodel(object):
         else:
             output_size = self.output_size
         hidden_layer_sizes = nn_cfg.get('intermediate_layer_sizes', [])
-        # import pdb
-        # pdb.set_trace()
+
         layer_sizes = [input_size] + hidden_layer_sizes + [output_size]
 
         # initialize weights of neural network
@@ -514,4 +542,34 @@ class L2WSmodel(object):
         elif normalize_alpha == 'softmax':
             alpha = jax.nn.softmax(alpha)
         return alpha
+    
+    def get_out_axes_shape(self, diff_required):
+        if diff_required:
+            # out_axes for (loss)
+            out_axes = (0)
+        else:
+            # out_axes for
+            #   (loss, iter_losses, angles, primal_residuals, dual_residuals, out)
+            #   out = (all_z_, z_next, alpha, all_u, all_v)
+            out_axes = (0, 0, 0, 0)
+        return out_axes
+    
+    def predict_2_loss(self, predict, diff_required):
+        out_axes = self.get_out_axes_shape(diff_required)
+        batch_predict = vmap(predict,
+                             in_axes=(None, 0, 0, None, 0),
+                             out_axes=out_axes)
+
+        @partial(jit, static_argnums=(3,))
+        def loss_fn(params, inputs, b, iters, z_stars):
+            if diff_required:
+                losses = batch_predict(params, inputs, b, iters, z_stars)
+                return losses.mean()
+            else:
+                predict_out = batch_predict(
+                    params, inputs, b, iters, z_stars)
+                losses, iter_losses, angles, z_all = predict_out
+                loss_out = losses, iter_losses, angles, z_all
+                return losses.mean(), loss_out
+        return loss_fn
     

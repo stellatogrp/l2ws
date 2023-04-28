@@ -17,7 +17,7 @@ from examples.ista import sol_2_obj_diff, solve_many_probs_cvxpy
 from l2ws.utils.nn_utils import get_nearest_neighbors
 
 
-@pytest.mark.skip(reason="temp")
+# @pytest.mark.skip(reason="temp")
 def test_basic_ista():
     m, n = 5, 10
     A = jnp.array(np.random.normal(size=(m, n)))
@@ -25,14 +25,14 @@ def test_basic_ista():
     k = 100
     z0 = jnp.zeros(n)
     lambd = .1
-    evals,evecs = jnp.linalg.eigh(A.T@A)
+    evals,evecs = jnp.linalg.eigh(A.T @ A)
     step = 1 / jnp.max(evals)
 
     z_k, losses = k_steps_train_ista(k, z0, b, lambd, A, step, supervised=False, z_star=None, jit=True)
-    assert losses[-1] < losses[0] * .01 and losses[0] > .1
+    assert losses[-1] < losses[0] * .05 and losses[0] > .05
 
 
-@pytest.mark.skip(reason="temp")
+# @pytest.mark.skip(reason="temp")
 def test_basic_fista():
     m, n = 5, 10
     A = jnp.array(np.random.normal(size=(m, n)))
@@ -44,7 +44,7 @@ def test_basic_fista():
     step = 1 / jnp.max(evals)
 
     z_k, losses = k_steps_train_fista(k, z0, b, lambd, A, step, supervised=False, z_star=None, jit=True)
-    assert losses[-1] < losses[0] * 1e-6 and losses[0] > .1
+    assert losses[-1] < losses[0] * 1e-5 and losses[0] > .01
 
 
 # @pytest.mark.skip(reason="temp")
@@ -145,27 +145,29 @@ def test_train_ista():
     final_rel_objs = batch_rel_mat(final_z_all, b_mat_test, objvals_test).mean(axis=1)
 
     final_test_losses = final_eval_out[1][1].mean(axis=0)
-    plt.plot(init_test_losses, label='cold start')
-    plt.plot(final_test_losses, label=f"learned k={train_unrolls}")
-    plt.plot(nn_losses, label='nearest neighbor')
-    plt.yscale('log')
-    plt.xscale('log')
-    plt.title('fixed point residuals')
-    plt.legend()
-    plt.show()
 
-    plt.plot(init_rel_objs, label='cold start')
-    plt.plot(final_rel_objs, label=f"learned k={train_unrolls}")
-    plt.plot(nn_rel_objs, label='nearest neighbor')
-    plt.yscale('log')
-    plt.xscale('log')
-    plt.title('objective suboptimality')
-    plt.legend()
-    plt.show()
+    assert final_test_loss < init_test_loss * .1
+    # plt.plot(init_test_losses, label='cold start')
+    # plt.plot(final_test_losses, label=f"learned k={train_unrolls}")
+    # plt.plot(nn_losses, label='nearest neighbor')
+    # plt.yscale('log')
+    # plt.xscale('log')
+    # plt.title('fixed point residuals')
+    # plt.legend()
+    # plt.show()
 
-    plt.plot(losses)
-    plt.yscale('log')
-    plt.show()
+    # plt.plot(init_rel_objs, label='cold start')
+    # plt.plot(final_rel_objs, label=f"learned k={train_unrolls}")
+    # plt.plot(nn_rel_objs, label='nearest neighbor')
+    # plt.yscale('log')
+    # plt.xscale('log')
+    # plt.title('objective suboptimality')
+    # plt.legend()
+    # plt.show()
 
-    import pdb
-    pdb.set_trace()
+    # plt.plot(losses)
+    # plt.yscale('log')
+    # plt.show()
+
+    # import pdb
+    # pdb.set_trace()

@@ -10,6 +10,36 @@ class SCSmodel(L2WSmodel):
     def __init__(self, input_dict):
         super(SCSmodel, self).__init__(input_dict)
 
+    def initialize_algo(self, input_dict):
+        """
+        the input_dict is required to contain these keys
+        otherwise there is an error
+        """
+        self.hsde = input_dict.get('hsde', True)
+        self.m, self.n = input_dict['m'], input_dict['n']
+        self.proj, self.static_flag = input_dict['proj'], input_dict['static_flag']
+        self.q_mat_train, self.q_mat_test = input_dict['q_mat_train'], input_dict['q_mat_test']
+
+        if self.static_flag:
+            self.static_M = input_dict['static_M']
+            self.static_algo_factor = input_dict['static_algo_factor']
+        else:
+            self.M_tensor_train = input_dict['M_tensor_train']
+            self.M_tensor_test = input_dict['M_tensor_test']
+            self.static_M, self.static_algo_factor = None, None
+            self.matrix_invs_train = input_dict['matrix_invs_train']
+            self.matrix_invs_test = input_dict['matrix_invs_test']
+
+        # hyperparameters of scs
+        self.rho_x = input_dict['rho_x']
+        self.scale = input_dict['scale']
+        self.alpha_relax = input_dict['alpha_relax']
+
+        # not a hyperparameter, but used for scale knob
+        self.zero_cone_size = input_dict['zero_cone_size']
+
+        self.output_size = self.n + self.m
+
     def setup_optimal_solutions(self, dict):
         if dict.get('x_stars_train', None) is not None:
             self.y_stars_train, self.y_stars_test = dict['y_stars_train'], dict['y_stars_test']
