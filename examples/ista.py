@@ -33,11 +33,12 @@ def solve_many_probs_cvxpy(A, b_mat, lambd):
     N = b_mat.shape[0]
     z, b_param = cp.Variable(n), cp.Parameter(m)
     prob = cp.Problem(cp.Minimize(.5 * cp.sum_squares(np.array(A) @ z - b_param) + lambd * cp.norm(z, p=1)))
+    # prob = cp.Problem(cp.Minimize(.5 * cp.sum_squares(np.array(A) @ z - b_param) + lambd * cp.tv(z)))
     z_stars = jnp.zeros((N, n))
     objvals = jnp.zeros((N))
     for i in range(N):
         b_param.value = np.array(b_mat[i, :])
-        prob.solve()
+        prob.solve(verbose=False)
         objvals = objvals.at[i].set(prob.value)
         z_stars = z_stars.at[i, :].set(jnp.array(z.value))
     print('finished solving cvxpy problems')

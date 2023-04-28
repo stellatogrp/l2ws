@@ -30,6 +30,94 @@ def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous, s
     return z_next, loss_vec
 
 
+# def solve_osqp(k, xy0, l, u, q, P, A, rho, sigma, supervised, z_star, jit):
+#     k_steps_eval_osqp(k, xy0, factor, A, q, rho, sigma, supervised, z_star, jit)
+
+def k_steps_train_osqp():
+    pass
+
+def k_steps_eval_osqp(k, xy0, factor, A, q, rho, sigma, supervised, z_star, jit):
+    iter_losses = jnp.zeros(k)
+    m, n = A.shape
+
+    # initialize z0
+    z0 = jnp.zeros((n + 2 * m))
+    z0 = z0.at[:m + n].set(xy0)
+    w = A @ xy0[:n]
+    z0 = z0.at[m + n:].set(w)
+
+    z_all_plus_1 = jnp.zeros((k + 1, z0.size))
+    z_all_plus_1 = z_all_plus_1.at[0, :].set(z0)
+    fp_eval_partial = partial(fp_eval_osqp,
+                              supervised=supervised,
+                              z_star=z_star,
+                              factor=factor,
+                              A=A,
+                              q=q,
+                              rho=rho,
+                              sigma=sigma
+                              )
+    z_all = jnp.zeros((k, z0.size))
+    val = z0, iter_losses, z_all
+    start_iter = 0
+    if jit:
+        out = lax.fori_loop(start_iter, k, fp_eval_partial, val)
+    else:
+        out = python_fori_loop(start_iter, k, fp_eval_partial, val)
+    z_final, iter_losses, z_all = out
+    z_all_plus_1 = z_all_plus_1.at[1:, :].set(z_all)
+    return z_final, iter_losses, z_all_plus_1
+
+
+def fp_train_osqp(i, val, supervised, z_star, factor, A, q, rho, sigma):
+    z, loss_vec = val
+    z_next = fixed_point_osqp(z, factor, A, q, rho, sigma)
+    if supervised:
+        diff = jnp.linalg.norm(z - z_star)
+    else:
+        diff = jnp.linalg.norm(z_next - z)
+    loss_vec = loss_vec.at[i].set(diff)
+    return z_next, loss_vec
+
+
+def fp_eval_osqp(i, val, supervised, z_star, factor, A, q, rho, sigma):
+    z, loss_vec, z_all = val
+    z_next = fixed_point_osqp(z, factor, A, q, rho, sigma)
+    if supervised:
+        diff = jnp.linalg.norm(z - z_star)
+    else:
+        diff = jnp.linalg.norm(z_next - z)
+    loss_vec = loss_vec.at[i].set(diff)
+    z_all = z_all.at[i, :].set(z_next)
+    return z_next, loss_vec, z_all
+
+
+def fixed_point_osqp(z, factor, A, q, rho, sigma):
+    # z = (x, y, w) w is the z variable in osqp terminology
+    m, n = A.shape
+    x, y, w = z[:n], z[n:n + m], z[n + m:]
+    c, l, u = q[:n], q[n:n + m], q[n + m:]
+
+    # update (x, nu)
+    rhs = sigma * x - c + A.T @ (rho * w - y)
+    x_next = lin_sys_solve(factor, rhs)
+    nu = rho * (A @ x_next - w) + y
+
+    # update w_tilde
+    w_tilde = w + (nu - y) / rho
+
+    # update w
+    w_next = jnp.clip(w_tilde + y / rho, a_min=l, a_max=u)
+
+    # update y
+    y_next = y + rho * (w_tilde - w_next)
+
+    # concatenate into the fixed point vector
+    z_next = jnp.concatenate([x_next, y_next, w_next])
+
+    return z_next
+
+
 def fp_train_ista(i, val, supervised, z_star, A, b, lambd, ista_step):
     z, loss_vec = val
     z_next = fixed_point_ista(z, A, b, lambd, ista_step)
