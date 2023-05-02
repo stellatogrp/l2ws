@@ -30,13 +30,29 @@ def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous, s
     return z_next, loss_vec
 
 
-# def solve_osqp(k, xy0, l, u, q, P, A, rho, sigma, supervised, z_star, jit):
-#     k_steps_eval_osqp(k, xy0, factor, A, q, rho, sigma, supervised, z_star, jit)
+def k_steps_train_osqp(k, z0, q, factor, A, rho, sigma, supervised, z_star, jit):
+    iter_losses = jnp.zeros(k)
 
-def k_steps_train_osqp():
-    pass
+    fp_train_partial = partial(fp_train_osqp,
+                              supervised=supervised,
+                              z_star=z_star,
+                              factor=factor,
+                              A=A,
+                              q=q,
+                              rho=rho,
+                              sigma=sigma
+                              )
+    val = z0, iter_losses
+    start_iter = 0
+    if jit:
+        out = lax.fori_loop(start_iter, k, fp_train_partial, val)
+    else:
+        out = python_fori_loop(start_iter, k, fp_train_partial, val)
+    z_final, iter_losses = out
+    return z_final, iter_losses
 
-def k_steps_eval_osqp(k, z0, factor, A, q, rho, sigma, supervised, z_star, jit):
+
+def k_steps_eval_osqp(k, z0, q, factor, A, rho, sigma, supervised, z_star, jit):
     iter_losses = jnp.zeros(k)
     m, n = A.shape
 
@@ -46,8 +62,8 @@ def k_steps_eval_osqp(k, z0, factor, A, q, rho, sigma, supervised, z_star, jit):
     w = A @ z0[:n]
     z_init = z_init.at[m + n:].set(w)
 
-    z_all_plus_1 = jnp.zeros((k + 1, z0.size))
-    z_all_plus_1 = z_all_plus_1.at[0, :].set(z0)
+    z_all_plus_1 = jnp.zeros((k + 1, z_init.size))
+    z_all_plus_1 = z_all_plus_1.at[0, :].set(z_init)
     fp_eval_partial = partial(fp_eval_osqp,
                               supervised=supervised,
                               z_star=z_star,
@@ -57,8 +73,8 @@ def k_steps_eval_osqp(k, z0, factor, A, q, rho, sigma, supervised, z_star, jit):
                               rho=rho,
                               sigma=sigma
                               )
-    z_all = jnp.zeros((k, z0.size))
-    val = z0, iter_losses, z_all
+    z_all = jnp.zeros((k, z_init.size))
+    val = z_init, iter_losses, z_all
     start_iter = 0
     if jit:
         out = lax.fori_loop(start_iter, k, fp_eval_partial, val)
