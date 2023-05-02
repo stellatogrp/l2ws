@@ -32,6 +32,15 @@ def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous, s
 
 def k_steps_train_osqp(k, z0, q, factor, A, rho, sigma, supervised, z_star, jit):
     iter_losses = jnp.zeros(k)
+    # import pdb
+    # pdb.set_trace()
+    m, n = A.shape
+
+    # initialize z_init
+    z_init = jnp.zeros((n + 2 * m))
+    z_init = z_init.at[:m + n].set(z0)
+    w = A @ z0[:n]
+    z_init = z_init.at[m + n:].set(w)
 
     fp_train_partial = partial(fp_train_osqp,
                               supervised=supervised,
@@ -42,7 +51,7 @@ def k_steps_train_osqp(k, z0, q, factor, A, rho, sigma, supervised, z_star, jit)
                               rho=rho,
                               sigma=sigma
                               )
-    val = z0, iter_losses
+    val = z_init, iter_losses
     start_iter = 0
     if jit:
         out = lax.fori_loop(start_iter, k, fp_train_partial, val)
@@ -56,7 +65,7 @@ def k_steps_eval_osqp(k, z0, q, factor, A, rho, sigma, supervised, z_star, jit):
     iter_losses = jnp.zeros(k)
     m, n = A.shape
 
-    # initialize z0
+    # initialize z_init
     z_init = jnp.zeros((n + 2 * m))
     z_init = z_init.at[:m + n].set(z0)
     w = A @ z0[:n]

@@ -320,8 +320,7 @@ def static_canon_osqp(T, nx, nu, state_box, control_box, Q_val, QT_val, R_val, A
         control_box_vec = control_box*np.ones(T * nu)
     else:
         control_box_vec = np.repeat(control_box, T)
-    import pdb
-    pdb.set_trace()
+
     b_upper = np.hstack(
         [state_box_vec, control_box_vec])
     b_lower = -np.hstack(

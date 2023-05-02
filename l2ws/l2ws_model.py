@@ -91,6 +91,8 @@ class L2WSmodel(object):
         batch_inputs = self.train_inputs[batch_indices, :]
         batch_q_data = self.q_mat_train[batch_indices, :]
         batch_z_stars = self.z_stars_train[batch_indices, :] if self.supervised else None
+        # import pdb
+        # pdb.set_trace()
         results = self.optimizer.update(params=params,
                                         state=state,
                                         inputs=batch_inputs,

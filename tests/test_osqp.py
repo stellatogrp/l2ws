@@ -12,9 +12,9 @@ import cvxpy as cp
 from jax import vmap
 from functools import partial
 from examples.osc_mass import multiple_random_osc_mass_osqp
-from examples.mpc import multiple_random_mpc_osqp
+from examples.mpc import multiple_random_mpc_osqp, solve_many_probs_cvxpy
 from scipy.spatial import distance_matrix
-from examples.ista import sol_2_obj_diff, solve_many_probs_cvxpy
+# from examples.ista import sol_2_obj_diff, solve_many_probs_cvxpy
 from l2ws.utils.nn_utils import get_nearest_neighbors
 
 
@@ -24,13 +24,101 @@ from l2ws.utils.nn_utils import get_nearest_neighbors
 #     for i in range(N):
 
 def test_random_mpc():
-    N = 10
-    multiple_random_mpc_osqp(N, T=10, x_init_box=2, state_box=4,
-                             control_box=.5, nx=20, nu=10, Q_vec=1, QT_val=1, R_vec=.1,
-                             sigma=1, rho=1,
-                             Ad=None,
-                             Bd=None,
-                             seed=42)
+    N_train = 500
+    N_test = 50
+    N = N_train + N_test
+    factor, P, A, q_mat, theta_mat = multiple_random_mpc_osqp(N, 
+                                                              T=10,
+                                                              nx=10,
+                                                              nu=5,
+                                                              sigma=1,
+                                                              rho=1,
+                                                              Ad=None,
+                                                              Bd=None,
+                                                              seed=42)
+    # import pdb
+    # pdb.set_trace()
+    train_inputs, test_inputs = theta_mat[:N_train, :], theta_mat[N_train:, :]
+    z_stars_train, z_stars_test = None, None
+    q_mat_train, q_mat_test = q_mat[:N_train, :], q_mat[N_train:, :]
+
+    # solve the QPs
+    z_stars, objvals = solve_many_probs_cvxpy(P, A, q_mat)
+    z_stars_train, z_stars_test = z_stars[:N_train, :], z_stars[N_train:, :]
+
+    train_unrolls = 10
+    input_dict = dict(algorithm='osqp',
+                      q_mat_train=q_mat_train,
+                      q_mat_test=q_mat_test,
+                      A=A,
+                      factor=factor,
+                      train_inputs=theta_mat[:N_train, :],
+                      test_inputs=theta_mat[N_train:, :],
+                      train_unrolls=train_unrolls,
+                      nn_cfg={'intermediate_layer_sizes': [300]},
+                      jit=True)
+    osqp_model = OSQPmodel(input_dict)
+
+    # full evaluation on the test set with nearest neighbor
+    k = 2000
+    nearest_neighbors_z = get_nearest_neighbors(train_inputs, test_inputs, z_stars_train)
+    nn_eval_out = osqp_model.evaluate(k, nearest_neighbors_z,
+                                      q_mat_test, z_stars=z_stars_test,
+                                      fixed_ws=True, tag='test')
+    # nn_z_all = nn_eval_out[1][3]
+    # nn_rel_objs = batch_rel_mat(nn_z_all, b_mat_test, objvals_test).mean(axis=1)
+    nn_losses = nn_eval_out[1][1].mean(axis=0)
+
+    # full evaluation on the test set
+    init_eval_out = osqp_model.evaluate(
+        k, test_inputs, q_mat_test, z_stars=z_stars_test, fixed_ws=False, tag='test')
+    init_test_losses = init_eval_out[1][1].mean(axis=0)
+    # init_z_all = init_eval_out[1][3]
+
+    # import pdb
+    # pdb.set_trace()
+
+    plt.plot(init_test_losses)
+    plt.plot(nn_losses)
+    plt.yscale('log')
+    plt.show()
+
+    # train the osqp_model
+    # call train_batch without jitting
+    params, state = osqp_model.params, osqp_model.state
+    num_epochs = 3000
+    train_losses = jnp.zeros(num_epochs)
+    for i in range(num_epochs):
+        train_result = osqp_model.train_full_batch(params, state)
+        loss, params, state = train_result
+        train_losses = train_losses.at[i].set(loss)
+
+    osqp_model.params, osqp_model.state = params, state
+
+    # full evaluation on the test set
+    # k = 200
+    final_eval_out = osqp_model.evaluate(
+        k, test_inputs, q_mat_test, z_stars=z_stars_test, fixed_ws=False, tag='test')
+    final_test_losses = final_eval_out[1][1].mean(axis=0)
+    # final_z_all = init_eval_out[1][3]
+
+    plt.plot(init_test_losses)
+    plt.plot(final_test_losses)
+    plt.plot(nn_losses)
+    plt.yscale('log')
+    plt.show()
+
+    plt.plot(train_losses, label='train')
+    init_test_loss = init_test_losses[train_unrolls]
+    final_test_loss = final_test_losses[train_unrolls]
+    test_losses = np.array([init_test_loss, final_test_loss])
+    epochs_array = np.array([0, num_epochs])
+    plt.plot(epochs_array, test_losses, label='test')
+    plt.yscale('log')
+    plt.show()
+
+    import pdb
+    pdb.set_trace()
 
 
 @pytest.mark.skip(reason="temp")
@@ -68,6 +156,7 @@ def test_basic_osqp():
     assert jnp.linalg.norm(z_k[n + m:] - z.value) <= 1e-5
     assert jnp.linalg.norm(z_k[:n] - x.value) <= 1e-5
 
+
 @pytest.mark.skip(reason="temp")
 def test_infeas_qp():
     m, n = 11, 10
@@ -94,12 +183,13 @@ def test_infeas_qp():
     assert jnp.abs(losses[-1] - losses[-2]) < 1e-6 and losses[0] > .1
     assert losses[-1] > 1e-2
 
+
 @pytest.mark.skip(reason="temp")
 def test_osqp_model():
     N_train = 100
     N_test = 20
     N = N_train + N_test
-    # factor, A, q_mat, theta_mat = multiple_random_osc_mass_osqp(N)
+    factor, A, q_mat, theta_mat = multiple_random_osc_mass_osqp(N)
     train_inputs, test_inputs = theta_mat[:N_train, :], theta_mat[N_train:, :]
     z_stars_train, z_stars_test = None, None
     q_mat_train, q_mat_test = q_mat[:N_train, :], q_mat[N_train:, :]
@@ -116,8 +206,8 @@ def test_osqp_model():
 
     # full evaluation on the test set with nearest neighbor
     # nearest_neighbors_z = get_nearest_neighbors(train_inputs, test_inputs, z_stars_train)
-    # nn_eval_out = osqp_model.evaluate(500, nearest_neighbors_z, 
-    #                                   q_mat_test, z_stars=z_stars_test, 
+    # nn_eval_out = osqp_model.evaluate(500, nearest_neighbors_z,
+    #                                   q_mat_test, z_stars=z_stars_test,
     #                                   fixed_ws=True, tag='test')
     # nn_z_all = nn_eval_out[1][3]
     # nn_losses = nn_eval_out[1][1].mean(axis=0)
@@ -127,7 +217,8 @@ def test_osqp_model():
 
     # full evaluation on the test set
     k = 500
-    init_eval_out = osqp_model.evaluate(k, test_inputs, q_mat_test, z_stars=z_stars_test, fixed_ws=False, tag='test')
+    init_eval_out = osqp_model.evaluate(
+        k, test_inputs, q_mat_test, z_stars=z_stars_test, fixed_ws=False, tag='test')
     init_test_losses = init_eval_out[1][1].mean(axis=0)
     init_z_all = init_eval_out[1][3]
 

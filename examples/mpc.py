@@ -3,9 +3,11 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 from scipy.linalg import solve_discrete_are
 from examples.osc_mass import static_canon_osqp
+import cvxpy as cp
 
 
 def generate_static_prob_data(nx, nu, seed):
+    np.random.seed(seed)
     x_bar = 1 + np.random.rand(nx)
     u_bar = .1 * np.random.rand(nu)
 
@@ -26,7 +28,6 @@ def generate_static_prob_data(nx, nu, seed):
     # Ad = evecs @ np.diag(evals) @ evecs.T
 
     # new_evals, new_evecs = np.linalg.eigh(orig_Ad)
-    
 
     Bd = np.random.normal(size=(nx, nu))
 
@@ -34,17 +35,18 @@ def generate_static_prob_data(nx, nu, seed):
     R = .1 * np.eye(nu)
 
     q_vec = np.random.rand(nx) * 10
-    q_vec_mask = np.random.choice([0, 1], size=(nx), p=[.3, .7], replace=True)
+    p = 0.7 #1.0
+    q_vec_mask = np.random.choice([0, 1], size=(nx), p=[1-p, p], replace=True)
     q_vec = np.multiply(q_vec, q_vec_mask)
     Q = np.diag(q_vec)
 
     QT = solve_discrete_are(Ad, Bd, Q, R)
+    # QT = np.eye(nx)
 
     return Ad, Bd, Q, QT, R, x_bar, u_bar
 
 
-def multiple_random_mpc_osqp(N, T=10, x_init_box=2, state_box=4,
-                             control_box=.5, nx=20, nu=10, Q_vec=1, QT_val=1, R_vec=.1,
+def multiple_random_mpc_osqp(N, T=10, x_init_box=2, nx=20, nu=10,
                              sigma=1, rho=1,
                              Ad=None,
                              Bd=None,
@@ -69,10 +71,8 @@ def multiple_random_mpc_osqp(N, T=10, x_init_box=2, state_box=4,
     factor = jsp.linalg.lu_factor(M)
 
     # x_init is theta
-    x_init_mat = jnp.array(x_init_box * (2 * np.random.rand(N, nx) - 1))
-
-    import pdb
-    pdb.set_trace()
+    # x_init_mat = jnp.array(x_init_box * (2 * np.random.rand(N, nx) - 1))
+    x_init_mat = .3 * jnp.array(x_bar * (2 * np.random.rand(N, nx) - 1))
 
     for i in range(N):
         # generate new rhs of first block constraint
@@ -80,6 +80,40 @@ def multiple_random_mpc_osqp(N, T=10, x_init_box=2, state_box=4,
         u = u.at[:nx].set(Ad @ x_init_mat[i, :])
 
         q_osqp = jnp.concatenate([c, l, u])
-        qmat = q_mat.at[i, :].set(q_osqp)
+        q_mat = q_mat.at[i, :].set(q_osqp)
     theta_mat = x_init_mat
-    return factor, A, q_mat, theta_mat
+    return factor, P, A, q_mat, theta_mat
+
+def solve_many_probs_cvxpy(P, A, q_mat):
+    """
+    solves many QPs where each problem has a different b vector
+    """
+    P = cp.atoms.affine.wraps.psd_wrap(P)
+    m, n = A.shape
+    N = q_mat.shape[0]
+    x, w = cp.Variable(n), cp.Variable(m)
+    c_param, l_param, u_param = cp.Parameter(n), cp.Parameter(m), cp.Parameter(m)
+    constraints = [A @ x == w, l_param <= w, w <= u_param]
+    # import pdb
+    # pdb.set_trace()
+    prob = cp.Problem(cp.Minimize(.5 * cp.quad_form(x, P) + c_param @ x), constraints)
+    # prob = cp.Problem(cp.Minimize(.5 * cp.sum_squares(np.array(A) @ z - b_param) + lambd * cp.tv(z)))
+    z_stars = jnp.zeros((N, m + n))
+    objvals = jnp.zeros((N))
+    for i in range(N):
+        c_param.value = np.array(q_mat[i, :n])
+        l_param.value = np.array(q_mat[i, n:n + m])
+        u_param.value = np.array(q_mat[i, n + m:])
+        prob.solve(verbose=True)
+        objvals = objvals.at[i].set(prob.value)
+
+        # import pdb
+        # pdb.set_trace()
+        x_star = jnp.array(x.value)
+        w_star = jnp.array(w.value)
+        y_star = jnp.array(constraints[0].dual_value)
+        # z_star = jnp.concatenate([x_star, w_star, y_star])
+        z_star = jnp.concatenate([x_star, w_star])
+        z_stars = z_stars.at[i, :].set(z_star)
+    print('finished solving cvxpy problems')
+    return z_stars, objvals
