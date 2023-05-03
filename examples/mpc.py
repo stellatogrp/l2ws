@@ -104,7 +104,7 @@ def solve_many_probs_cvxpy(P, A, q_mat):
         c_param.value = np.array(q_mat[i, :n])
         l_param.value = np.array(q_mat[i, n:n + m])
         u_param.value = np.array(q_mat[i, n + m:])
-        prob.solve(verbose=True)
+        prob.solve(verbose=False)
         objvals = objvals.at[i].set(prob.value)
 
         # import pdb

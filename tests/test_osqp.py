@@ -36,8 +36,6 @@ def test_random_mpc():
                                                               Ad=None,
                                                               Bd=None,
                                                               seed=42)
-    # import pdb
-    # pdb.set_trace()
     train_inputs, test_inputs = theta_mat[:N_train, :], theta_mat[N_train:, :]
     z_stars_train, z_stars_test = None, None
     q_mat_train, q_mat_test = q_mat[:N_train, :], q_mat[N_train:, :]
@@ -60,7 +58,7 @@ def test_random_mpc():
     osqp_model = OSQPmodel(input_dict)
 
     # full evaluation on the test set with nearest neighbor
-    k = 2000
+    k = 1000
     nearest_neighbors_z = get_nearest_neighbors(train_inputs, test_inputs, z_stars_train)
     nn_eval_out = osqp_model.evaluate(k, nearest_neighbors_z,
                                       q_mat_test, z_stars=z_stars_test,
@@ -75,8 +73,8 @@ def test_random_mpc():
     init_test_losses = init_eval_out[1][1].mean(axis=0)
     # init_z_all = init_eval_out[1][3]
 
-    # import pdb
-    # pdb.set_trace()
+    import pdb
+    pdb.set_trace()
 
     plt.plot(init_test_losses)
     plt.plot(nn_losses)
@@ -86,7 +84,7 @@ def test_random_mpc():
     # train the osqp_model
     # call train_batch without jitting
     params, state = osqp_model.params, osqp_model.state
-    num_epochs = 3000
+    num_epochs = 1000
     train_losses = jnp.zeros(num_epochs)
     for i in range(num_epochs):
         train_result = osqp_model.train_full_batch(params, state)
