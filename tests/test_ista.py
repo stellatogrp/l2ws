@@ -53,11 +53,12 @@ def test_train_ista():
     N_train = 100
     N_test = 20
     N = N_train + N_test
-    m, n = 50, 100
+    # m, n = 50, 100
+    m, n = 100, 50
     A = jnp.array(np.random.normal(size=(m, n)))
     b_mat = jnp.array(np.random.normal(size=(N, m)))
     # b_mat = generate_b_mat(A, N)
-    k = 10000
+    k = 1000
     z0 = jnp.zeros(n)
     lambd = .005
     evals, evecs = jnp.linalg.eigh(A.T @ A)
@@ -169,5 +170,5 @@ def test_train_ista():
     # plt.yscale('log')
     # plt.show()
 
-    # import pdb
-    # pdb.set_trace()
+    import pdb
+    pdb.set_trace()

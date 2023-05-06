@@ -51,6 +51,7 @@ class L2WSmodel(object):
         self.share_all = input_dict.get('share_all', False)
         # self.algorithm = input_dict['algorithm']
         self.batch_angle = vmap(self.compute_angle, in_axes=(0, 0), out_axes=(0))
+        self.static_flag = True
 
     def setup_optimal_solutions(self, dict):
         if dict.get('z_stars_train', None) is not None:
@@ -425,13 +426,13 @@ class L2WSmodel(object):
         we decay the learn rate by decay_factor if
            self.tr_losses[-2*avg_window:-avg_window] - self.tr_losses[-avg_window:] <= tolerance
         """
-        decay_factor = self.plateau_decay.decay_factor
+        decay_factor = self.plateau_decay['decay_factor']
 
-        window_batches = self.plateau_decay.avg_window_size * self.num_batches
-        plateau_tolerance = self.plateau_decay.tolerance
-        patience = self.plateau_decay.patience
+        window_batches = self.plateau_decay['avg_window_size'] * self.num_batches
+        plateau_tolerance = self.plateau_decay['tolerance']
+        patience = self.plateau_decay['patience']
 
-        if self.plateau_decay.min_lr <= self.lr / decay_factor:
+        if self.plateau_decay['min_lr'] <= self.lr / decay_factor:
             tr_losses_batch_np = np.array(self.tr_losses_batch)
             prev_window_losses = tr_losses_batch_np[-2*window_batches:-window_batches].mean()
             curr_window_losses = tr_losses_batch_np[-window_batches:].mean()
@@ -456,7 +457,7 @@ class L2WSmodel(object):
                 self.epoch_decay_points.append(self.epoch)
 
                 # don't decay for another 2 * window number of epochs
-                wait_time = 2 * patience * self.plateau_decay.avg_window_size
+                wait_time = 2 * patience * self.plateau_decay['avg_window_size']
                 self.dont_decay_until = self.epoch + wait_time
 
     def train_full_batch(self, params, state):

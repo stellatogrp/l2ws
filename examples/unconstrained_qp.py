@@ -19,14 +19,20 @@ def run(run_cfg):
     # set the seed
     np.random.seed(setup_cfg['seed'])
     n_orig = setup_cfg['n_orig']
-    k = setup_cfg['k']
+
+    Q = jnp.array(np.random.normal(size=(n_orig, n_orig)))
+    P = Q @ Q.T
+    evals, evecs = jnp.linalg.eigh(P)
+    gd_step = 1 / evals.max()
 
     # static_dict = static_canon(n_orig, k, rho_x=rho_x, scale=scale)
+    static_dict = dict(Q=Q, gd_step=gd_step)
 
     # we directly save q now
     get_q = None
     static_flag = True
-    workspace = Workspace(run_cfg, static_flag, static_dict, example, get_q)
+    algo = 'gd'
+    workspace = Workspace(run_cfg, algo, static_flag, static_dict, example, get_q)
 
     # run the workspace
     workspace.run()

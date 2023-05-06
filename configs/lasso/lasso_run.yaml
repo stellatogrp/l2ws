@@ -1,7 +1,7 @@
 nn_cfg:
   lr: 1e-4
   method: adam
-  intermediate_layer_sizes: [500, 2000]
+  intermediate_layer_sizes: [500]
   batch_size: 100
   epochs: 1e6
   decay_lr: .1
@@ -12,7 +12,7 @@ plateau_decay:
   min_lr: 1e-7
   decay_factor: 5
   avg_window_size: 5 # in epochs
-  tolerance: 1e-3
+  tolerance: 1e-8 #1e-3
   patience: 1
 
 
@@ -25,22 +25,22 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 15
-eval_unrolls: 1000
+train_unrolls: 60
+eval_unrolls: 150
 eval_every_x_epochs: 5
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 2
 N_train: 10000
-N_test: 50
-num_samples: 50
+N_test: 100
+num_samples: 100
 prediction_variable: w
 angle_anchors: [0]
 supervised: False
 plot_iterates: [0, 10, 20]
 loss_method: 'fixed_k' #'fixed_k' #'constant_sum'
-share_all: True
+share_all: False
 num_clusters: 10
 pretrain_alpha: False
 normalize_inputs: True

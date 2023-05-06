@@ -6,6 +6,7 @@ import time
 import jax.numpy as jnp
 from l2ws.scs_problem import SCSinstance
 import pdb
+import cvxpy as cp
 
 
 plt.rcParams.update(
@@ -16,6 +17,58 @@ plt.rcParams.update(
     }
 )
 log = logging.getLogger(__name__)
+
+
+def ista_setup_script(b_mat, A, lambd, output_filename):
+    # def solve_many_probs_cvxpy(A, b_mat, lambd):
+    """
+    solves many lasso problems where each problem has a different b vector
+    """
+    m, n = A.shape
+    N = b_mat.shape[0]
+    z, b_param = cp.Variable(n), cp.Parameter(m)
+    prob = cp.Problem(cp.Minimize(.5 * cp.sum_squares(np.array(A) @ z - b_param) + lambd * cp.norm(z, p=1)))
+    z_stars = jnp.zeros((N, n))
+    objvals = jnp.zeros((N))
+    solve_times = np.zeros(N)
+    for i in range(N):
+        b_param.value = np.array(b_mat[i, :])
+        prob.solve(verbose=False)
+        objvals = objvals.at[i].set(prob.value)
+        z_stars = z_stars.at[i, :].set(jnp.array(z.value))
+        solve_times[i] = prob.solver_stats.solve_time
+
+    # save the data
+    log.info("final saving final data...")
+    t0 = time.time()
+    # import pdb
+    # pdb.set_trace()
+    jnp.savez(
+        output_filename,
+        thetas=jnp.array(b_mat),
+        z_stars=z_stars,
+    )
+
+    # save solve times
+    df_solve_times = pd.DataFrame(solve_times, columns=['solve_times'])
+    df_solve_times.to_csv('solve_times.csv')
+
+    save_time = time.time()
+    log.info(f"finished saving final data... took {save_time-t0}'")
+
+    # save plot of first 5 solutions
+    for i in range(5):
+        plt.plot(z_stars[i, :])
+    plt.savefig("z_stars.pdf")
+    plt.clf()
+
+
+    # save plot of first 5 parameters
+    for i in range(5):
+        plt.plot(b_mat[i, :])
+    plt.savefig("thetas.pdf")
+    plt.clf()
+
 
 
 def setup_script(q_mat, theta_mat, solver, data, cones_dict, output_filename, solve=True):

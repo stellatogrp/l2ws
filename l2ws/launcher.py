@@ -26,7 +26,7 @@ config.update("jax_enable_x64", True)
 
 
 class Workspace:
-    def __init__(self, algo, cfg, static_flag, static_dict, example, get_M_q,
+    def __init__(self, algo, cfg, static_flag, static_dict, example,
                  custom_visualize_fn=None):
         '''
         cfg is the run_cfg from hydra
@@ -39,6 +39,7 @@ class Workspace:
         self.save_every_x_epochs = cfg.save_every_x_epochs
         self.num_samples = cfg.num_samples
         self.pretrain_cfg = cfg.pretrain
+        self.key_count = 0
 
         self.plot_iterates = cfg.plot_iterates
         # share_all = cfg.get('share_all', False)
@@ -57,7 +58,7 @@ class Workspace:
         # load the data from problem to problem
         jnp_load_obj = self.load_setup_data(example, cfg.data.datetime)
 
-        thetas = jnp_load_obj['thetas']
+        thetas = jnp.array(jnp_load_obj['thetas'])
         self.thetas_train = thetas[:N_train, :]
         self.thetas_test = thetas[N_train:N, :]
 
@@ -69,8 +70,6 @@ class Workspace:
         self.skip_startup = cfg.get('skip_startup', False)
 
         num_plot = 5
-        self.plot_samples(num_plot, thetas, train_inputs,
-                          x_stars_train, y_stars_train, z_stars_train)
         
         ############################################## everything below is specific to the algo
 
@@ -79,6 +78,7 @@ class Workspace:
             z_stars = jnp_load_obj['z_stars']
             z_stars_train = z_stars[:N_train, :]
             z_stars_test = z_stars[N_train:N, :]
+            self.plot_samples(num_plot, thetas, train_inputs, z_stars_train)
         else:
             if 'x_stars' in jnp_load_obj.keys():
                 x_stars = jnp_load_obj['x_stars']
@@ -101,6 +101,8 @@ class Workspace:
                 y_stars_train, self.y_stars_test = None, None
                 z_stars_train, z_stars_test = None, None
                 m, n = int(jnp_load_obj['m']), int(jnp_load_obj['n'])
+            self.plot_samples_scs(num_plot, thetas, train_inputs,
+                          x_stars_train, y_stars_train, z_stars_train)
 
         if algo == 'ista':
             # get A, lambd, ista_step
@@ -231,8 +233,14 @@ class Workspace:
         filename = f"{folder}/data_setup.npz"
         jnp_load_obj = jnp.load(filename)
         return jnp_load_obj
+    
+    def plot_samples(self, num_plot, thetas, train_inputs, z_stars):
+        sample_plot(thetas, 'theta', num_plot)
+        sample_plot(train_inputs, 'input', num_plot)
+        if z_stars is not None:
+            sample_plot(z_stars, 'z_stars', num_plot)
 
-    def plot_samples(self, num_plot, thetas, train_inputs, x_stars, y_stars, z_stars):
+    def plot_samples_scs(self, num_plot, thetas, train_inputs, x_stars, y_stars, z_stars):
         sample_plot(thetas, 'theta', num_plot)
         sample_plot(train_inputs, 'input', num_plot)
         if x_stars is not None:
@@ -282,18 +290,25 @@ class Workspace:
 
         # extract information from the evaluation
         loss_train, out_train, train_time = eval_out
-        iter_losses_mean = out_train[2].mean(axis=0)
-        angles = out_train[3]
-        primal_residuals = out_train[4].mean(axis=0)
-        dual_residuals = out_train[5].mean(axis=0)
+        iter_losses_mean = out_train[1].mean(axis=0)
+        angles = out_train[2]
+        # iter_losses_mean = out_train[2].mean(axis=0)
+        # angles = out_train[3]
+        # primal_residuals = out_train[4].mean(axis=0)
+        # dual_residuals = out_train[5].mean(axis=0)
 
         # plot losses over examples
-        losses_over_examples = out_train[2].T
+        # losses_over_examples = out_train[2].T
+        losses_over_examples = out_train[1].T
         self.plot_losses_over_examples(losses_over_examples, train, col)
 
         # update the eval csv files
+        # df_out = self.update_eval_csv(
+        #     iter_losses_mean, primal_residuals, dual_residuals, train, col)
+        # import pdb
+        # pdb.set_trace()
         df_out = self.update_eval_csv(
-            iter_losses_mean, primal_residuals, dual_residuals, train, col)
+            iter_losses_mean, train, col)
         iters_df, primal_residuals_df, dual_residuals_df = df_out
 
         if not self.skip_startup:
@@ -305,8 +320,8 @@ class Workspace:
                              dual_residuals_df, plot_pretrain, train, col)
 
         # SRG-type plots
-        r = out_train[2]
-        self.plot_angles(angles, r, train, col)
+        # r = out_train[2]
+        # self.plot_angles(angles, r, train, col)
 
         # plot the warm-start predictions
         u_all = out_train[0][3]
@@ -314,8 +329,8 @@ class Workspace:
         # self.plot_warm_starts(u_all, z_all, train, col)
 
         # plot the alpha coefficients
-        alpha = out_train[0][2]
-        self.plot_alphas(alpha, train, col)
+        # alpha = out_train[0][2]
+        # self.plot_alphas(alpha, train, col)
 
         # custom visualize
         if self.has_custom_visualization:
@@ -327,8 +342,8 @@ class Workspace:
             self.custom_visualize(x_primals, train, col)
 
         # solve with scs
-        z0_mat = z_all[:, 0, :]
-        self.solve_scs(z0_mat, train, col)
+        # z0_mat = z_all[:, 0, :]
+        # self.solve_scs(z0_mat, train, col)
         # self.solve_scs(z_all, u_all, train, col)
 
         return out_train
@@ -491,23 +506,24 @@ class Workspace:
         loop_size = int(self.l2ws_model.num_batches * self.epochs_jit)
 
         # key_count updated to get random permutation for each epoch
-        key_count = 0
+        # key_count = 0
 
         for epoch_batch in range(num_epochs_jit):
             epoch = int(epoch_batch * self.epochs_jit)
             if epoch % self.eval_every_x_epochs == 0 and epoch > 0:
                 self.eval_iters_train_and_test(f"train_epoch_{epoch}", self.pretrain_on)
-            if epoch > self.l2ws_model.dont_decay_until:
-                self.l2ws_model.decay_upon_plateau()
+            # if epoch > self.l2ws_model.dont_decay_until:
+            #     self.l2ws_model.decay_upon_plateau()
 
             # setup the permutations
-            permutation = setup_permutation(key_count, self.l2ws_model.N_train, self.epochs_jit)
+            permutation = setup_permutation(self.key_count, self.l2ws_model.N_train, self.epochs_jit)
 
             # train the jitted epochs
             params, state, epoch_train_losses, time_train_per_epoch = self.train_jitted_epochs(
                 permutation, epoch)
 
             # reset the global (params, state)
+            self.key_count += 1
             self.l2ws_model.epoch += self.epochs_jit
             self.l2ws_model.params, self.l2ws_model.state = params, state
 
@@ -525,6 +541,7 @@ class Workspace:
             # plot the train / test loss so far
             if epoch % self.save_every_x_epochs == 0:
                 self.plot_train_test_losses()
+            
 
     def train_jitted_epochs(self, permutation, epoch):
         """
@@ -650,8 +667,9 @@ class Workspace:
         M_tensor = None if self.l2ws_model.static_flag else self.l2ws_model.M_tensor_train[:num, :]
 
         inputs = self.get_inputs_for_eval(fixed_ws, num, train, col)
-        eval_out = self.l2ws_model.evaluate(self.eval_unrolls, inputs, factors,
-                                            M_tensor, q_mat, z_stars, fixed_ws, tag=tag)
+        # eval_out = self.l2ws_model.evaluate(self.eval_unrolls, inputs, factors,
+        #                                     M_tensor, q_mat, z_stars, fixed_ws, tag=tag)
+        eval_out = self.l2ws_model.evaluate(self.eval_unrolls, inputs, q_mat, z_stars, fixed_ws, tag=tag)
         return eval_out
 
     def get_inputs_for_eval(self, fixed_ws, num, train, col):
@@ -817,7 +835,8 @@ class Workspace:
         plt.savefig('train_losses_over_training.pdf', bbox_inches='tight')
         plt.clf()
 
-    def update_eval_csv(self, iter_losses_mean, primal_residuals, dual_residuals, train, col):
+    # def update_eval_csv(self, iter_losses_mean, primal_residuals, dual_residuals, train, col):
+    def update_eval_csv(self, iter_losses_mean, train, col):
         """
         update the eval csv files
             fixed point residuals
@@ -825,28 +844,29 @@ class Workspace:
             dual residuals
         returns the new dataframes
         """
+        primal_residuals_df, dual_residuals_df = None, None
         if train:
             self.iters_df_train[col] = iter_losses_mean
             self.iters_df_train.to_csv('iters_compared_train.csv')
-            self.primal_residuals_df_train[col] = primal_residuals
-            self.primal_residuals_df_train.to_csv('primal_residuals_train.csv')
-            self.dual_residuals_df_train[col] = dual_residuals
-            self.dual_residuals_df_train.to_csv('dual_residuals_train.csv')
+            # self.primal_residuals_df_train[col] = primal_residuals
+            # self.primal_residuals_df_train.to_csv('primal_residuals_train.csv')
+            # self.dual_residuals_df_train[col] = dual_residuals
+            # self.dual_residuals_df_train.to_csv('dual_residuals_train.csv')
 
             iters_df = self.iters_df_train
-            primal_residuals_df = self.primal_residuals_df_train
-            dual_residuals_df = self.dual_residuals_df_train
+            # primal_residuals_df = self.primal_residuals_df_train
+            # dual_residuals_df = self.dual_residuals_df_train
         else:
             self.iters_df_test[col] = iter_losses_mean
             self.iters_df_test.to_csv('iters_compared_test.csv')
-            self.primal_residuals_df_test[col] = primal_residuals
-            self.primal_residuals_df_test.to_csv('primal_residuals_test.csv')
-            self.dual_residuals_df_test[col] = dual_residuals
-            self.dual_residuals_df_test.to_csv('dual_residuals_test.csv')
+            # self.primal_residuals_df_test[col] = primal_residuals
+            # self.primal_residuals_df_test.to_csv('primal_residuals_test.csv')
+            # self.dual_residuals_df_test[col] = dual_residuals
+            # self.dual_residuals_df_test.to_csv('dual_residuals_test.csv')
 
             iters_df = self.iters_df_test
-            primal_residuals_df = self.primal_residuals_df_test
-            dual_residuals_df = self.dual_residuals_df_test
+            # primal_residuals_df = self.primal_residuals_df_test
+            # dual_residuals_df = self.dual_residuals_df_test
         return iters_df, primal_residuals_df, dual_residuals_df
 
     def plot_eval_iters(self, iters_df, primal_residuals_df, dual_residuals_df, plot_pretrain,
@@ -879,22 +899,22 @@ class Workspace:
         #     plt.plot(dual_residuals_df['no_train'],
         #             'ko', label='no learning dual')
 
-        if plot_pretrain:
-            plt.plot(
-                primal_residuals_df['pretrain'], 'r+', label='pretraining primal')
-            plt.plot(dual_residuals_df['pretrain'],
-                     'ro', label='pretraining dual')
-        if col != 'no_train' and col != 'pretrain' and col != 'fixed_ws':
-            plt.plot(
-                primal_residuals_df[col], label=f"train k={self.train_unrolls} primal")
-            plt.plot(
-                dual_residuals_df[col], label=f"train k={self.train_unrolls} dual")
-        plt.yscale('log')
-        plt.xlabel('evaluation iterations')
-        plt.ylabel('test primal-dual residuals')
-        plt.legend()
-        plt.savefig('primal_dual_residuals.pdf', bbox_inches='tight')
-        plt.clf()
+        # if plot_pretrain:
+        #     plt.plot(
+        #         primal_residuals_df['pretrain'], 'r+', label='pretraining primal')
+        #     plt.plot(dual_residuals_df['pretrain'],
+        #              'ro', label='pretraining dual')
+        # if col != 'no_train' and col != 'pretrain' and col != 'fixed_ws':
+        #     plt.plot(
+        #         primal_residuals_df[col], label=f"train k={self.train_unrolls} primal")
+        #     plt.plot(
+        #         dual_residuals_df[col], label=f"train k={self.train_unrolls} dual")
+        # plt.yscale('log')
+        # plt.xlabel('evaluation iterations')
+        # plt.ylabel('test primal-dual residuals')
+        # plt.legend()
+        # plt.savefig('primal_dual_residuals.pdf', bbox_inches='tight')
+        # plt.clf()
 
     def plot_alphas(self, alpha, train, col):
         """

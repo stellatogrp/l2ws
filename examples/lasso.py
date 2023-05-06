@@ -3,6 +3,8 @@ import numpy as np
 import cvxpy as cp
 import yaml
 from l2ws.launcher import Workspace
+from examples.solve_script import ista_setup_script
+import os
 
 def run(run_cfg):
     example = "lasso"
@@ -18,33 +20,68 @@ def run(run_cfg):
 
     # set the seed
     np.random.seed(setup_cfg['seed'])
-    n_orig = setup_cfg['n_orig']
+    m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
+    A = jnp.array(np.random.normal(size=(m_orig, n_orig)))
+    evals, evecs = jnp.linalg.eigh(A.T @ A)
+    ista_step =  1 / evals.max()
     lambd = setup_cfg['lambd']
-    k = setup_cfg['k']
 
-    # non-identity DR scaling
-    rho_x = run_cfg.get('rho_x', 1)
-    scale = run_cfg.get('scale', 1)
-
-    static_dict = static_canon(n_orig, k, rho_x=rho_x, scale=scale)
+    static_dict = dict(A=A, lambd=lambd, ista_step=ista_step)
 
     # we directly save q now
     get_q = None
     static_flag = True
-    workspace = Workspace(run_cfg, static_flag, static_dict, example, get_q)
+    algo = 'ista'
+    workspace = Workspace(algo, run_cfg, static_flag, static_dict, example)
 
     # run the workspace
     workspace.run()
 
+
+def setup_probs(setup_cfg):
+    cfg = setup_cfg
+    N_train, N_test = cfg.N_train, cfg.N_test
+    N = N_train + N_test
+    np.random.seed(setup_cfg['seed'])
+    m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
+    A = jnp.array(np.random.normal(size=(m_orig, n_orig)))
+    evals, evecs = jnp.linalg.eigh(A.T @ A)
+    ista_step = 1 / evals.max()
+    lambd = setup_cfg['lambd']
+
+    np.random.seed(cfg.seed)
+
+    # save output to output_filename
+    output_filename = f"{os.getcwd()}/data_setup"
+
+    # P, A, cones, q_mat, theta_mat_jax, A_tensor = multiple_random_sparse_pca(
+    #     n_orig, cfg.k, cfg.r, N, factor=False)
+    # P_sparse, A_sparse = csc_matrix(P), csc_matrix(A)
+    b_mat = generate_b_mat(A, N, p=.1)
+    m, n = A.shape
+
+    # create scs solver object
+    #    we can cache the factorization if we do it like this
+    # b_np, c_np = np.array(q_mat[0, n:]), np.array(q_mat[0, :n])
+    # data = dict(P=P_sparse, A=A_sparse, b=b_np, c=c_np)
+    # tol_abs = cfg.solve_acc_abs
+    # tol_rel = cfg.solve_acc_rel
+    # solver = scs.SCS(data, cones, normalize=False, alpha=1, scale=1,
+    #                  rho_x=1, adaptive_scale=False, eps_abs=tol_abs, eps_rel=tol_rel)
+
+    ista_setup_script(b_mat, A, lambd, output_filename)
+
+
 def generate_b_mat(A, N, p=.1):
     m, n = A.shape
-    b_mat = jnp.zeros((N, m))
-    x_star_mask = np.random.binomial(1, p, size=(N, n))
-    x_stars_dense = jnp.array(np.random.normal(size=(N, n)))
-    x_stars = jnp.multiply(x_star_mask, x_stars_dense)
-    for i in range(N):
-        b = A @ x_stars[i, :]
-        b_mat = b_mat.at[i, :].set(b)
+    b_mat = jnp.array(np.random.normal(size=(N, m)))
+    # b_mat = jnp.zeros((N, m))
+    # x_star_mask = np.random.binomial(1, p, size=(N, n))
+    # x_stars_dense = jnp.array(np.random.normal(size=(N, n)))
+    # x_stars = jnp.multiply(x_star_mask, x_stars_dense)
+    # for i in range(N):
+    #     b = A @ x_stars[i, :]
+    #     b_mat = b_mat.at[i, :].set(b)
     return b_mat
 
 def eval_ista_obj(z, A, b, lambd):
