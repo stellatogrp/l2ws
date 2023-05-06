@@ -49,7 +49,7 @@ class L2WSmodel(object):
         self.train_inputs, self.test_inputs = input_dict['train_inputs'], input_dict['test_inputs']
         self.N_train, self.N_test = self.train_inputs.shape[0], self.test_inputs.shape[0]
         self.share_all = input_dict.get('share_all', False)
-        self.algorithm = input_dict['algorithm']
+        # self.algorithm = input_dict['algorithm']
         self.batch_angle = vmap(self.compute_angle, in_axes=(0, 0), out_axes=(0))
 
     def setup_optimal_solutions(self, dict):
@@ -208,10 +208,6 @@ class L2WSmodel(object):
         self.loss_method = dict.get('loss_method', 'fixed_k')
         self.supervised = dict.get('supervised', False)
 
-        # if self.algorithm == 'scs':
-        #     e2e_loss_fn = self.create_end2end_loss_fn
-        # elif self.algorithm == 'ista':
-        #     e2e_loss_fn = self.create_end2end_loss_fn_ista
         e2e_loss_fn = self.create_end2end_loss_fn
 
         

@@ -1,0 +1,8 @@
+m_orig: 100
+n_orig: 50
+solve_acc_abs: 1e-4
+solve_acc_rel: 0
+N_train: 100
+N_test: 100
+seed: 42
+solve: True

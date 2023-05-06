@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from l2ws.l2ws_model import L2WSmodel
+from l2ws.ista_model import ISTAmodel
 import jax.numpy as jnp
 import jax.scipy as jsp
 from jax import lax
@@ -25,10 +26,7 @@ config.update("jax_enable_x64", True)
 
 
 class Workspace:
-    def __init__(self, cfg, static_flag, static_dict, example, get_M_q,
-                 low_2_high_dim=None,
-                 x_psd_indices=None,
-                 y_psd_indices=None,
+    def __init__(self, algo, cfg, static_flag, static_dict, example, get_M_q,
                  custom_visualize_fn=None):
         '''
         cfg is the run_cfg from hydra
@@ -43,9 +41,7 @@ class Workspace:
         self.pretrain_cfg = cfg.pretrain
 
         self.plot_iterates = cfg.plot_iterates
-
-        share_all = cfg.get('share_all', False)
-
+        # share_all = cfg.get('share_all', False)
         self.normalize_inputs = cfg.get('normalize_inputs', True)
 
         self.epochs_jit = cfg.epochs_jit
@@ -64,135 +60,157 @@ class Workspace:
         thetas = jnp_load_obj['thetas']
         self.thetas_train = thetas[:N_train, :]
         self.thetas_test = thetas[N_train:N, :]
-        # import pdb
-        # pdb.set_trace()
-        if 'x_stars' in jnp_load_obj.keys():
-            x_stars = jnp_load_obj['x_stars']
-            y_stars = jnp_load_obj['y_stars']
-            s_stars = jnp_load_obj['s_stars']
-            z_stars = jnp.hstack([x_stars, y_stars + s_stars])
-            x_stars_train = x_stars[:N_train, :]
-            y_stars_train = y_stars[:N_train, :]
-
-            self.x_stars_train = x_stars[:N_train, :]
-            self.y_stars_train = y_stars[:N_train, :]
-
-            z_stars_train = z_stars[:N_train, :]
-            self.x_stars_test = x_stars[N_train:N, :]
-            self.y_stars_test = y_stars[N_train:N, :]
-            z_stars_test = z_stars[N_train:N, :]
-            m, n = y_stars_train.shape[1], x_stars_train[0, :].size
-        else:
-            x_stars_train, self.x_stars_test = None, None
-            y_stars_train, self.y_stars_test = None, None
-            z_stars_train, z_stars_test = None, None
-            m, n = int(jnp_load_obj['m']), int(jnp_load_obj['n'])
-            # import pdb
-            # pdb.set_trace()
-
-        if get_M_q is None:
-            q_mat = jnp_load_obj['q_mat']
-
-        if static_flag:
-            static_M = static_dict['M']
-
-            static_algo_factor = static_dict['algo_factor']
-            cones = static_dict['cones_dict']
-
-            # call get_q_mat
-            if get_M_q is not None:
-                q_mat = get_M_q(thetas)
-            M_tensor_train, M_tensor_test = None, None
-            matrix_invs_train, matrix_invs_test = None, None
-
-            # M_plus_I = static_M + jnp.eye(n + m)
-            # static_algo_factor = jsp.linalg.lu_factor(M_plus_I)
-        else:
-            # load the algo_factors -- check if factor or inverse
-            M_tensor, q_mat = get_M_q(thetas)
-
-            # load the matrix invs
-            matrix_invs = jnp_load_obj['matrix_invs']
-
-            static_M, static_algo_factor = None, None
-
-            cones = static_dict['cones_dict']
-            M_tensor_train = M_tensor[:N_train, :, :]
-            M_tensor_test = M_tensor[N_train:N, :, :]
-            matrix_invs_train = matrix_invs[:N_train, :, :]
-            matrix_invs_test = matrix_invs[N_train:N, :, :]
-
-        # save cones
-        self.cones = static_dict['cones_dict']
-
-        # alternate -- load it if available (but this is memory-intensive)
-        q_mat_train = jnp.array(q_mat[:N_train, :])
-        q_mat_test = jnp.array(q_mat[N_train:N, :])
-
-        self.M = static_M
 
         self.train_unrolls = cfg.train_unrolls
         eval_unrolls = cfg.train_unrolls
 
-        proj = create_projection_fn(cones, n)
-
-        psd_sizes = get_psd_sizes(cones)
-
-        self.psd_size = psd_sizes[0]
-        sdp_bool = self.psd_size > 0
-
         train_inputs, test_inputs = self.normalize_inputs_fn(thetas, N_train, N_test)
 
-        rho_x = cfg.get('rho_x', 1)
-        scale = cfg.get('scale', 1)
-        alpha_relax = cfg.get('alpha_relax', 1)
         self.skip_startup = cfg.get('skip_startup', False)
 
         num_plot = 5
         self.plot_samples(num_plot, thetas, train_inputs,
                           x_stars_train, y_stars_train, z_stars_train)
+        
+        ############################################## everything below is specific to the algo
 
-        input_dict = {'nn_cfg': cfg.nn_cfg,
-                      'proj': proj,
-                      'train_inputs': train_inputs,
-                      'test_inputs': test_inputs,
-                      'train_unrolls': self.train_unrolls,
-                      'eval_unrolls': eval_unrolls,
-                      'z_stars_train': z_stars_train,
-                      'z_stars_test': z_stars_test,
-                      'q_mat_train': q_mat_train,
-                      'q_mat_test': q_mat_test,
-                      'M_tensor_train': M_tensor_train,
-                      'M_tensor_test': M_tensor_test,
-                      'm': m,
-                      'n': n,
-                      'static_M': static_M,
-                      'y_stars_train': y_stars_train,
-                      'y_stars_test': self.y_stars_test,
-                      'x_stars_train': x_stars_train,
-                      'x_stars_test': self.x_stars_test,
-                      'static_flag': static_flag,
-                      'static_algo_factor': static_algo_factor,
-                      'matrix_invs_train': matrix_invs_train,
-                      'matrix_invs_test': matrix_invs_test,
-                      'supervised': cfg.get('supervised', False),
-                      'psd': sdp_bool,
-                      'psd_size': self.psd_size,
-                      'low_2_high_dim': low_2_high_dim,
-                      'num_clusters': cfg.get('num_clusters'),
-                      'x_psd_indices': x_psd_indices,
-                      'y_psd_indices': y_psd_indices,
-                      'loss_method': cfg.get('loss_method', 'fixed_k'),
-                      'share_all': share_all,
-                      'pretrain_alpha': cfg.get('pretrain_alpha'),
-                      'normalize_alpha': cfg.get('normalize_alpha'),
-                      'plateau_decay': cfg.plateau_decay,
-                      'rho_x': rho_x,
-                      'scale': scale,
-                      'alpha_relax': alpha_relax,
-                      'zero_cone_size': cones['z']
-                      }
-        self.l2ws_model = L2WSmodel(input_dict)
+        ############# extract optimal solutions
+        if algo != 'scs':
+            z_stars = jnp_load_obj['z_stars']
+            z_stars_train = z_stars[:N_train, :]
+            z_stars_test = z_stars[N_train:N, :]
+        else:
+            if 'x_stars' in jnp_load_obj.keys():
+                x_stars = jnp_load_obj['x_stars']
+                y_stars = jnp_load_obj['y_stars']
+                s_stars = jnp_load_obj['s_stars']
+                z_stars = jnp.hstack([x_stars, y_stars + s_stars])
+                x_stars_train = x_stars[:N_train, :]
+                y_stars_train = y_stars[:N_train, :]
+
+                self.x_stars_train = x_stars[:N_train, :]
+                self.y_stars_train = y_stars[:N_train, :]
+
+                z_stars_train = z_stars[:N_train, :]
+                self.x_stars_test = x_stars[N_train:N, :]
+                self.y_stars_test = y_stars[N_train:N, :]
+                z_stars_test = z_stars[N_train:N, :]
+                m, n = y_stars_train.shape[1], x_stars_train[0, :].size
+            else:
+                x_stars_train, self.x_stars_test = None, None
+                y_stars_train, self.y_stars_test = None, None
+                z_stars_train, z_stars_test = None, None
+                m, n = int(jnp_load_obj['m']), int(jnp_load_obj['n'])
+
+        if algo == 'ista':
+            # get A, lambd, ista_step
+            A, lambd = static_dict['A'], static_dict['lambd']
+            ista_step = static_dict['ista_step']
+
+            # get b_mat
+            b_mat_train = thetas[:N_train, :]
+            b_mat_test = thetas[N_train:N, :]
+
+            input_dict = dict(algorithm='ista',
+                              supervised=False,
+                              train_unrolls=self.train_unrolls,
+                              jit=True,
+                              train_inputs=train_inputs,
+                              test_inputs=test_inputs,
+                              b_mat_train=b_mat_train,
+                              b_mat_test=b_mat_test,
+                              lambd=lambd,
+                              ista_step=ista_step,
+                              A=A,
+                              nn_cfg=cfg.nn_cfg,
+                              z_stars_train=z_stars_train,
+                              z_stars_test=z_stars_test,
+                              )
+            self.l2ws_model = ISTAmodel(input_dict)
+        elif algo == 'scs':
+            if get_M_q is None:
+                q_mat = jnp_load_obj['q_mat']
+
+            if static_flag:
+                static_M = static_dict['M']
+
+                static_algo_factor = static_dict['algo_factor']
+                cones = static_dict['cones_dict']
+
+                # call get_q_mat
+                if get_M_q is not None:
+                    q_mat = get_M_q(thetas)
+                M_tensor_train, M_tensor_test = None, None
+                matrix_invs_train, matrix_invs_test = None, None
+
+                # M_plus_I = static_M + jnp.eye(n + m)
+                # static_algo_factor = jsp.linalg.lu_factor(M_plus_I)
+            else:
+                # load the algo_factors -- check if factor or inverse
+                M_tensor, q_mat = get_M_q(thetas)
+
+                # load the matrix invs
+                matrix_invs = jnp_load_obj['matrix_invs']
+
+                static_M, static_algo_factor = None, None
+
+                cones = static_dict['cones_dict']
+                M_tensor_train = M_tensor[:N_train, :, :]
+                M_tensor_test = M_tensor[N_train:N, :, :]
+                matrix_invs_train = matrix_invs[:N_train, :, :]
+                matrix_invs_test = matrix_invs[N_train:N, :, :]
+            rho_x = cfg.get('rho_x', 1)
+            scale = cfg.get('scale', 1)
+            alpha_relax = cfg.get('alpha_relax', 1)
+
+            # save cones
+            self.cones = static_dict['cones_dict']
+
+            # alternate -- load it if available (but this is memory-intensive)
+            q_mat_train = jnp.array(q_mat[:N_train, :])
+            q_mat_test = jnp.array(q_mat[N_train:N, :])
+
+            self.M = static_M
+            proj = create_projection_fn(cones, n)
+            psd_sizes = get_psd_sizes(cones)
+
+            self.psd_size = psd_sizes[0]
+            sdp_bool = self.psd_size > 0
+
+            input_dict = {'nn_cfg': cfg.nn_cfg,
+                          'proj': proj,
+                          'train_inputs': train_inputs,
+                          'test_inputs': test_inputs,
+                          'train_unrolls': self.train_unrolls,
+                          'eval_unrolls': eval_unrolls,
+                          'z_stars_train': z_stars_train,
+                          'z_stars_test': z_stars_test,
+                          'q_mat_train': q_mat_train,
+                          'q_mat_test': q_mat_test,
+                          'M_tensor_train': M_tensor_train,
+                          'M_tensor_test': M_tensor_test,
+                          'm': m,
+                          'n': n,
+                          'static_M': static_M,
+                          'y_stars_train': y_stars_train,
+                          'y_stars_test': self.y_stars_test,
+                          'x_stars_train': x_stars_train,
+                          'x_stars_test': self.x_stars_test,
+                          'static_flag': static_flag,
+                          'static_algo_factor': static_algo_factor,
+                          'matrix_invs_train': matrix_invs_train,
+                          'matrix_invs_test': matrix_invs_test,
+                          'supervised': cfg.get('supervised', False),
+                          'loss_method': cfg.get('loss_method', 'fixed_k'),
+                          'pretrain_alpha': cfg.get('pretrain_alpha'),
+                          'normalize_alpha': cfg.get('normalize_alpha'),
+                          'plateau_decay': cfg.plateau_decay,
+                          'rho_x': rho_x,
+                          'scale': scale,
+                          'alpha_relax': alpha_relax,
+                          'zero_cone_size': cones['z']
+                          }
+            self.l2ws_model = L2WSmodel(input_dict)
 
     def normalize_inputs_fn(self, thetas, N_train, N_test):
         # normalize the inputs if the option is on
@@ -448,7 +466,6 @@ class Workspace:
         if not self.skip_startup:
             # no learning evaluation
             self.eval_iters_train_and_test('no_train', False)
-
 
             # fixed ws evaluation
             if self.l2ws_model.z_stars_train is not None:

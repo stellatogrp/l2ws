@@ -1,6 +1,40 @@
 import jax.numpy as jnp
 import numpy as np
 import cvxpy as cp
+import yaml
+from l2ws.launcher import Workspace
+
+def run(run_cfg):
+    example = "lasso"
+    data_yaml_filename = 'data_setup_copied.yaml'
+
+    # read the yaml file
+    with open(data_yaml_filename, "r") as stream:
+        try:
+            setup_cfg = yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+            setup_cfg = {}
+
+    # set the seed
+    np.random.seed(setup_cfg['seed'])
+    n_orig = setup_cfg['n_orig']
+    lambd = setup_cfg['lambd']
+    k = setup_cfg['k']
+
+    # non-identity DR scaling
+    rho_x = run_cfg.get('rho_x', 1)
+    scale = run_cfg.get('scale', 1)
+
+    static_dict = static_canon(n_orig, k, rho_x=rho_x, scale=scale)
+
+    # we directly save q now
+    get_q = None
+    static_flag = True
+    workspace = Workspace(run_cfg, static_flag, static_dict, example, get_q)
+
+    # run the workspace
+    workspace.run()
 
 def generate_b_mat(A, N, p=.1):
     m, n = A.shape

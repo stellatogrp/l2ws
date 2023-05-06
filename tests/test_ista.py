@@ -11,9 +11,9 @@ from l2ws.ista_model import ISTAmodel
 import cvxpy as cp
 from jax import vmap
 from functools import partial
-from examples.ista import generate_b_mat
+from examples.lasso import generate_b_mat
 from scipy.spatial import distance_matrix
-from examples.ista import sol_2_obj_diff, solve_many_probs_cvxpy
+from examples.lasso import sol_2_obj_diff, solve_many_probs_cvxpy
 from l2ws.utils.nn_utils import get_nearest_neighbors
 
 
@@ -86,7 +86,7 @@ def test_train_ista():
     nn_cfg = {}
     # nn_cfg = {'intermediate_layer_sizes': [200]} #, 'lr': 1e-1}
     train_unrolls = 50
-    input_dict = dict(algorithm='ista',
+    input_dict = dict(#algorithm='ista',
                       supervised=False,
                       train_unrolls=train_unrolls, 
                       jit=True,
