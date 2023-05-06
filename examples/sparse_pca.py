@@ -102,9 +102,14 @@ def generate_A_tensor(N, n_orig, r):
     r_choose_2 = int(r * (r + 1) / 2)
     theta_mat = np.zeros((N, r_choose_2))
     # theta_mat = np.zeros((N, n_orig * r))
+    B0 = np.diag(np.sqrt(S[:r]))
+
     for i in range(N):
         # B = .1*np.random.rand(r, r) #np.diag(np.random.rand(r)) #2 * np.random.rand(r, r) - 1
-        B = np.random.normal(size=(r, r))
+        # B = np.random.normal(size=(r, r))
+        delta = 2 * np.random.rand(r, r) - 1
+        B = .1 * delta + B0
+        # B = 2 * np.random.rand(r, r)
         # B = np.random.normal(size=(r, r))
         Sigma = .1 * B @ B.T
         col_idx, row_idx = np.triu_indices(r)
