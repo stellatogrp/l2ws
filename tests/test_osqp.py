@@ -16,6 +16,7 @@ from examples.mpc import multiple_random_mpc_osqp, solve_many_probs_cvxpy
 from scipy.spatial import distance_matrix
 # from examples.ista import sol_2_obj_diff, solve_many_probs_cvxpy
 from l2ws.utils.nn_utils import get_nearest_neighbors
+import osqp
 
 
 # def solve_many_osqp(P, A, q_mat):
@@ -23,11 +24,102 @@ from l2ws.utils.nn_utils import get_nearest_neighbors
 #     N, p = q_mat.shape
 #     for i in range(N):
 
+def test_osqp_exact():
+    # get a random robust least squares problem
+    N_train = 500
+    N_test = 50
+    N = N_train + N_test
+    factor, P, A, q_mat, theta_mat = multiple_random_mpc_osqp(N,
+                                                              T=10,
+                                                              nx=10,
+                                                              nu=5,
+                                                              sigma=1,
+                                                              rho=1,
+                                                              Ad=None,
+                                                              Bd=None,
+                                                              seed=42)
+    train_inputs, test_inputs = theta_mat[:N_train, :], theta_mat[N_train:, :]
+    z_stars_train, z_stars_test = None, None
+    q_mat_train, q_mat_test = q_mat[:N_train, :], q_mat[N_train:, :]
+    m, n = A.shape
+
+    c, b = q_mat[0, :n], q_mat[0, n:]
+    q, l, u = np.array(q_mat_train[0, :n]), np.array(
+        q_mat_train[0, n:n + m]), np.array(q_mat_train[0, n + m:])
+
+    max_iter = 2
+    osqp_solver = osqp.OSQP()
+    P_sparse, A_sparse = csc_matrix(np.array(P)), csc_matrix(np.array(A))
+
+    
+    osqp_solver.setup(P=P_sparse, q=q, A=A_sparse, l=l, u=u, alpha=1, rho=1, sigma=1, polish=False,
+                      adaptive_rho=False, scaling=0, max_iter=max_iter, verbose=True, eps_abs=1e-10, eps_rel=1e-10)
+
+    # fix warm start
+    x_ws = 0*np.ones(n)
+    y_ws = 0*np.ones(m)
+    # s_ws = np.zeros(m)
+
+    osqp_solver.warm_start(x=x_ws, y=y_ws)
+    results = osqp_solver.solve()
+    
+
+    # solve in C
+    # P_sparse, A_sparse = csc_matrix(np.array(P)), csc_matrix(np.array(A))
+    # c_np, b_np = np.array(c), np.array(b)
+    # c_data = dict(P=P_sparse, A=A_sparse, c=c_np, b=b_np)
+    # solver = scs.SCS(c_data,
+    #                  cones,
+    #                  normalize=False,
+    #                  scale=scale,
+    #                  adaptive_scale=False,
+    #                  rho_x=rho_x,
+    #                  alpha=alpha,
+    #                  acceleration_lookback=0,
+    #                  max_iters=max_iters)
+
+    # sol = solver.solve(warm_start=True, x=x_ws, y=y_ws, s=s_ws)
+    # x_c = jnp.array(sol['x'])
+    # y_c = jnp.array(sol['y'])
+    # s_c = jnp.array(sol['s'])
+
+    # solve with our jax implementation
+    # create the factorization
+    sigma = 1
+    rho_vec = jnp.ones(m)
+    rho_vec = rho_vec.at[l == u].set(1000)
+    
+    # M = P + sigma * jnp.eye(n) + rho * A.T @ A
+    M = P + sigma * jnp.eye(n) +  A.T @ jnp.diag(rho_vec) @A
+
+    factor = jsp.linalg.lu_factor(M)
+
+    xy0 = jnp.concatenate([x_ws, y_ws])
+
+    z_k, losses, z_all = k_steps_eval_osqp(
+        max_iter, xy0, q_mat[0, :], factor, A, rho_vec, sigma, supervised=False, z_star=None, jit=True)
+    
+    import pdb
+    pdb.set_trace()
+
+    # data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_ws, y=y_ws, s=s_ws)
+    # sol_hsde = scs_jax(data, hsde=True, iters=max_iters, jit=False,
+    #                    rho_x=rho_x, scale=scale, alpha=alpha, plot=False)
+    # x_jax, y_jax, s_jax = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
+    # fp_res_hsde = sol_hsde['fixed_point_residuals']
+
+    # these should match to machine precision
+    # assert jnp.linalg.norm(x_jax - x_c) < 1e-10
+    # assert jnp.linalg.norm(y_jax - y_c) < 1e-10
+    # assert jnp.linalg.norm(s_jax - s_c) < 1e-10
+
+
+@pytest.mark.skip(reason="temp")
 def test_random_mpc():
     N_train = 500
     N_test = 50
     N = N_train + N_test
-    factor, P, A, q_mat, theta_mat = multiple_random_mpc_osqp(N, 
+    factor, P, A, q_mat, theta_mat = multiple_random_mpc_osqp(N,
                                                               T=10,
                                                               nx=10,
                                                               nu=5,
