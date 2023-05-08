@@ -68,7 +68,7 @@ def main_run_unconstrained_qp(cfg):
     unconstrained_qp.run(cfg)
 
 
-@hydra.main(config_path='configs/mpc', config_name='mpc_qp_run.yaml')
+@hydra.main(config_path='configs/mpc', config_name='mpc_run.yaml')
 def main_run_mpc(cfg):
     orig_cwd = hydra.utils.get_original_cwd()
     example = 'mpc'
@@ -204,7 +204,7 @@ if __name__ == '__main__':
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_run_lasso()
     elif sys.argv[1] == 'mpc':
-        sys.argv[1] = base + 'lasso/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv[1] = base + 'mpc/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_run_mpc()
     elif sys.argv[1] == 'unconstrained_qp':

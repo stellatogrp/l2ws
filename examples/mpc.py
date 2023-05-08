@@ -7,7 +7,7 @@ import cvxpy as cp
 import yaml
 from l2ws.launcher import Workspace
 import os
-from examples.solve_script import 
+from examples.solve_script import osqp_setup_script
 
 
 def run(run_cfg):
@@ -24,18 +24,34 @@ def run(run_cfg):
 
     # set the seed
     np.random.seed(setup_cfg['seed'])
-    m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
-    A = jnp.array(np.random.normal(size=(m_orig, n_orig)))
-    evals, evecs = jnp.linalg.eigh(A.T @ A)
-    ista_step =  1 / evals.max()
-    lambd = setup_cfg['lambd']
+    # m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
+    # A = jnp.array(np.random.normal(size=(m_orig, n_orig)))
+    # evals, evecs = jnp.linalg.eigh(A.T @ A)
+    # ista_step =  1 / evals.max()
+    # lambd = setup_cfg['lambd']
 
-    static_dict = dict(A=A, lambd=lambd, ista_step=ista_step)
+    # static_dict = dict(A=A, lambd=lambd, ista_step=ista_step)
+    # setup the training
+    T, x_init_factor = setup_cfg['T'], setup_cfg['x_init_factor']
+    nx, nu = setup_cfg['nx'], setup_cfg['nu']
+    # num_traj = setup_cfg['num_traj']
+    traj_length = setup_cfg['traj_length']
+    mpc_setup = multiple_random_mpc_osqp(5,
+                                         T=T,
+                                         nx=nx,
+                                         nu=nu,
+                                         Ad=None,
+                                         Bd=None,
+                                         seed=setup_cfg['seed'],
+                                         x_init_factor=x_init_factor)
+    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, rho_vec = mpc_setup
+
+    static_dict = dict(factor=factor, A=A, rho_vec=rho_vec)
 
     # we directly save q now
     static_flag = True
     algo = 'osqp'
-    workspace = Workspace(algo, run_cfg, static_flag, static_dict, example)
+    workspace = Workspace(algo, run_cfg, static_flag, static_dict, example, traj_length=traj_length)
 
     # run the workspace
     workspace.run()
@@ -45,12 +61,13 @@ def setup_probs(setup_cfg):
     cfg = setup_cfg
     N_train, N_test = cfg.N_train, cfg.N_test
     N = N_train + N_test
-    np.random.seed(setup_cfg['seed'])
-    m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
-    A = jnp.array(np.random.normal(size=(m_orig, n_orig)))
-    evals, evecs = jnp.linalg.eigh(A.T @ A)
-    ista_step = 1 / evals.max()
-    lambd = setup_cfg['lambd']
+
+    # np.random.seed(setup_cfg['seed'])
+    # m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
+    # A = jnp.array(np.random.normal(size=(m_orig, n_orig)))
+    # evals, evecs = jnp.linalg.eigh(A.T @ A)
+    # ista_step = 1 / evals.max()
+    # lambd = setup_cfg['lambd']
 
     np.random.seed(cfg.seed)
 
@@ -60,19 +77,44 @@ def setup_probs(setup_cfg):
     # P, A, cones, q_mat, theta_mat_jax, A_tensor = multiple_random_sparse_pca(
     #     n_orig, cfg.k, cfg.r, N, factor=False)
     # P_sparse, A_sparse = csc_matrix(P), csc_matrix(A)
-    b_mat = generate_b_mat(A, N, p=.1)
-    m, n = A.shape
+    # b_mat = generate_b_mat(A, N, p=.1)
+    # m, n = A.shape
 
-    # create scs solver object
-    #    we can cache the factorization if we do it like this
-    # b_np, c_np = np.array(q_mat[0, n:]), np.array(q_mat[0, :n])
-    # data = dict(P=P_sparse, A=A_sparse, b=b_np, c=c_np)
-    # tol_abs = cfg.solve_acc_abs
-    # tol_rel = cfg.solve_acc_rel
-    # solver = scs.SCS(data, cones, normalize=False, alpha=1, scale=1,
-    #                  rho_x=1, adaptive_scale=False, eps_abs=tol_abs, eps_rel=tol_rel)
+    # setup the training
+    T, x_init_factor = cfg.T, cfg.x_init_factor
+    nx, nu = cfg.nx, cfg.nu
+    mpc_setup = multiple_random_mpc_osqp(N_train,
+                                         T=T,
+                                         nx=nx,
+                                         nu=nu,
+                                         Ad=None,
+                                         Bd=None,
+                                         seed=cfg.seed,
+                                         x_init_factor=x_init_factor)
+    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, rho_vec = mpc_setup
 
-    osqp_setup_script(b_mat, A, lambd, output_filename)
+    # setup the testing
+    q = q_mat_train[0, :]
+
+    # num_traj_train = int(N_train / cfg.traj_length)
+    # theta_mat_train, z_stars_train, q_mat_train = solve_multiple_trajectories(
+    #     cfg.traj_length, num_traj_train, x_bar, x_init_factor, Ad, P, A, q)
+
+    # horizon = int(N_test / cfg.num_traj)
+
+    num_traj_test = int(N_test / cfg.traj_length)
+    theta_mat_test, z_stars_test, q_mat_test = solve_multiple_trajectories(
+        cfg.traj_length, num_traj_test, x_bar, x_init_factor, Ad, P, A, q)
+
+    # create theta_mat and q_mat
+    q_mat = jnp.vstack([q_mat_train, q_mat_test])
+    theta_mat = jnp.vstack([theta_mat_train, theta_mat_test])
+    # z_stars = jnp.vstack([z_stars_train, z_stars_test])
+
+    # osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=z_stars)
+    osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=None)
+    # import pdb
+    # pdb.set_trace()
 
 
 def generate_static_prob_data(nx, nu, seed):
@@ -85,13 +127,17 @@ def generate_static_prob_data(nx, nu, seed):
 
     # normalize Ad so eigenvalues are less than 1
     orig_evals, evecs = np.linalg.eig(orig_Ad)
-    # import pdb
-    # pdb.set_trace()
     max_norm = np.max(np.abs(orig_evals))
     if max_norm >= 1:
         Ad = orig_Ad / max_norm
     else:
         Ad = orig_Ad
+    # Ad = orig_Ad
+    # eval_norms = np.abs(orig_evals)
+    # new_evals = orig_evals / eval_norms
+    # Ad = np.real(evecs.T @ np.diag(new_evals) @ evecs)
+    # import pdb
+    # pdb.set_trace()
 
     # evals = np.clip(orig_evals, a_min=-np.inf, a_max=1)
     # Ad = evecs @ np.diag(evals) @ evecs.T
@@ -196,17 +242,17 @@ def solve_many_probs_cvxpy(P, A, q_mat):
     return z_stars, objvals
 
 
-def solve_multiple_trajectories(T, num_traj, x_bar, x_init_factor, Ad, P, A, q):
+def solve_multiple_trajectories(traj_length, num_traj, x_bar, x_init_factor, Ad, P, A, q):
     m, n = A.shape
     nx = Ad.shape[0]
-    q_mat = jnp.zeros((T * num_traj, n + 2 * m))
+    q_mat = jnp.zeros((traj_length * num_traj, n + 2 * m))
     first_x_inits = x_init_factor * jnp.array(x_bar * (2 * np.random.rand(num_traj, nx) - 1))
     theta_mat_list = []
     z_stars_list = []
     q_mat_list = []
     for i in range(num_traj):
         first_x_init = first_x_inits[i, :]
-        theta_mat_curr, z_stars_curr, q_mat_curr = solve_trajectory(first_x_init, P, A, q, T, Ad)
+        theta_mat_curr, z_stars_curr, q_mat_curr = solve_trajectory(first_x_init, P, A, q, traj_length, Ad)
         theta_mat_list.append(theta_mat_curr)
         z_stars_list.append(z_stars_curr)
         q_mat_list.append(q_mat_curr)
@@ -220,7 +266,7 @@ def solve_multiple_trajectories(T, num_traj, x_bar, x_init_factor, Ad, P, A, q):
     return theta_mat, z_stars, q_mat
 
 
-def solve_trajectory(first_x_init, P, A, q, T, Ad):
+def solve_trajectory(first_x_init, P, A, q, traj_length, Ad):
     """
     given the system and a first x_init, we model the MPC paradigm
 
@@ -244,15 +290,15 @@ def solve_trajectory(first_x_init, P, A, q, T, Ad):
 
     c_param.value = np.array(q[:n])
 
-    z_stars = jnp.zeros((T, m + n))
-    theta_mat = jnp.zeros((T, nx))
-    q_mat = jnp.zeros((T, n + 2 * m))
+    z_stars = jnp.zeros((traj_length, m + n))
+    theta_mat = jnp.zeros((traj_length, nx))
+    q_mat = jnp.zeros((traj_length, n + 2 * m))
     q_mat = q_mat.at[:, :].set(q)
 
     # set the first x_init
     x_init = first_x_init
 
-    for i in range(T):
+    for i in range(traj_length):
         l = q[n:n + m]
         u = q[n + m:]
         theta_mat = theta_mat.at[i, :].set(x_init)

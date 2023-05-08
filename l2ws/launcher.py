@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from l2ws.l2ws_model import L2WSmodel
 from l2ws.ista_model import ISTAmodel
+from l2ws.osqp_model import OSQPmodel
 import jax.numpy as jnp
 import jax.scipy as jsp
 from jax import lax
@@ -27,6 +28,7 @@ config.update("jax_enable_x64", True)
 
 class Workspace:
     def __init__(self, algo, cfg, static_flag, static_dict, example,
+                 traj_length=None,
                  custom_visualize_fn=None):
         '''
         cfg is the run_cfg from hydra
@@ -62,6 +64,15 @@ class Workspace:
         self.thetas_train = thetas[:N_train, :]
         self.thetas_test = thetas[N_train:N, :]
 
+        self.traj_length = traj_length
+        if traj_length is not None:
+            self.prev_sol_eval = True
+
+        if algo != 'ista':
+            q_mat = jnp.array(jnp_load_obj['q_mat'])
+            q_mat_train = q_mat[:N_train, :]
+            q_mat_test = q_mat[N_train:N, :]
+
         self.train_unrolls = cfg.train_unrolls
         eval_unrolls = cfg.train_unrolls
 
@@ -70,15 +81,17 @@ class Workspace:
         self.skip_startup = cfg.get('skip_startup', False)
 
         num_plot = 5
-        
-        ############################################## everything below is specific to the algo
 
-        ############# extract optimal solutions
+        # everything below is specific to the algo
+
+        # extract optimal solutions
         if algo != 'scs':
             z_stars = jnp_load_obj['z_stars']
             z_stars_train = z_stars[:N_train, :]
             z_stars_test = z_stars[N_train:N, :]
             self.plot_samples(num_plot, thetas, train_inputs, z_stars_train)
+            self.z_stars_test = z_stars_test
+            self.z_stars_train = z_stars_train
         else:
             if 'x_stars' in jnp_load_obj.keys():
                 x_stars = jnp_load_obj['x_stars']
@@ -102,7 +115,7 @@ class Workspace:
                 z_stars_train, z_stars_test = None, None
                 m, n = int(jnp_load_obj['m']), int(jnp_load_obj['n'])
             self.plot_samples_scs(num_plot, thetas, train_inputs,
-                          x_stars_train, y_stars_train, z_stars_train)
+                                  x_stars_train, y_stars_train, z_stars_train)
 
         if algo == 'ista':
             # get A, lambd, ista_step
@@ -129,6 +142,25 @@ class Workspace:
                               z_stars_test=z_stars_test,
                               )
             self.l2ws_model = ISTAmodel(input_dict)
+        elif algo == 'osqp':
+            factor = static_dict['factor']
+            A = static_dict['A']
+            rho_vec = static_dict['rho_vec']
+
+            input_dict = dict(supervised=False,
+                              rho=rho_vec,
+                              q_mat_train=q_mat_train,
+                              q_mat_test=q_mat_test,
+                              A=A,
+                              factor=factor,
+                              train_inputs=train_inputs,
+                              test_inputs=test_inputs,
+                              train_unrolls=self.train_unrolls,
+                              nn_cfg=cfg.nn_cfg,
+                              z_stars_train=z_stars_train,
+                              z_stars_test=z_stars_test,
+                              jit=True)
+            self.l2ws_model = OSQPmodel(input_dict)
         elif algo == 'scs':
             if get_M_q is None:
                 q_mat = jnp_load_obj['q_mat']
@@ -233,7 +265,7 @@ class Workspace:
         filename = f"{folder}/data_setup.npz"
         jnp_load_obj = jnp.load(filename)
         return jnp_load_obj
-    
+
     def plot_samples(self, num_plot, thetas, train_inputs, z_stars):
         sample_plot(thetas, 'theta', num_plot)
         sample_plot(train_inputs, 'input', num_plot)
@@ -283,7 +315,9 @@ class Workspace:
             self.test_writer.writeheader()
 
     def evaluate_iters(self, num, col, train=False, plot=True, plot_pretrain=False):
-        fixed_ws = col == 'nearest_neighbor'
+        if train and col == 'prev_sol':
+            return
+        fixed_ws = col == 'nearest_neighbor' or col == 'prev_sol'
 
         # do the actual evaluation (most important step in thie method)
         eval_out = self.evaluate_only(fixed_ws, num, train, col)
@@ -486,6 +520,10 @@ class Workspace:
             if self.l2ws_model.z_stars_train is not None:
                 self.eval_iters_train_and_test('nearest_neighbor', False)
 
+            # prev sol eval
+            if self.prev_sol_eval and self.l2ws_model.z_stars_train is not None:
+                self.eval_iters_train_and_test('prev_sol', False)
+
             # pretrain evaluation
             if self.pretrain_on:
                 self.pretrain()
@@ -516,7 +554,8 @@ class Workspace:
             #     self.l2ws_model.decay_upon_plateau()
 
             # setup the permutations
-            permutation = setup_permutation(self.key_count, self.l2ws_model.N_train, self.epochs_jit)
+            permutation = setup_permutation(
+                self.key_count, self.l2ws_model.N_train, self.epochs_jit)
 
             # train the jitted epochs
             params, state, epoch_train_losses, time_train_per_epoch = self.train_jitted_epochs(
@@ -541,7 +580,6 @@ class Workspace:
             # plot the train / test loss so far
             if epoch % self.save_every_x_epochs == 0:
                 self.plot_train_test_losses()
-            
 
     def train_jitted_epochs(self, permutation, epoch):
         """
@@ -659,22 +697,57 @@ class Workspace:
             z_stars = self.l2ws_model.z_stars_train[:num,
                                                     :] if train else self.l2ws_model.z_stars_test[:num,
                                                                                                   :]
-        q_mat = self.l2ws_model.q_mat_train[:num,
+        if col == 'prev_sol':
+            q_mat_full = self.l2ws_model.q_mat_train[:num,
                                             :] if train else self.l2ws_model.q_mat_test[:num, :]
+            # last_indices = jnp.mod(jnp.arange(num), self.traj_length) != 0
+            non_first_indices = jnp.mod(jnp.arange(num), self.traj_length) != 0
+            q_mat = q_mat_full[non_first_indices, :]
+            z_stars = z_stars[non_first_indices, :]
+        else:
+            q_mat = self.l2ws_model.q_mat_train[:num,
+                                            :] if train else self.l2ws_model.q_mat_test[:num, :]
+            
 
-        factors = None if self.l2ws_model.static_flag else self.l2ws_model.matrix_invs_train[:num,
-                                                                                             :]
-        M_tensor = None if self.l2ws_model.static_flag else self.l2ws_model.M_tensor_train[:num, :]
+        # factors = None if self.l2ws_model.static_flag else self.l2ws_model.matrix_invs_train[:num,
+        #                                                                                      :]
+        # M_tensor = None if self.l2ws_model.static_flag else self.l2ws_model.M_tensor_train[:num, :]
 
         inputs = self.get_inputs_for_eval(fixed_ws, num, train, col)
         # eval_out = self.l2ws_model.evaluate(self.eval_unrolls, inputs, factors,
         #                                     M_tensor, q_mat, z_stars, fixed_ws, tag=tag)
-        eval_out = self.l2ws_model.evaluate(self.eval_unrolls, inputs, q_mat, z_stars, fixed_ws, tag=tag)
+        # import pdb
+        # pdb.set_trace()
+        eval_out = self.l2ws_model.evaluate(
+            self.eval_unrolls, inputs, q_mat, z_stars, fixed_ws, tag=tag)
         return eval_out
 
     def get_inputs_for_eval(self, fixed_ws, num, train, col):
         if fixed_ws:
-            inputs = self.get_nearest_neighbors(train, num)
+            if col == 'nearest_neighbor':
+                inputs = self.get_nearest_neighbors(train, num)
+            elif col == 'prev_sol':
+                z_size = self.z_stars_test.shape[1]
+                inputs = jnp.zeros((num, z_size))
+                inputs = inputs.at[1:, :].set(self.z_stars_test[:num - 1, :])
+
+                # now set the indices (0, num_traj, 2 * num_traj) to zero
+                
+                non_last_indices = jnp.mod(jnp.arange(num), self.traj_length) != self.traj_length - 1
+                inputs = inputs[non_last_indices, :]
+                # first_indices = jnp.mod(jnp.arange(num), self.traj_length) == 0
+                # inputs = inputs.at[first_indices, :].set(0)
+                import pdb
+                pdb.set_trace()
+                
+                # full evaluation on the test set with prev solution
+                # non_first_indices = jnp.mod(jnp.arange(N_test), self.num_traj) != 0
+                # non_last_indices = jnp.mod(jnp.arange(N_test), self.num_traj) != self.num_traj - 1
+                # print(jnp.mod(jnp.arange(N_test), num_traj))
+                # print('non_first_indices', non_first_indices)
+                # print('non_last_indices', non_last_indices)
+                # q_mat_prev = q_mat_test[non_first_indices, :]
+                # prev_z = z_stars_test[non_last_indices, :]
         else:
             # elif col == 'no_train': (possible case to consider)
             # random init with neural network ()
@@ -871,14 +944,22 @@ class Workspace:
 
     def plot_eval_iters(self, iters_df, primal_residuals_df, dual_residuals_df, plot_pretrain,
                         train, col):
-        # plot of the fixed point residuals
+        # plot the cold-start if applicable
         if 'no_train' in iters_df.keys():
             plt.plot(iters_df['no_train'], 'k-', label='no learning')
+
+        # plot the nearest_neighbor if applicable
         if col != 'no_train' and 'nearest_neighbor' in iters_df.keys():
             plt.plot(iters_df['nearest_neighbor'], 'm-', label='nearest neighbor')
-        if plot_pretrain:
-            plt.plot(iters_df['pretrain'], 'r-', label='pretraining')
-        if col != 'no_train' and col != 'pretrain' and col != 'fixed_ws':
+
+        # plot the prev_sol if applicable
+        if col != 'no_train' and col != 'nearest_neighbor' and 'prev_sol' in iters_df.keys():
+            plt.plot(iters_df['prev_sol'], 'c-', label='prev solution')
+        # if plot_pretrain:
+        #     plt.plot(iters_df['pretrain'], 'r-', label='pretraining')
+
+        # plot the learned warm-start if applicable
+        if col != 'no_train' and col != 'pretrain' and col != 'nearest_neighbor' and col != 'prev_sol':
             plt.plot(iters_df[col], label=f"train k={self.train_unrolls}")
         plt.yscale('log')
         plt.xlabel('evaluation iterations')

@@ -30,7 +30,7 @@ def test_mpc_prev_sol():
     N = N_train + N_test
     T = 10
     num_traj = 10
-    num_traj_train = 50
+    traj_length = 10
     x_init_factor = .5
 
     mpc_setup = multiple_random_mpc_osqp(N_train,
@@ -51,7 +51,7 @@ def test_mpc_prev_sol():
     #     T, num_traj_train, x_bar, x_init_factor, Ad, P, A, q)
 
     theta_mat_test, z_stars_test, q_mat_test = solve_multiple_trajectories(
-        T, num_traj, x_bar, x_init_factor, Ad, P, A, q)
+        traj_length, num_traj, x_bar, x_init_factor, Ad, P, A, q)
 
     # create theta_mat and q_mat
     q_mat = jnp.vstack([q_mat_train, q_mat_test])
@@ -62,8 +62,7 @@ def test_mpc_prev_sol():
     z_stars_train, z_stars_test = z_stars[:N_train, :], z_stars[N_train:, :]
 
     train_unrolls = 10
-    input_dict = dict(algorithm='osqp',
-                      rho=rho_vec,
+    input_dict = dict(rho=rho_vec,
                       q_mat_train=q_mat_train,
                       q_mat_test=q_mat_test,
                       A=A,
