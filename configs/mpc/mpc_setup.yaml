@@ -1,5 +1,6 @@
-m_orig: 50
-n_orig: 25
+nx: 10
+nu: 5
+T: 10
 lambd: 1
 solve_acc_abs: 1e-4
 solve_acc_rel: 0

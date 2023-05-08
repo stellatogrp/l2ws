@@ -30,22 +30,28 @@ def test_mpc_prev_sol():
     N = N_train + N_test
     T = 10
     num_traj = 10
-    x_init_factor = .3
-    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad = multiple_random_mpc_osqp(N_train, 
-                                                                T=T,
-                                                                nx=10,
-                                                                nu=5,
-                                                                sigma=1,
-                                                                rho=1,
-                                                                Ad=None,
-                                                                Bd=None,
-                                                                seed=42,
-                                                                x_init_factor=x_init_factor)
+    num_traj_train = 50
+    x_init_factor = .5
+
+    mpc_setup = multiple_random_mpc_osqp(N_train,
+                                         T=T,
+                                         nx=10,
+                                         nu=5,
+                                         Ad=None,
+                                         Bd=None,
+                                         seed=42,
+                                         x_init_factor=x_init_factor)
+    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, rho_vec = mpc_setup
     # train_inputs, test_inputs = theta_mat[:N_train, :], theta_mat[N_train:, :]
     # z_stars_train, z_stars_test = None, None
     # q_mat_train, q_mat_test = q_mat[:N_train, :], q_mat[N_train:, :]
     q = q_mat_train[0, :]
-    theta_mat_test, z_stars_test, q_mat_test = solve_multiple_trajectories(T, num_traj, x_bar, x_init_factor, Ad, P, A, q)
+
+    # theta_mat_train, z_stars_train, q_mat_train = solve_multiple_trajectories(
+    #     T, num_traj_train, x_bar, x_init_factor, Ad, P, A, q)
+
+    theta_mat_test, z_stars_test, q_mat_test = solve_multiple_trajectories(
+        T, num_traj, x_bar, x_init_factor, Ad, P, A, q)
 
     # create theta_mat and q_mat
     q_mat = jnp.vstack([q_mat_train, q_mat_test])
@@ -57,15 +63,16 @@ def test_mpc_prev_sol():
 
     train_unrolls = 10
     input_dict = dict(algorithm='osqp',
-                    q_mat_train=q_mat_train,
-                    q_mat_test=q_mat_test,
-                    A=A,
-                    factor=factor,
-                    train_inputs=theta_mat[:N_train, :],
-                    test_inputs=theta_mat[N_train:, :],
-                    train_unrolls=train_unrolls,
-                    nn_cfg={'intermediate_layer_sizes': [300]},
-                    jit=True)
+                      rho=rho_vec,
+                      q_mat_train=q_mat_train,
+                      q_mat_test=q_mat_test,
+                      A=A,
+                      factor=factor,
+                      train_inputs=theta_mat[:N_train, :],
+                      test_inputs=theta_mat[N_train:, :],
+                      train_unrolls=train_unrolls,
+                      nn_cfg={'intermediate_layer_sizes': [300]},
+                      jit=True)
     osqp_model = OSQPmodel(input_dict)
 
     train_inputs, test_inputs = theta_mat_train, theta_mat_test
@@ -74,8 +81,8 @@ def test_mpc_prev_sol():
     k = 500
     nearest_neighbors_z = get_nearest_neighbors(train_inputs, test_inputs, z_stars_train)
     nn_eval_out = osqp_model.evaluate(k, nearest_neighbors_z,
-                                        q_mat_test, z_stars=z_stars_test,
-                                        fixed_ws=True, tag='test')
+                                      q_mat_test, z_stars=z_stars_test,
+                                      fixed_ws=True, tag='test')
     nn_losses = nn_eval_out[1][1].mean(axis=0)
 
     # full evaluation on the test set with prev solution
@@ -87,8 +94,8 @@ def test_mpc_prev_sol():
     q_mat_prev = q_mat_test[non_first_indices, :]
     prev_z = z_stars_test[non_last_indices, :]
     prev_sol_out = osqp_model.evaluate(k, prev_z,
-                                        q_mat_prev, z_stars=None,
-                                        fixed_ws=True, tag='test')
+                                       q_mat_prev, z_stars=None,
+                                       fixed_ws=True, tag='test')
     prev_sol_losses = prev_sol_out[1][1].mean(axis=0)
 
     # full evaluation on the test set with cold-start
@@ -124,7 +131,6 @@ def test_mpc_prev_sol():
     plt.show()
     # print(prev_sol_losses)
 
-
     plt.title('losses')
     plt.plot(train_losses, label='train')
     init_test_loss = init_test_losses[train_unrolls]
@@ -144,6 +150,7 @@ def test_mpc_prev_sol():
     # plt.show()
     import pdb
     pdb.set_trace()
+
 
 @pytest.mark.skip(reason="temp")
 def test_osqp_exact():
@@ -173,7 +180,6 @@ def test_osqp_exact():
     osqp_solver = osqp.OSQP()
     P_sparse, A_sparse = csc_matrix(np.array(P)), csc_matrix(np.array(A))
 
-    
     osqp_solver.setup(P=P_sparse, q=q, A=A_sparse, l=l, u=u, alpha=1, rho=1, sigma=1, polish=False,
                       adaptive_rho=False, scaling=0, max_iter=max_iter, verbose=True, eps_abs=1e-10, eps_rel=1e-10)
 
@@ -184,15 +190,15 @@ def test_osqp_exact():
 
     osqp_solver.warm_start(x=x_ws, y=y_ws)
     results = osqp_solver.solve()
-    
+
     # solve with our jax implementation
     # create the factorization
     sigma = 1
     rho_vec = jnp.ones(m)
     rho_vec = rho_vec.at[l == u].set(1000)
-    
+
     # M = P + sigma * jnp.eye(n) + rho * A.T @ A
-    M = P + sigma * jnp.eye(n) +  A.T @ jnp.diag(rho_vec) @A
+    M = P + sigma * jnp.eye(n) + A.T @ jnp.diag(rho_vec) @ A
 
     factor = jsp.linalg.lu_factor(M)
 
@@ -200,7 +206,7 @@ def test_osqp_exact():
 
     z_k, losses, z_all = k_steps_eval_osqp(
         max_iter, xy0, q_mat[0, :], factor, A, rho_vec, sigma, supervised=False, z_star=None, jit=True)
-    
+
     x_jax = z_k[:n]
     y_jax = z_k[n:n + m]
     # data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_ws, y=y_ws, s=s_ws)

@@ -41,8 +41,6 @@ def ista_setup_script(b_mat, A, lambd, output_filename):
     # save the data
     log.info("final saving final data...")
     t0 = time.time()
-    # import pdb
-    # pdb.set_trace()
     jnp.savez(
         output_filename,
         thetas=jnp.array(b_mat),

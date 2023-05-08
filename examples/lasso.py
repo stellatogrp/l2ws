@@ -29,7 +29,6 @@ def run(run_cfg):
     static_dict = dict(A=A, lambd=lambd, ista_step=ista_step)
 
     # we directly save q now
-    get_q = None
     static_flag = True
     algo = 'ista'
     workspace = Workspace(algo, run_cfg, static_flag, static_dict, example)
@@ -54,20 +53,7 @@ def setup_probs(setup_cfg):
     # save output to output_filename
     output_filename = f"{os.getcwd()}/data_setup"
 
-    # P, A, cones, q_mat, theta_mat_jax, A_tensor = multiple_random_sparse_pca(
-    #     n_orig, cfg.k, cfg.r, N, factor=False)
-    # P_sparse, A_sparse = csc_matrix(P), csc_matrix(A)
     b_mat = generate_b_mat(A, N, p=.1)
-    m, n = A.shape
-
-    # create scs solver object
-    #    we can cache the factorization if we do it like this
-    # b_np, c_np = np.array(q_mat[0, n:]), np.array(q_mat[0, :n])
-    # data = dict(P=P_sparse, A=A_sparse, b=b_np, c=c_np)
-    # tol_abs = cfg.solve_acc_abs
-    # tol_rel = cfg.solve_acc_rel
-    # solver = scs.SCS(data, cones, normalize=False, alpha=1, scale=1,
-    #                  rho_x=1, adaptive_scale=False, eps_abs=tol_abs, eps_rel=tol_rel)
 
     ista_setup_script(b_mat, A, lambd, output_filename)
 

@@ -9,6 +9,7 @@ import examples.sparse_pca as sparse_pca
 import examples.phase_retrieval as phase_retrieval
 import examples.lasso as lasso
 import examples.unconstrained_qp as unconstrained_qp
+import examples.mpc as mpc
 import hydra
 import pdb
 import yaml
@@ -65,6 +66,19 @@ def main_run_unconstrained_qp(cfg):
         cfg.data.datetime = setup_datetime
     copy_data_file(example, setup_datetime)
     unconstrained_qp.run(cfg)
+
+
+@hydra.main(config_path='configs/mpc', config_name='mpc_qp_run.yaml')
+def main_run_mpc(cfg):
+    orig_cwd = hydra.utils.get_original_cwd()
+    example = 'mpc'
+    setup_datetime = cfg.data.datetime
+    if setup_datetime == '':
+        # get the most recent datetime and update datetimes
+        setup_datetime = recover_last_datetime(orig_cwd, example, 'data_setup')
+        cfg.data.datetime = setup_datetime
+    copy_data_file(example, setup_datetime)
+    mpc.run(cfg)
 
 
 @hydra.main(config_path='configs/robust_kalman', config_name='robust_kalman_run.yaml')
@@ -189,6 +203,10 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'lasso/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_run_lasso()
+    elif sys.argv[1] == 'mpc':
+        sys.argv[1] = base + 'lasso/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_run_mpc()
     elif sys.argv[1] == 'unconstrained_qp':
         sys.argv[1] = base + 'lasso/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]

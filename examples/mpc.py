@@ -4,6 +4,75 @@ import jax.scipy as jsp
 from scipy.linalg import solve_discrete_are
 from examples.osc_mass import static_canon_osqp
 import cvxpy as cp
+import yaml
+from l2ws.launcher import Workspace
+import os
+from examples.solve_script import 
+
+
+def run(run_cfg):
+    example = "mpc"
+    data_yaml_filename = 'data_setup_copied.yaml'
+
+    # read the yaml file
+    with open(data_yaml_filename, "r") as stream:
+        try:
+            setup_cfg = yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+            setup_cfg = {}
+
+    # set the seed
+    np.random.seed(setup_cfg['seed'])
+    m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
+    A = jnp.array(np.random.normal(size=(m_orig, n_orig)))
+    evals, evecs = jnp.linalg.eigh(A.T @ A)
+    ista_step =  1 / evals.max()
+    lambd = setup_cfg['lambd']
+
+    static_dict = dict(A=A, lambd=lambd, ista_step=ista_step)
+
+    # we directly save q now
+    static_flag = True
+    algo = 'osqp'
+    workspace = Workspace(algo, run_cfg, static_flag, static_dict, example)
+
+    # run the workspace
+    workspace.run()
+
+
+def setup_probs(setup_cfg):
+    cfg = setup_cfg
+    N_train, N_test = cfg.N_train, cfg.N_test
+    N = N_train + N_test
+    np.random.seed(setup_cfg['seed'])
+    m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
+    A = jnp.array(np.random.normal(size=(m_orig, n_orig)))
+    evals, evecs = jnp.linalg.eigh(A.T @ A)
+    ista_step = 1 / evals.max()
+    lambd = setup_cfg['lambd']
+
+    np.random.seed(cfg.seed)
+
+    # save output to output_filename
+    output_filename = f"{os.getcwd()}/data_setup"
+
+    # P, A, cones, q_mat, theta_mat_jax, A_tensor = multiple_random_sparse_pca(
+    #     n_orig, cfg.k, cfg.r, N, factor=False)
+    # P_sparse, A_sparse = csc_matrix(P), csc_matrix(A)
+    b_mat = generate_b_mat(A, N, p=.1)
+    m, n = A.shape
+
+    # create scs solver object
+    #    we can cache the factorization if we do it like this
+    # b_np, c_np = np.array(q_mat[0, n:]), np.array(q_mat[0, :n])
+    # data = dict(P=P_sparse, A=A_sparse, b=b_np, c=c_np)
+    # tol_abs = cfg.solve_acc_abs
+    # tol_rel = cfg.solve_acc_rel
+    # solver = scs.SCS(data, cones, normalize=False, alpha=1, scale=1,
+    #                  rho_x=1, adaptive_scale=False, eps_abs=tol_abs, eps_rel=tol_rel)
+
+    osqp_setup_script(b_mat, A, lambd, output_filename)
 
 
 def generate_static_prob_data(nx, nu, seed):
@@ -69,7 +138,11 @@ def multiple_random_mpc_osqp(N,
     q_mat = q_mat.at[:, :n].set(c)
 
     # factor
-    M = P + sigma * jnp.eye(n) + rho * A.T @ A
+    rho_vec = jnp.ones(m)
+    rho_vec = rho_vec.at[l == u].set(1000)
+
+    # M = P + sigma * jnp.eye(n) + rho * A.T @ A
+    M = P + sigma * jnp.eye(n) + A.T @ jnp.diag(rho_vec) @ A
     factor = jsp.linalg.lu_factor(M)
 
     # x_init is theta
@@ -85,7 +158,8 @@ def multiple_random_mpc_osqp(N,
         q_mat = q_mat.at[i, :].set(q_osqp)
     theta_mat = x_init_mat
     # return factor, P, A, q_mat, theta_mat
-    return factor, P, A, q_mat, theta_mat, x_bar, Ad 
+
+    return factor, P, A, q_mat, theta_mat, x_bar, Ad, rho_vec
 
 def solve_many_probs_cvxpy(P, A, q_mat):
     """
