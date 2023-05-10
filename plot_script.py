@@ -56,7 +56,10 @@ def robust_ls_plot_eval_iters(cfg):
     overlay_training_losses(example, cfg)
     plot_eval_iters(example, cfg, train=False)
     
-
+@hydra.main(config_path='configs/phase_retrieval', config_name='phase_retrieval_plot.yaml')
+def phase_retrieval_plot_eval_iters(cfg):
+    example = 'phase_retrieval'
+    plot_eval_iters(example, cfg, train=False)
 
 @hydra.main(config_path='configs/all', config_name='plot.yaml')
 def plot_l4dc(cfg):
@@ -504,6 +507,10 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'robust_ls/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         robust_ls_plot_eval_iters()
+    elif sys.argv[1] == 'phase_retrieval':
+        sys.argv[1] = base + 'phase_retrieval/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        phase_retrieval_plot_eval_iters()
     elif sys.argv[1] == 'all':
         sys.argv[1] = base + 'all/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]

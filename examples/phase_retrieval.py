@@ -61,7 +61,7 @@ def run(run_cfg):
     workspace.run()
 
 
-def multiple_random_phase_retrieval(n_orig, d_mul, x_var, N, seed=42):
+def multiple_random_phase_retrieval(n_orig, d_mul, x_mean, x_var, N, seed=42):
     ######################### TODO
     out_dict = static_canon(n_orig, d_mul)
     # # c, b = out_dict['c'], out_dict['b']
@@ -73,7 +73,7 @@ def multiple_random_phase_retrieval(n_orig, d_mul, x_var, N, seed=42):
 
 
     # get theta_mat and b_vals together
-    b_matrix = generate_theta_mat_b_vals(N, A_tensor, x_var, n_orig, d_mul)
+    b_matrix = generate_theta_mat_b_vals(N, A_tensor, x_mean, x_var, n_orig, d_mul)
     theta_mat_jax = jnp.array(b_matrix)
 
     # convert to q_mat
@@ -143,7 +143,7 @@ def cvxpy_prob(n_orig, d_mul, seed=42):
     return prob, A_tensor, b_param
 
 
-def generate_theta_mat_b_vals(N, A_tensor, x_var, n_orig, d_mul):
+def generate_theta_mat_b_vals(N, A_tensor, x_mean, x_var, n_orig, d_mul):
     d = n_orig * d_mul
     b_matrix = np.zeros((N, d))
     # n_orig_choose_2 = int(n_orig * (n_orig + 1) / 2)
@@ -151,7 +151,13 @@ def generate_theta_mat_b_vals(N, A_tensor, x_var, n_orig, d_mul):
     for i in range(N):
         # this is where the parameterization comes in
         # could modify where the xi comes from
-        xi = np.random.normal(size=(n_orig), scale=np.sqrt(x_var)) + 1j * np.random.normal(size=(n_orig), scale=np.sqrt(x_var))
+        negate1 = np.random.binomial(n=1, p=0.5, size=(n_orig))
+        negate2 = np.random.binomial(n=1, p=0.5, size=(n_orig))
+        negate1[negate1 == 0] = -1
+        negate2[negate2 == 0] = -1
+
+        xi = np.multiply(np.random.normal(size=(n_orig), loc=x_mean, scale=np.sqrt(x_var)), negate1) \
+            + 1j * np.multiply(np.random.normal(size=(n_orig), loc=x_mean, scale=np.sqrt(x_var)), negate2)
         Xi = np.outer(xi, xi.conjugate())
         # col_idx, row_idx = np.triu_indices(n_orig)
         # theta_mat[i, :] = Xi[(col_idx, row_idx)]
@@ -234,6 +240,7 @@ def setup_probs(setup_cfg):
     n_orig = cfg.n_orig
     d_mul = cfg.d_mul
     x_var = cfg.x_var
+    x_mean = cfg.x_mean
     # d_orig = n_orig * d_mul
 
     np.random.seed(cfg.seed)
@@ -244,7 +251,7 @@ def setup_probs(setup_cfg):
 
     ################## TODO add extra params to generation
     P, A, cones, q_mat, theta_mat_jax = multiple_random_phase_retrieval(
-        n_orig, d_mul, x_var, N) 
+        n_orig, d_mul, x_mean, x_var, N) 
 
     P_sparse, A_sparse = csc_matrix(P), csc_matrix(A)
     m, n = A.shape
