@@ -27,6 +27,25 @@ def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous, s
     return z_next, loss_vec
 
 
+# def solve_ista(A, b, lambd, t, max_iters=100):
+#     """
+#     solves the optimization problem
+#     min 1/2 ||Ax - b||_2^2 + lambd||x||_1
+#     with the ista algorithm
+#     """
+
+
+def fp_train_ista(i, val, supervised, z_star, A, b, lambd, t):
+    z, loss_vec = val
+    z_next = fixed_point_ista(z, A, b, lambd, t)
+    if supervised:
+        diff = jnp.linalg.norm(z - z_star)
+    else:
+        diff = jnp.linalg.norm(z_next - z)
+    loss_vec = loss_vec.at[i].set(diff)
+    return z_next, loss_vec
+
+
 def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, scale_vec, alpha,
             lightweight=True, verbose=False):
     """
@@ -60,7 +79,7 @@ def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, scale_vec,
 
 
 def k_steps_train(k, z0, q_r, factor, supervised, z_star, proj, jit, hsde, m, n, zero_cone_size,
-                  rho_x=1, scale=1, alpha=1.5):
+                  rho_x=1, scale=1, alpha=1.0):
     iter_losses = jnp.zeros(k)
     scale_vec = get_scale_vec(rho_x, scale, m, n, zero_cone_size, hsde=hsde)
 
@@ -88,8 +107,40 @@ def k_steps_train(k, z0, q_r, factor, supervised, z_star, proj, jit, hsde, m, n,
     return z_final, iter_losses
 
 
+def k_steps_train_ista(k, z0, b, lambd, A, t, supervised, z_star, jit):
+    iter_losses = jnp.zeros(k)
+    # scale_vec = get_scale_vec(rho_x, scale, m, n, zero_cone_size, hsde=hsde)
+
+    fp_train_partial = partial(fp_train_ista, 
+                               supervised=supervised, 
+                               z_star=z_star,
+                               A=A, b=b,
+                               lambd=lambd, 
+                               t=t
+                               )
+
+    # if hsde:
+    #     # first step: iteration 0
+    #     # we set homogeneous = False for the first iteration
+    #     #   to match the SCS code which has the global variable FEASIBLE_ITERS
+    #     #   which is set to 1
+    #     homogeneous = False
+    #     z_next, u, u_tilde, v = fixed_point_hsde(
+    #         z0, homogeneous, q_r, factor, proj, scale_vec, alpha)
+    #     iter_losses = iter_losses.at[0].set(jnp.linalg.norm(z_next - z0))
+    #     z0 = z_next
+    val = z0, iter_losses
+    start_iter = 0
+    if jit:
+        out = lax.fori_loop(start_iter, k, fp_train_partial, val)
+    else:
+        out = python_fori_loop(start_iter, k, fp_train_partial, val)
+    z_final, iter_losses = out
+    return z_final, iter_losses
+
+
 def k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit, hsde, zero_cone_size,
-                 rho_x=1, scale=1, alpha=1.5):
+                 rho_x=1, scale=1, alpha=1.0):
     """
     if k = 500 we store u_1, ..., u_500 and z_0, z_1, ..., z_500
         which is why we have all_z_plus_1
@@ -286,6 +337,20 @@ def root_plus(mu, eta, p, r, scale_vec):
     b = mu @ r_scaled - 2 * r_scaled @ p - eta * TAU_FACTOR
     c = jnp.multiply(p, scale_vec) @ (p - mu)
     return (-b + jnp.sqrt(b ** 2 - 4 * a * c)) / (2 * a)
+
+
+def fixed_point_ista(z, A, b, lambd, t):
+    """
+    applies the ista fixed point operator
+    """
+    return soft_threshold(z + t * A.T.dot(b - A.dot(z)), t * lambd)
+
+
+def soft_threshold(z, alpha):
+    """
+    soft-thresholding function for ista
+    """
+    return jnp.clip(jnp.abs(z) - alpha, a_min=0) * jnp.sign(z)
 
 
 def fixed_point(z_init, q, factor, proj, scale_vec, alpha, verbose=False):

@@ -202,7 +202,7 @@ class Workspace:
             inputs_normalized = (thetas - col_sums) / thetas.std(axis=0)
             inputs = jnp.array(inputs_normalized)
         else:
-            inputs = thetas
+            inputs = jnp.array(thetas)
         train_inputs = inputs[:N_train, :]
         test_inputs = inputs[N_train:N, :]
         return train_inputs, test_inputs
