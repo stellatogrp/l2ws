@@ -12,7 +12,8 @@ import cvxpy as cp
 from jax import vmap
 from functools import partial
 from examples.osc_mass import multiple_random_osc_mass_osqp
-from examples.mpc import multiple_random_mpc_osqp, solve_many_probs_cvxpy, solve_multiple_trajectories
+from examples.mpc import multiple_random_mpc_osqp, solve_many_probs_cvxpy, solve_multiple_trajectories, shifted_sol
+from examples.mnist import get_mnist, vectorized2DBlurMatrix, mnist_canon
 from scipy.spatial import distance_matrix
 # from examples.ista import sol_2_obj_diff, solve_many_probs_cvxpy
 from l2ws.utils.nn_utils import get_nearest_neighbors
@@ -24,6 +25,100 @@ import osqp
 #     N, p = q_mat.shape
 #     for i in range(N):
 
+@pytest.mark.skip(reason="temp")
+def test_mnist():
+    # load mnist data
+    x_train, x_test = get_mnist()
+
+    # create A matrix filter
+    A = vectorized2DBlurMatrix(28, 28, 10)
+
+    # blur img
+    blurred_img = np.reshape(A @ x_train[0, :], (28, 28))
+
+    # create cvxpy problem with TV regularization
+
+    # get P, A, q, l, u with cvxpy osqp canonicalization
+    lambd = 1e-4
+    P, A, c, l, u = mnist_canon(A, lambd, blurred_img)
+    q = jnp.concatenate([c, l, u])
+
+    # solve with our osqp
+    m, n = A.shape
+    k = 1000
+    sigma = 1
+    rho_vec = jnp.ones(m)
+
+    rho_vec = rho_vec.at[l == u].set(1000)
+
+    # M = P + sigma * jnp.eye(n) + rho * A.T @ A
+    M = P + sigma * jnp.eye(n) + A.T @ jnp.diag(rho_vec) @ A
+
+    factor = jsp.linalg.lu_factor(M)
+
+    z_final, iter_losses, z_all_plus_1 = k_steps_eval_osqp(k, np.zeros(
+        m + n), q, factor, A, rho_vec, sigma, supervised=False, z_star=None, jit=True)
+    import pdb
+    pdb.set_trace()
+    img = z_final[:784]
+
+    plt.imshow(np.reshape(img, (28, 28)))
+    plt.show()
+
+
+def test_shifted_sol():
+    N_train = 10
+    N_test = 10
+    N = N_train + N_test
+    T = 10
+    num_traj = 10
+    traj_length = 10
+    x_init_factor = .5
+
+    nx = 20
+    nu = 10
+    mpc_setup = multiple_random_mpc_osqp(N_train,
+                                         T=T,
+                                         nx=nx,
+                                         nu=nu,
+                                         Ad=None,
+                                         Bd=None,
+                                         seed=42,
+                                         x_init_factor=x_init_factor)
+    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
+    # train_inputs, test_inputs = theta_mat[:N_train, :], theta_mat[N_train:, :]
+    # z_stars_train, z_stars_test = None, None
+    # q_mat_train, q_mat_test = q_mat[:N_train, :], q_mat[N_train:, :]
+    q = q_mat_train[0, :]
+
+    # theta_mat_train, z_stars_train, q_mat_train = solve_multiple_trajectories(
+    #     T, num_traj_train, x_bar, x_init_factor, Ad, P, A, q)
+
+    theta_mat_test, z_stars_test, q_mat_test = solve_multiple_trajectories(
+        traj_length, num_traj, x_bar, x_init_factor, Ad, P, A, q)
+
+    m, n = A.shape
+
+    # get the shifted solution
+    shifted_z_star = shifted_sol(z_stars_test[0, :], T, nx, nu, m, n)
+
+    # warm-start with it
+    k = 1000
+    prev_sol_z_k, prev_sol_losses, prev_sol_z_all = k_steps_eval_osqp(k, shifted_z_star, q_mat_test[1, :], factor, A, rho_vec, sigma=1,
+                                           supervised=False, z_star=None, jit=True)
+    z_k, losses, z_all = k_steps_eval_osqp(k, shifted_z_star * 0, q_mat_test[1, :], factor, A, rho_vec, sigma=1,
+                                           supervised=False, z_star=None, jit=True)
+    plt.title('state perturbation')
+    plt.plot(losses, label='cold-start')
+    plt.plot(prev_sol_losses, label='shifted prev sol warm-start')
+    plt.yscale('log')
+    plt.legend()
+    plt.show()
+    import pdb
+    pdb.set_trace()
+
+
+@pytest.mark.skip(reason="temp")
 def test_mpc_prev_sol():
     N_train = 500
     N_test = 100

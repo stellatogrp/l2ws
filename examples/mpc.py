@@ -8,6 +8,7 @@ import yaml
 from l2ws.launcher import Workspace
 import os
 from examples.solve_script import osqp_setup_script
+import matplotlib.pyplot as plt
 
 
 def run(run_cfg):
@@ -117,6 +118,47 @@ def setup_probs(setup_cfg):
     # pdb.set_trace()
 
 
+def shifted_sol(z_star, T, nx, nu, m, n):
+    # shifted_z_star = jnp.zeros(z_star.size)
+
+    x_star = z_star[:n]
+    y_star = z_star[n:]
+
+    shifted_x_star = jnp.zeros(n)
+    shifted_y_star = jnp.zeros(m)
+
+    # indices markers
+    end_state = nx * T
+    end_dyn_cons = nx * T
+    end_state_cons = 2 * nx * T
+
+    # get primal vars
+    shifted_states = x_star[nx:end_state]
+    shifted_controls = x_star[end_state + nu:]
+
+    # insert into shifted x_star
+    shifted_x_star = shifted_x_star.at[:end_state - nx].set(shifted_states)
+    shifted_x_star = shifted_x_star.at[end_state:-nu].set(shifted_controls)
+
+    # get dual vars
+    shifted_dyn_cons = y_star[nx:end_dyn_cons]
+    shifted_state_cons = y_star[end_dyn_cons + nx:end_state_cons]
+    shifted_control_cons = y_star[end_state_cons + nu:]
+
+    # insert into shifted y_star
+    shifted_y_star = shifted_y_star.at[:end_dyn_cons - nx].set(shifted_dyn_cons)
+    shifted_y_star = shifted_y_star.at[end_dyn_cons:end_state_cons - nx].set(shifted_state_cons)
+    shifted_y_star = shifted_y_star.at[end_state_cons:-nu].set(shifted_control_cons)
+
+    # concatentate primal and dual
+    shifted_z_star = jnp.concatenate([shifted_x_star, shifted_y_star])
+
+    import pdb
+    pdb.set_trace()
+
+    return shifted_z_star
+
+
 def generate_static_prob_data(nx, nu, seed):
     np.random.seed(seed)
     x_bar = 1 + np.random.rand(nx)
@@ -185,7 +227,7 @@ def multiple_random_mpc_osqp(N,
 
     # factor
     rho_vec = jnp.ones(m)
-    rho_vec = rho_vec.at[l == u].set(1000)
+    # rho_vec = rho_vec.at[l == u].set(1000)
 
     # M = P + sigma * jnp.eye(n) + rho * A.T @ A
     M = P + sigma * jnp.eye(n) + A.T @ jnp.diag(rho_vec) @ A
@@ -197,15 +239,15 @@ def multiple_random_mpc_osqp(N,
 
     for i in range(N):
         # generate new rhs of first block constraint
-        l = l.at[:nx].set(Ad @ x_init_mat[i, :])
-        u = u.at[:nx].set(Ad @ x_init_mat[i, :])
+        l = l.at[:nx].set(-Ad @ x_init_mat[i, :])
+        u = u.at[:nx].set(-Ad @ x_init_mat[i, :])
 
         q_osqp = jnp.concatenate([c, l, u])
         q_mat = q_mat.at[i, :].set(q_osqp)
     theta_mat = x_init_mat
     # return factor, P, A, q_mat, theta_mat
 
-    return factor, P, A, q_mat, theta_mat, x_bar, Ad, rho_vec
+    return factor, P, A, q_mat, theta_mat, x_bar, Ad, Bd, rho_vec
 
 def solve_many_probs_cvxpy(P, A, q_mat):
     """
@@ -303,11 +345,14 @@ def solve_trajectory(first_x_init, P, A, q, traj_length, Ad):
         u = q[n + m:]
         theta_mat = theta_mat.at[i, :].set(x_init)
         Ad_x_init = Ad @ x_init
-        l = l.at[:nx].set(Ad_x_init)
-        u = u.at[:nx].set(Ad_x_init)
+        l = l.at[:nx].set(-Ad_x_init)
+        u = u.at[:nx].set(-Ad_x_init)
         l_param.value = np.array(l)
         u_param.value = np.array(u)
+        print('i', i)
         prob.solve(verbose=False)
+        # import pdb
+        # pdb.set_trace()
 
         x_star = jnp.array(x.value)
         w_star = jnp.array(w.value)
@@ -320,5 +365,8 @@ def solve_trajectory(first_x_init, P, A, q, traj_length, Ad):
         q_mat = q_mat.at[i, n + m:].set(u)
 
         # set the next x_init
-        x_init = -x_star[nx:2 * nx]
+        # x_init = x_star[nx:2 * nx]
+        noise = 0.05 * jnp.array(np.random.normal(size=(nx,))) #* x_bar
+        x_init = x_star[:nx] + noise
+        print('x_init', x_init)
     return theta_mat, z_stars, q_mat

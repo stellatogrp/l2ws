@@ -294,6 +294,26 @@ def k_steps_train_ista(k, z0, q, lambd, A, ista_step, supervised, z_star, jit):
     return z_final, iter_losses
 
 
+def k_steps_train_gd(k, z0, q, P, gd_step, supervised, z_star, jit):
+    iter_losses = jnp.zeros(k)
+
+    fp_train_partial = partial(fp_train_gd,
+                               supervised=supervised,
+                               z_star=z_star,
+                               P=P,
+                               c=q,
+                               gd_step=gd_step
+                               )
+    val = z0, iter_losses
+    start_iter = 0
+    if jit:
+        out = lax.fori_loop(start_iter, k, fp_train_partial, val)
+    else:
+        out = python_fori_loop(start_iter, k, fp_train_partial, val)
+    z_final, iter_losses = out
+    return z_final, iter_losses
+
+
 def k_steps_eval_fista(k, z0, q, lambd, A, ista_step, supervised, z_star, jit):
     iter_losses = jnp.zeros(k)
     z_all_plus_1 = jnp.zeros((k + 1, z0.size))
@@ -329,6 +349,30 @@ def k_steps_eval_ista(k, z0, q, lambd, A, ista_step, supervised, z_star, jit):
                               b=q,
                               lambd=lambd,
                               ista_step=ista_step
+                              )
+    z_all = jnp.zeros((k, z0.size))
+    val = z0, iter_losses, z_all
+    start_iter = 0
+    if jit:
+        out = lax.fori_loop(start_iter, k, fp_eval_partial, val)
+    else:
+        out = python_fori_loop(start_iter, k, fp_eval_partial, val)
+    z_final, iter_losses, z_all = out
+    z_all_plus_1 = z_all_plus_1.at[1:, :].set(z_all)
+    return z_final, iter_losses, z_all_plus_1
+
+
+def k_steps_eval_gd(k, z0, q, A, gd_step, supervised, z_star, jit):
+    iter_losses = jnp.zeros(k)
+    z_all_plus_1 = jnp.zeros((k + 1, z0.size))
+    z_all_plus_1 = z_all_plus_1.at[0, :].set(z0)
+    fp_eval_partial = partial(fp_eval_ista,
+                              supervised=supervised,
+                              z_star=z_star,
+                              A=A,
+                              b=q,
+                              lambd=lambd,
+                              ista_step=gd__step
                               )
     z_all = jnp.zeros((k, z0.size))
     val = z0, iter_losses, z_all
@@ -547,6 +591,14 @@ def fixed_point_ista(z, A, b, lambd, ista_step):
     applies the ista fixed point operator
     """
     return soft_threshold(z + ista_step * A.T.dot(b - A.dot(z)), ista_step * lambd)
+
+
+def fixed_point_gd(z, P, c, lambd, gd_step):
+    """
+    applies the ista fixed point operator
+    """
+    grad = P @ z + c
+    return z - gd_step * grad
 
 
 def fixed_point_fista(z, y, t, A, b, lambd, ista_step):
