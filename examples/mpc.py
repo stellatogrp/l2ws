@@ -45,7 +45,8 @@ def run(run_cfg):
                                          Bd=None,
                                          seed=setup_cfg['seed'],
                                          x_init_factor=x_init_factor)
-    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, rho_vec = mpc_setup
+    # factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, rho_vec = mpc_setup
+    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
 
     static_dict = dict(factor=factor, A=A, rho_vec=rho_vec)
 

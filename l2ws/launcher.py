@@ -14,7 +14,7 @@ import hydra
 import time
 from scipy.spatial import distance_matrix
 from l2ws.algo_steps import create_projection_fn, get_psd_sizes
-from l2ws.utils.generic_utils import sample_plot, setup_permutation
+from l2ws.utils.generic_utils import sample_plot, setup_permutation, count_files_in_directory
 import scs
 from scipy.sparse import csc_matrix
 from functools import partial
@@ -42,6 +42,8 @@ class Workspace:
         self.num_samples = cfg.num_samples
         self.pretrain_cfg = cfg.pretrain
         self.key_count = 0
+        self.save_weights_flag = cfg.get('save_weights_flag', False)
+        self.load_weights_datetime = cfg.get('load_weights_datetime', None)
 
         self.plot_iterates = cfg.plot_iterates
         # share_all = cfg.get('share_all', False)
@@ -246,6 +248,44 @@ class Workspace:
                           }
             self.l2ws_model = L2WSmodel(input_dict)
 
+        if self.load_weights_datetime is not None:
+            self.load_weights(example, self.load_weights_datetime)
+
+
+    def save_weights(self):
+        nn_weights = self.l2ws_model.params
+
+        # create directory
+        if not os.path.exists('nn_weights'):
+            os.mkdir('nn_weights')
+
+        # Save each weight matrix and bias vector separately using jnp.savez
+        for i, params in enumerate(nn_weights):
+            weight_matrix, bias_vector = params
+            jnp.savez(f"nn_weights/layer_{i}_params.npz", weight=weight_matrix, bias=bias_vector)
+
+
+    def load_weights(self, example, datetime):
+        # get the appropriate folder
+        orig_cwd = hydra.utils.get_original_cwd()
+        folder = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/nn_weights"
+
+        # find the number of layers based on the number of files
+        num_layers = count_files_in_directory(folder)
+
+        # iterate over the files/layers
+        params = []
+        for i in range(num_layers):
+            layer_file = f"{folder}/layer_{i}_params.npz"
+            loaded_layer = jnp.load(layer_file)
+            weight_matrix, bias_vector = loaded_layer['weight'], loaded_layer['bias']
+            weight_bias_tuple = (weight_matrix, bias_vector)
+            params.append(weight_bias_tuple)
+
+        # store the weights as the l2ws_model params
+        self.l2ws_model.params = params
+
+
     def normalize_inputs_fn(self, thetas, N_train, N_test):
         # normalize the inputs if the option is on
         N = N_train + N_test
@@ -379,6 +419,9 @@ class Workspace:
         # z0_mat = z_all[:, 0, :]
         # self.solve_scs(z0_mat, train, col)
         # self.solve_scs(z_all, u_all, train, col)
+
+        if self.save_weights_flag:
+            self.save_weights()
 
         return out_train
 
@@ -716,8 +759,6 @@ class Workspace:
         inputs = self.get_inputs_for_eval(fixed_ws, num, train, col)
         # eval_out = self.l2ws_model.evaluate(self.eval_unrolls, inputs, factors,
         #                                     M_tensor, q_mat, z_stars, fixed_ws, tag=tag)
-        # import pdb
-        # pdb.set_trace()
         eval_out = self.l2ws_model.evaluate(
             self.eval_unrolls, inputs, q_mat, z_stars, fixed_ws, tag=tag)
         return eval_out
@@ -737,8 +778,6 @@ class Workspace:
                 inputs = inputs[non_last_indices, :]
                 # first_indices = jnp.mod(jnp.arange(num), self.traj_length) == 0
                 # inputs = inputs.at[first_indices, :].set(0)
-                import pdb
-                pdb.set_trace()
                 
                 # full evaluation on the test set with prev solution
                 # non_first_indices = jnp.mod(jnp.arange(N_test), self.num_traj) != 0

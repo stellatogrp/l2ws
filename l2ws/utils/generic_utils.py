@@ -2,6 +2,14 @@ import jax.numpy as jnp
 import numpy as np
 import matplotlib.pyplot as plt
 from jax import random
+import os
+
+
+def count_files_in_directory(directory):
+            file_count = 0
+            for _, _, files in os.walk(directory):
+                file_count += len(files)
+            return file_count
 
 
 def setup_permutation(key_count, N_train, epochs_jit):
