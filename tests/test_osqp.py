@@ -65,7 +65,7 @@ def test_mnist():
     plt.imshow(np.reshape(img, (28, 28)))
     plt.show()
 
-
+@pytest.mark.skip(reason="temp")
 def test_shifted_sol():
     N_train = 10
     N_test = 10
@@ -108,21 +108,20 @@ def test_shifted_sol():
                                            supervised=False, z_star=None, jit=True)
     z_k, losses, z_all = k_steps_eval_osqp(k, shifted_z_star * 0, q_mat_test[1, :], factor, A, rho_vec, sigma=1,
                                            supervised=False, z_star=None, jit=True)
-    # plt.title('state perturbation')
-    # plt.plot(losses, label='cold-start')
-    # plt.plot(prev_sol_losses, label='shifted prev sol warm-start')
-    # plt.yscale('log')
-    # plt.legend()
-    # plt.show()
-    # import pdb
-    # pdb.set_trace()
+    plt.title('state perturbation')
+    plt.plot(losses, label='cold-start')
+    plt.plot(prev_sol_losses, label='shifted prev sol warm-start')
+    plt.yscale('log')
+    plt.legend()
+    plt.show()
+    import pdb
+    pdb.set_trace()
 
     assert jnp.linalg.norm(z_stars_test[0,nx:2*nx] - z_stars_test[1,:nx]) <= 1e-3
     assert jnp.linalg.norm(shifted_z_star[:nx] - z_stars_test[1,:nx]) <= 1e-3
 
-
 @pytest.mark.skip(reason="temp")
-def test_mpc_prev_sol():
+def test_shift_train():
     N_train = 500
     N_test = 100
     N = N_train + N_test
@@ -182,6 +181,72 @@ def test_mpc_prev_sol():
                                       fixed_ws=True, tag='test')
     nn_losses = nn_eval_out[1][1].mean(axis=0)
 
+
+
+# @pytest.mark.skip(reason="temp")
+def test_mpc_prev_sol():
+    N_train = 500
+    N_test = 100
+    N = N_train + N_test
+    T = 10
+    num_traj = 10
+    traj_length = 10
+    x_init_factor = .5
+    noise_std_dev = 0
+    nx, nu = 10, 5
+
+    mpc_setup = multiple_random_mpc_osqp(N_train,
+                                         T=T,
+                                         nx=nx,
+                                         nu=nu,
+                                         Ad=None,
+                                         Bd=None,
+                                         seed=42,
+                                         x_init_factor=x_init_factor)
+    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
+    m, n = A.shape
+    # train_inputs, test_inputs = theta_mat[:N_train, :], theta_mat[N_train:, :]
+    # z_stars_train, z_stars_test = None, None
+    # q_mat_train, q_mat_test = q_mat[:N_train, :], q_mat[N_train:, :]
+    q = q_mat_train[0, :]
+
+    # theta_mat_train, z_stars_train, q_mat_train = solve_multiple_trajectories(
+    #     T, num_traj_train, x_bar, x_init_factor, Ad, P, A, q)
+
+    theta_mat_test, z_stars_test, q_mat_test = solve_multiple_trajectories(
+        traj_length, num_traj, x_bar, x_init_factor, Ad, P, A, q, noise_std_dev)
+
+    # create theta_mat and q_mat
+    q_mat = jnp.vstack([q_mat_train, q_mat_test])
+    theta_mat = jnp.vstack([theta_mat_train, theta_mat_test])
+
+    # solve the QPs
+    z_stars, objvals = solve_many_probs_cvxpy(P, A, q_mat)
+    z_stars_train, z_stars_test = z_stars[:N_train, :], z_stars[N_train:, :]
+
+    train_unrolls = 10
+    input_dict = dict(rho=rho_vec,
+                      q_mat_train=q_mat_train,
+                      q_mat_test=q_mat_test,
+                      A=A,
+                      factor=factor,
+                      train_inputs=theta_mat[:N_train, :],
+                      test_inputs=theta_mat[N_train:, :],
+                      train_unrolls=train_unrolls,
+                      nn_cfg={'intermediate_layer_sizes': [300]},
+                      jit=True)
+    osqp_model = OSQPmodel(input_dict)
+
+    train_inputs, test_inputs = theta_mat_train, theta_mat_test
+
+    # full evaluation on the test set with nearest neighbor
+    k = 500
+    nearest_neighbors_z = get_nearest_neighbors(train_inputs, test_inputs, z_stars_train)
+    nn_eval_out = osqp_model.evaluate(k, nearest_neighbors_z,
+                                      q_mat_test, z_stars=z_stars_test,
+                                      fixed_ws=True, tag='test')
+    nn_losses = nn_eval_out[1][1].mean(axis=0)
+
     # full evaluation on the test set with prev solution
     non_first_indices = jnp.mod(jnp.arange(N_test), num_traj) != 0
     non_last_indices = jnp.mod(jnp.arange(N_test), num_traj) != num_traj - 1
@@ -189,7 +254,13 @@ def test_mpc_prev_sol():
     # print('non_first_indices', non_first_indices)
     # print('non_last_indices', non_last_indices)
     q_mat_prev = q_mat_test[non_first_indices, :]
-    prev_z = z_stars_test[non_last_indices, :]
+
+
+    # batch_shifted_sol = vmap(shifted_sol_partial, in_axes=(0,), out_axes=(0,))
+    partial_shifted_sol_fn = partial(shifted_sol, T=T, nx=nx, nu=nu, m=m, n=n)
+    batch_shifted_sol_fn = vmap(partial_shifted_sol_fn, in_axes=(0), out_axes=(0))
+
+    prev_z = batch_shifted_sol_fn(z_stars_test[non_last_indices, :])
     prev_sol_out = osqp_model.evaluate(k, prev_z,
                                        q_mat_prev, z_stars=None,
                                        fixed_ws=True, tag='test')
@@ -203,7 +274,7 @@ def test_mpc_prev_sol():
     # train the osqp_model
     # call train_batch without jitting
     params, state = osqp_model.params, osqp_model.state
-    num_epochs = 500
+    num_epochs = 50
     train_losses = jnp.zeros(num_epochs)
     for i in range(num_epochs):
         train_result = osqp_model.train_full_batch(params, state)

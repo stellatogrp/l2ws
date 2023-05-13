@@ -156,9 +156,6 @@ def shifted_sol(z_star, T, nx, nu, m, n):
     # concatentate primal and dual
     shifted_z_star = jnp.concatenate([shifted_x_star, shifted_y_star])
 
-    # import pdb
-    # pdb.set_trace()
-
     return shifted_z_star
 
 
