@@ -29,13 +29,15 @@ config.update("jax_enable_x64", True)
 class Workspace:
     def __init__(self, algo, cfg, static_flag, static_dict, example,
                  traj_length=None,
-                 custom_visualize_fn=None):
+                 custom_visualize_fn=None,
+                 shifted_sol_fn=None):
         '''
         cfg is the run_cfg from hydra
         static_flag is True if the matrices P and A don't change from problem to problem
         static_dict holds the data that doesn't change from problem to problem
         example is the string (e.g. 'robust_kalman')
         '''
+        self.example = example
         self.eval_unrolls = cfg.eval_unrolls
         self.eval_every_x_epochs = cfg.eval_every_x_epochs
         self.save_every_x_epochs = cfg.save_every_x_epochs
@@ -44,6 +46,10 @@ class Workspace:
         self.key_count = 0
         self.save_weights_flag = cfg.get('save_weights_flag', False)
         self.load_weights_datetime = cfg.get('load_weights_datetime', None)
+        self.shifted_sol_fn = shifted_sol_fn
+
+        self.rel_tols = cfg.get('rel_tols', [])
+        self.abs_tols = cfg.get('abs_tols', [])
 
         self.plot_iterates = cfg.plot_iterates
         # share_all = cfg.get('share_all', False)
@@ -147,6 +153,7 @@ class Workspace:
         elif algo == 'osqp':
             factor = static_dict['factor']
             A = static_dict['A']
+            P = static_dict['P']
             rho_vec = static_dict['rho_vec']
 
             input_dict = dict(supervised=False,
@@ -154,6 +161,7 @@ class Workspace:
                               q_mat_train=q_mat_train,
                               q_mat_test=q_mat_test,
                               A=A,
+                              P=P,
                               factor=factor,
                               train_inputs=train_inputs,
                               test_inputs=test_inputs,
@@ -248,8 +256,8 @@ class Workspace:
                           }
             self.l2ws_model = L2WSmodel(input_dict)
 
-        if self.load_weights_datetime is not None:
-            self.load_weights(example, self.load_weights_datetime)
+        # if self.load_weights_datetime is not None:
+        #     self.load_weights(example, self.load_weights_datetime)
 
 
     def save_weights(self):
@@ -379,8 +387,6 @@ class Workspace:
         # update the eval csv files
         # df_out = self.update_eval_csv(
         #     iter_losses_mean, primal_residuals, dual_residuals, train, col)
-        # import pdb
-        # pdb.set_trace()
         df_out = self.update_eval_csv(
             iter_losses_mean, train, col)
         iters_df, primal_residuals_df, dual_residuals_df = df_out
@@ -398,8 +404,9 @@ class Workspace:
         # self.plot_angles(angles, r, train, col)
 
         # plot the warm-start predictions
-        u_all = out_train[0][3]
-        z_all = out_train[0][0]
+        z_all = out_train[3]
+        # u_all = out_train[0][3]
+        # z_all = out_train[0][0]
         # self.plot_warm_starts(u_all, z_all, train, col)
 
         # plot the alpha coefficients
@@ -419,11 +426,65 @@ class Workspace:
         # z0_mat = z_all[:, 0, :]
         # self.solve_scs(z0_mat, train, col)
         # self.solve_scs(z_all, u_all, train, col)
+        z0_mat = z_all[:, 0, :]
+        self.solve_c_helper(z0_mat, train, col)
 
         if self.save_weights_flag:
             self.save_weights()
 
         return out_train
+    
+
+    def solve_c_helper(self, z0_mat, train, col):
+        """
+        calls the self.solve_c method and does housekeeping
+        """
+        num_tols = len(self.rel_tols)
+
+        # get the q_mat
+        if train:
+            q_mat = self.l2ws_model.q_mat_train
+        else:
+            q_mat = self.l2ws_model.q_mat_test
+
+        mean_solve_times = np.zeros(num_tols)
+        mean_solve_iters = np.zeros(num_tols)
+        for i in range(num_tols):
+            rel_tol = self.rel_tols[i]
+            abs_tol = self.abs_tols[i]
+            solve_times, solve_iters = self.l2ws_model.solve_c(z0_mat, q_mat, rel_tol, abs_tol)
+            mean_solve_times[i] = solve_times.mean()
+            mean_solve_iters[i] = solve_iters.mean()
+
+        # write the solve times to the csv file
+        solve_times_df = pd.DataFrame()
+        solve_times_df['solve_times'] = solve_times
+        solve_times_df['solve_iters'] = solve_iters
+
+        if not os.path.exists('solve_C'):
+            os.mkdir('solve_C')
+        if train:
+            solve_times_path = 'solve_C/train'
+        else:
+            solve_times_path = 'solve_C/test'
+        if not os.path.exists(solve_times_path):
+            os.mkdir(solve_times_path)
+        if not os.path.exists(f"{solve_times_path}/{col}"):
+            os.mkdir(f"{solve_times_path}/{col}")
+        solve_times_df.to_csv(f"{solve_times_path}/{col}/solve_times.csv")
+
+        # update the mean values
+        self.agg_solve_times_df[col] = mean_solve_times
+        self.agg_solve_iters_df[col] = mean_solve_iters
+
+        if train:
+            train_str = 'train'
+        else:
+            train_str = 'test'
+        # filename = f"solve_C/train_aggregate_solve_times.csv"
+        self.agg_solve_times_df.to_csv(f"solve_C/{train_str}_aggregate_solve_times.csv")
+        self.agg_solve_iters_df.to_csv(f"solve_C/{train_str}_aggregate_solve_iters.csv")
+    
 
     def solve_scs(self, z0_mat, train, col):
         # create the path
@@ -570,6 +631,13 @@ class Workspace:
             # pretrain evaluation
             if self.pretrain_on:
                 self.pretrain()
+
+        # load the weights AFTER the cold-start
+        import pdb
+        pdb.set_trace()
+        if self.load_weights_datetime is not None:
+            self.load_weights(self.example, self.load_weights_datetime)
+
 
         # eval test data to start
         self.test_eval_write()
@@ -743,7 +811,6 @@ class Workspace:
         if col == 'prev_sol':
             q_mat_full = self.l2ws_model.q_mat_train[:num,
                                             :] if train else self.l2ws_model.q_mat_test[:num, :]
-            # last_indices = jnp.mod(jnp.arange(num), self.traj_length) != 0
             non_first_indices = jnp.mod(jnp.arange(num), self.traj_length) != 0
             q_mat = q_mat_full[non_first_indices, :]
             z_stars = z_stars[non_first_indices, :]
@@ -773,27 +840,12 @@ class Workspace:
                 inputs = inputs.at[1:, :].set(self.z_stars_test[:num - 1, :])
 
                 # now set the indices (0, num_traj, 2 * num_traj) to zero
-                
                 non_last_indices = jnp.mod(jnp.arange(num), self.traj_length) != self.traj_length - 1
                 inputs = inputs[non_last_indices, :]
-                # first_indices = jnp.mod(jnp.arange(num), self.traj_length) == 0
-                # inputs = inputs.at[first_indices, :].set(0)
-                
-                # full evaluation on the test set with prev solution
-                # non_first_indices = jnp.mod(jnp.arange(N_test), self.num_traj) != 0
-                # non_last_indices = jnp.mod(jnp.arange(N_test), self.num_traj) != self.num_traj - 1
-                # print(jnp.mod(jnp.arange(N_test), num_traj))
-                # print('non_first_indices', non_first_indices)
-                # print('non_last_indices', non_last_indices)
-                # q_mat_prev = q_mat_test[non_first_indices, :]
-                # prev_z = z_stars_test[non_last_indices, :]
+                inputs = self.shifted_sol_fn(inputs)
+                import pdb
+                pdb.set_trace()
         else:
-            # elif col == 'no_train': (possible case to consider)
-            # random init with neural network ()
-            # _, predict_size = self.l2ws_model.z_stars_test.shape
-            # random_start = np.random.normal(size=(num, predict_size))
-            # inputs = jnp.array(random_start)
-            # fixed_ws = True
             if train:
                 inputs = self.l2ws_model.train_inputs[:num, :]
             else:
@@ -848,6 +900,16 @@ class Workspace:
             columns=['iterations'])
         self.dual_residuals_df_test['iterations'] = np.arange(
             1, self.eval_unrolls+1)
+        
+        # setup solve times
+        self.agg_solve_times_df = pd.DataFrame()
+        self.agg_solve_times_df['rel_tol'] = self.rel_tols
+        self.agg_solve_times_df['abs_tol'] = self.abs_tols
+        
+        self.agg_solve_iters_df = pd.DataFrame()
+        self.agg_solve_iters_df['rel_tol'] = self.rel_tols
+        self.agg_solve_iters_df['abs_tol'] = self.abs_tols
+
 
     def train_full(self):
         print("Training full...")

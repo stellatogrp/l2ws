@@ -75,8 +75,8 @@ def test_shifted_sol():
     traj_length = 10
     x_init_factor = .5
 
-    nx = 20
-    nu = 10
+    nx = 40
+    nu = 20
     mpc_setup = multiple_random_mpc_osqp(N_train,
                                          T=T,
                                          nx=nx,
@@ -93,9 +93,9 @@ def test_shifted_sol():
 
     # theta_mat_train, z_stars_train, q_mat_train = solve_multiple_trajectories(
     #     T, num_traj_train, x_bar, x_init_factor, Ad, P, A, q)
-
+    noise_std_dev = 0
     theta_mat_test, z_stars_test, q_mat_test = solve_multiple_trajectories(
-        traj_length, num_traj, x_bar, x_init_factor, Ad, P, A, q)
+        traj_length, num_traj, x_bar, x_init_factor, Ad, P, A, q, noise_std_dev)
 
     m, n = A.shape
 
@@ -108,14 +108,17 @@ def test_shifted_sol():
                                            supervised=False, z_star=None, jit=True)
     z_k, losses, z_all = k_steps_eval_osqp(k, shifted_z_star * 0, q_mat_test[1, :], factor, A, rho_vec, sigma=1,
                                            supervised=False, z_star=None, jit=True)
-    plt.title('state perturbation')
-    plt.plot(losses, label='cold-start')
-    plt.plot(prev_sol_losses, label='shifted prev sol warm-start')
-    plt.yscale('log')
-    plt.legend()
-    plt.show()
-    import pdb
-    pdb.set_trace()
+    # plt.title('state perturbation')
+    # plt.plot(losses, label='cold-start')
+    # plt.plot(prev_sol_losses, label='shifted prev sol warm-start')
+    # plt.yscale('log')
+    # plt.legend()
+    # plt.show()
+    # import pdb
+    # pdb.set_trace()
+
+    assert jnp.linalg.norm(z_stars_test[0,nx:2*nx] - z_stars_test[1,:nx]) <= 1e-3
+    assert jnp.linalg.norm(shifted_z_star[:nx] - z_stars_test[1,:nx]) <= 1e-3
 
 
 @pytest.mark.skip(reason="temp")
