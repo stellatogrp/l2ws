@@ -185,7 +185,7 @@ def test_shift_train():
 
 # @pytest.mark.skip(reason="temp")
 def test_mpc_prev_sol():
-    N_train = 500
+    N_train = 1000
     N_test = 100
     N = N_train + N_test
     T = 10
@@ -255,7 +255,6 @@ def test_mpc_prev_sol():
     # print('non_last_indices', non_last_indices)
     q_mat_prev = q_mat_test[non_first_indices, :]
 
-
     # batch_shifted_sol = vmap(shifted_sol_partial, in_axes=(0,), out_axes=(0,))
     partial_shifted_sol_fn = partial(shifted_sol, T=T, nx=nx, nu=nu, m=m, n=n)
     batch_shifted_sol_fn = vmap(partial_shifted_sol_fn, in_axes=(0), out_axes=(0))
@@ -311,6 +310,8 @@ def test_mpc_prev_sol():
     plt.yscale('log')
     plt.legend()
     plt.show()
+
+    assert jnp.linalg.norm(z_stars_test[0,nx:2*nx] - z_stars_test[1,:nx]) <= 1e-3
 
     # plt.plot(train_losses)
     # plt.yscale('log')

@@ -814,6 +814,8 @@ class Workspace:
             non_first_indices = jnp.mod(jnp.arange(num), self.traj_length) != 0
             q_mat = q_mat_full[non_first_indices, :]
             z_stars = z_stars[non_first_indices, :]
+            import pdb
+            pdb.set_trace()
         else:
             q_mat = self.l2ws_model.q_mat_train[:num,
                                             :] if train else self.l2ws_model.q_mat_test[:num, :]
@@ -826,6 +828,7 @@ class Workspace:
         inputs = self.get_inputs_for_eval(fixed_ws, num, train, col)
         # eval_out = self.l2ws_model.evaluate(self.eval_unrolls, inputs, factors,
         #                                     M_tensor, q_mat, z_stars, fixed_ws, tag=tag)
+        
         eval_out = self.l2ws_model.evaluate(
             self.eval_unrolls, inputs, q_mat, z_stars, fixed_ws, tag=tag)
         return eval_out
@@ -835,14 +838,16 @@ class Workspace:
             if col == 'nearest_neighbor':
                 inputs = self.get_nearest_neighbors(train, num)
             elif col == 'prev_sol':
-                z_size = self.z_stars_test.shape[1]
-                inputs = jnp.zeros((num, z_size))
-                inputs = inputs.at[1:, :].set(self.z_stars_test[:num - 1, :])
+                # z_size = self.z_stars_test.shape[1]
+                # inputs = jnp.zeros((num, z_size))
+                # inputs = inputs.at[1:, :].set(self.z_stars_test[:num - 1, :])
 
                 # now set the indices (0, num_traj, 2 * num_traj) to zero
                 non_last_indices = jnp.mod(jnp.arange(num), self.traj_length) != self.traj_length - 1
-                inputs = inputs[non_last_indices, :]
-                inputs = self.shifted_sol_fn(inputs)
+                # inputs = inputs[non_last_indices, :]
+                # inputs = self.shifted_sol_fn(inputs)
+
+                inputs = self.shifted_sol_fn(self.z_stars_test[non_last_indices, :])
                 import pdb
                 pdb.set_trace()
         else:
