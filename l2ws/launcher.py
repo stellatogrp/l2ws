@@ -452,6 +452,13 @@ class Workspace:
         for i in range(num_tols):
             rel_tol = self.rel_tols[i]
             abs_tol = self.abs_tols[i]
+
+            # different behavior for prev_sol
+            if col == 'prev_sol':
+                non_first_indices = jnp.mod(jnp.arange(q_mat.shape[0]), self.traj_length) != 0
+                q_mat = q_mat[non_first_indices, :]
+                import pdb
+                pdb.set_trace()
             solve_times, solve_iters = self.l2ws_model.solve_c(z0_mat, q_mat, rel_tol, abs_tol)
             mean_solve_times[i] = solve_times.mean()
             mean_solve_iters[i] = solve_iters.mean()
@@ -814,8 +821,8 @@ class Workspace:
             non_first_indices = jnp.mod(jnp.arange(num), self.traj_length) != 0
             q_mat = q_mat_full[non_first_indices, :]
             z_stars = z_stars[non_first_indices, :]
-            import pdb
-            pdb.set_trace()
+            # import pdb
+            # pdb.set_trace()
         else:
             q_mat = self.l2ws_model.q_mat_train[:num,
                                             :] if train else self.l2ws_model.q_mat_test[:num, :]
@@ -848,8 +855,6 @@ class Workspace:
                 # inputs = self.shifted_sol_fn(inputs)
 
                 inputs = self.shifted_sol_fn(self.z_stars_test[non_last_indices, :])
-                import pdb
-                pdb.set_trace()
         else:
             if train:
                 inputs = self.l2ws_model.train_inputs[:num, :]

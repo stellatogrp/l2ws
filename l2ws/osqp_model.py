@@ -20,7 +20,9 @@ class OSQPmodel(L2WSmodel):
         factor = input_dict['factor']
         self.m, self.n = self.A.shape
         self.q_mat_train, self.q_mat_test = input_dict['q_mat_train'], input_dict['q_mat_test']
-        rho = input_dict.get('rho', 1)
+        # rho = input_dict.get('rho', 1)
+        rho = input_dict['rho']
+
         sigma = input_dict.get('sigma', 1)
 
         self.output_size = self.n + self.m
@@ -51,6 +53,8 @@ class OSQPmodel(L2WSmodel):
         num = z0_mat.shape[0]
         solve_times = np.zeros(num)
         solve_iters = np.zeros(num)
+        x_sols = jnp.zeros((num, n))
+        y_sols = jnp.zeros((num, m))
         for i in range(num):
             # get the current q
             # q = q_mat[i, :]
@@ -81,7 +85,9 @@ class OSQPmodel(L2WSmodel):
             # set the solve time in seconds
             solve_times[i] = results.info.solve_time
             solve_iters[i] = results.info.iter
-            # solve_times[i] = results['info']['solve_time'] / 1000
-            # solve_iters[i] = results['info']['iter']
 
-        return solve_times, solve_iters
+            # set the results
+            x_sols = x_sols.at[i, :].set(results.x)
+            y_sols = y_sols.at[i, :].set(results.y)
+
+        return solve_times, solve_iters, x_sols, y_sols

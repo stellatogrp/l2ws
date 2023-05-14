@@ -45,7 +45,7 @@ def run(run_cfg):
     factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
     m, n = A.shape
 
-    static_dict = dict(factor=factor, P=P, A=A, rho_vec=rho_vec)
+    static_dict = dict(factor=factor, P=P, A=A, rho=rho_vec)
 
     # we directly save q now
     static_flag = True
@@ -227,7 +227,7 @@ def multiple_random_mpc_osqp(N,
 
     # factor
     rho_vec = jnp.ones(m)
-    # rho_vec = rho_vec.at[l == u].set(1000)
+    rho_vec = rho_vec.at[l == u].set(1000)
 
     # M = P + sigma * jnp.eye(n) + rho * A.T @ A
     M = P + sigma * jnp.eye(n) + A.T @ jnp.diag(rho_vec) @ A
