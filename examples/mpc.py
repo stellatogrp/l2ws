@@ -120,7 +120,7 @@ def setup_probs(setup_cfg):
 def generate_static_prob_data(nx, nu, seed):
     np.random.seed(seed)
     x_bar = 1 + np.random.rand(nx)
-    u_bar = .5 * np.random.rand(nu)
+    u_bar = .1 * np.random.rand(nu)
 
     dA = .1 * np.random.normal(size=(nx, nx))
     orig_Ad = np.eye(nx) + dA

@@ -55,6 +55,13 @@ def robust_ls_plot_eval_iters(cfg):
     example = 'robust_ls'
     overlay_training_losses(example, cfg)
     plot_eval_iters(example, cfg, train=False)
+
+
+@hydra.main(config_path='configs/lasso', config_name='lasso_plot.yaml')
+def lasso_plot_eval_iters(cfg):
+    example = 'lasso'
+    overlay_training_losses(example, cfg)
+    plot_eval_iters(example, cfg, train=False)
     
 
 
@@ -504,6 +511,10 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'robust_ls/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         robust_ls_plot_eval_iters()
+    elif sys.argv[1] == 'lasso':
+        sys.argv[1] = base + 'lasso/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        lasso_plot_eval_iters()
     elif sys.argv[1] == 'all':
         sys.argv[1] = base + 'all/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]

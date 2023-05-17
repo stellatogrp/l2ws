@@ -737,8 +737,8 @@ class Workspace:
                 inputs = inputs[non_last_indices, :]
                 # first_indices = jnp.mod(jnp.arange(num), self.traj_length) == 0
                 # inputs = inputs.at[first_indices, :].set(0)
-                import pdb
-                pdb.set_trace()
+                # import pdb
+                # pdb.set_trace()
                 
                 # full evaluation on the test set with prev solution
                 # non_first_indices = jnp.mod(jnp.arange(N_test), self.num_traj) != 0

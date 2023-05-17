@@ -51,14 +51,14 @@ jax==0.3.1
     #   chex
     #   jaxopt
     #   optax
-jaxlib==0.3.0
-    # via
-    #   -r requirements.in
-    #   chex
-    #   jaxopt
-    #   optax
-jaxopt==0.4
-    # via -r requirements.in
+# jaxlib==0.3.0
+#     # via
+#     #   -r requirements.in
+#     #   chex
+#     #   jaxopt
+#     #   optax
+# jaxopt==0.4
+#     # via -r requirements.in
 joblib==1.2.0
     # via scikit-learn
 kiwisolver==1.4.4
