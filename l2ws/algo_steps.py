@@ -61,7 +61,7 @@ def k_steps_train_osqp(k, z0, q, factor, A, rho, sigma, supervised, z_star, jit)
     return z_final, iter_losses
 
 
-def k_steps_eval_osqp(k, z0, q, factor, A, rho, sigma, supervised, z_star, jit):
+def k_steps_eval_osqp(k, z0, q, factor, P, A, rho, sigma, supervised, z_star, jit):
     iter_losses = jnp.zeros(k)
     m, n = A.shape
 
@@ -77,21 +77,23 @@ def k_steps_eval_osqp(k, z0, q, factor, A, rho, sigma, supervised, z_star, jit):
                               supervised=supervised,
                               z_star=z_star,
                               factor=factor,
+                              P=P,
                               A=A,
                               q=q,
                               rho=rho,
                               sigma=sigma
                               )
     z_all = jnp.zeros((k, z_init.size))
-    val = z_init, iter_losses, z_all
+    primal_resids, dual_resids = jnp.zeros(k), jnp.zeros(k)
+    val = z_init, iter_losses, z_all, primal_resids, dual_resids
     start_iter = 0
     if jit:
         out = lax.fori_loop(start_iter, k, fp_eval_partial, val)
     else:
         out = python_fori_loop(start_iter, k, fp_eval_partial, val)
-    z_final, iter_losses, z_all = out
+    z_final, iter_losses, z_all, primal_resids, dual_resids = out
     z_all_plus_1 = z_all_plus_1.at[1:, :].set(z_all)
-    return z_final, iter_losses, z_all_plus_1
+    return z_final, iter_losses, z_all_plus_1, primal_resids, dual_resids
 
 
 def fp_train_osqp(i, val, supervised, z_star, factor, A, q, rho, sigma):
@@ -105,9 +107,9 @@ def fp_train_osqp(i, val, supervised, z_star, factor, A, q, rho, sigma):
     return z_next, loss_vec
 
 
-def fp_eval_osqp(i, val, supervised, z_star, factor, A, q, rho, sigma, lightweight=False):
+def fp_eval_osqp(i, val, supervised, z_star, factor, P, A, q, rho, sigma, lightweight=False):
     m, n = A.shape
-    z, loss_vec, z_all = val
+    z, loss_vec, z_all, primal_residuals, dual_residuals = val
     z_next = fixed_point_osqp(z, factor, A, q, rho, sigma)
     if supervised:
         diff = jnp.linalg.norm(z - z_star)
@@ -118,11 +120,11 @@ def fp_eval_osqp(i, val, supervised, z_star, factor, A, q, rho, sigma, lightweig
 
     # primal and dual residuals
     if not lightweight:
-        pr = jnp.linalg.norm(A @ z[:n] - z[n + m:])
-        dr = jnp.linalg.norm(P @ z[:n] + A.T @ z[n:n + m] + q[:n])
+        pr = jnp.linalg.norm(A @ z_next[:n] - z_next[n + m:])
+        dr = jnp.linalg.norm(P @ z_next[:n] + A.T @ z_next[n:n + m] + q[:n])
         primal_residuals = primal_residuals.at[i].set(pr)
         dual_residuals = dual_residuals.at[i].set(dr)
-    return z_next, loss_vec, z_all
+    return z_next, loss_vec, z_all, primal_residuals, dual_residuals
 
 
 def fixed_point_osqp(z, factor, A, q, rho, sigma):

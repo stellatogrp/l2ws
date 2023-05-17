@@ -25,7 +25,7 @@ import osqp
 #     N, p = q_mat.shape
 #     for i in range(N):
 
-# @pytest.mark.skip(reason="temp")
+@pytest.mark.skip(reason="temp")
 def test_mnist():
     # load mnist data
     x_train, x_test = get_mnist()
@@ -56,9 +56,9 @@ def test_mnist():
 
     factor = jsp.linalg.lu_factor(M)
 
-    z_final, iter_losses, z_all_plus_1 = k_steps_eval_osqp(k, np.zeros(
-        m + n), q, factor, A, rho_vec, sigma=sigma, supervised=False, z_star=None, jit=True)
-    
+    z_final, iter_losses, z_all_plus_1, primal_resids, dual_resids = k_steps_eval_osqp(k, np.zeros(
+        m + n), q, factor, P, A, rho_vec, sigma=sigma, supervised=False, z_star=None, jit=True)
+
     img = z_final[:784]
 
     plt.imshow(np.reshape(img, (28, 28)))
@@ -70,7 +70,9 @@ def test_mnist():
     import pdb
     pdb.set_trace()
 
-@pytest.mark.skip(reason="temp")
+# @pytest.mark.skip(reason="temp")
+
+
 def test_shifted_sol():
     N_train = 10
     N_test = 10
@@ -109,21 +111,26 @@ def test_shifted_sol():
 
     # warm-start with it
     k = 1000
-    prev_sol_z_k, prev_sol_losses, prev_sol_z_all = k_steps_eval_osqp(k, shifted_z_star, q_mat_test[1, :], factor, A, rho_vec, sigma=1,
-                                           supervised=False, z_star=None, jit=True)
-    z_k, losses, z_all = k_steps_eval_osqp(k, shifted_z_star * 0, q_mat_test[1, :], factor, A, rho_vec, sigma=1,
-                                           supervised=False, z_star=None, jit=True)
-    plt.title('state perturbation')
-    plt.plot(losses, label='cold-start')
-    plt.plot(prev_sol_losses, label='shifted prev sol warm-start')
-    plt.yscale('log')
-    plt.legend()
-    plt.show()
+    prev_sol_z_k, prev_sol_losses, prev_sol_z_all, prev_sol_pr, prev_sol_dr = k_steps_eval_osqp(k, shifted_z_star, q_mat_test[1, :], factor, P, A, rho_vec, sigma=1,
+                                                                                                supervised=False, z_star=None, jit=True)
+    z_k, losses, z_all, primal_resids, dual_resids = k_steps_eval_osqp(k, shifted_z_star * 0, q_mat_test[1, :], factor, P, A, rho_vec, sigma=1,
+                                                                       supervised=False, z_star=None, jit=True)
+    # plt.title('state perturbation')
+    # plt.plot(losses, label='cold-start')
+    # plt.plot(prev_sol_losses, label='shifted prev sol warm-start')
+    # plt.yscale('log')
+    # plt.legend()
+    # plt.show()
     import pdb
     pdb.set_trace()
+    assert dual_resids[-1] + primal_resids[-1] <= 1e-8
+    assert dual_resids[0] + primal_resids[0] >= 1
 
-    assert jnp.linalg.norm(z_stars_test[0,nx:2*nx] - z_stars_test[1,:nx]) <= 1e-3
-    assert jnp.linalg.norm(shifted_z_star[:nx] - z_stars_test[1,:nx]) <= 1e-3
+    assert losses[200] >= prev_sol_losses[200] * 100
+
+    assert jnp.linalg.norm(z_stars_test[0, nx:2*nx] - z_stars_test[1, :nx]) <= 1e-3
+    assert jnp.linalg.norm(shifted_z_star[:nx] - z_stars_test[1, :nx]) <= 1e-3
+
 
 @pytest.mark.skip(reason="temp")
 def test_shift_train():
@@ -185,7 +192,6 @@ def test_shift_train():
                                       q_mat_test, z_stars=z_stars_test,
                                       fixed_ws=True, tag='test')
     nn_losses = nn_eval_out[1][1].mean(axis=0)
-
 
 
 @pytest.mark.skip(reason="temp")
@@ -309,7 +315,7 @@ def test_mpc_prev_sol():
     # plt.legend()
     # plt.show()
 
-    assert jnp.linalg.norm(z_stars_test[0,nx:2*nx] - z_stars_test[1,:nx]) <= 1e-3
+    assert jnp.linalg.norm(z_stars_test[0, nx:2*nx] - z_stars_test[1, :nx]) <= 1e-3
 
     # plt.plot(train_losses)
     # plt.yscale('log')
@@ -336,20 +342,22 @@ def test_mpc_prev_sol():
     # cold-start
     max_iter = 1000
     z0_cs = init_eval_out[1][3][:, 0, :]
-    osqp_c_out = osqp_model.solve_c(z0_cs, q_mat_test, rel_tol=1e-3, abs_tol=1e-3, max_iter=max_iter)
+    osqp_c_out = osqp_model.solve_c(z0_cs, q_mat_test, rel_tol=1e-3,
+                                    abs_tol=1e-3, max_iter=max_iter)
     solve_times_cs, solve_iters_cs, x_sols_cs, y_sols_cs = osqp_c_out
-    diff_x_cs = x_sols_cs[0,:] - init_eval_out[1][3][0, max_iter, :n]
-    diff_y_cs = y_sols_cs[0,:] - init_eval_out[1][3][0, max_iter, n:n + m]
+    diff_x_cs = x_sols_cs[0, :] - init_eval_out[1][3][0, max_iter, :n]
+    diff_y_cs = y_sols_cs[0, :] - init_eval_out[1][3][0, max_iter, n:n + m]
     # assert jnp.linalg.norm(diff_x) <= 1e-8
     # assert jnp.linalg.norm(diff_y) <= 1e-8
     print("=========================================")
 
     # previous solution
     max_iter = 1000
-    osqp_c_out = osqp_model.solve_c(prev_z, q_mat_prev, rel_tol=1e-3, abs_tol=1e-3, max_iter=max_iter)
+    osqp_c_out = osqp_model.solve_c(prev_z, q_mat_prev, rel_tol=1e-3,
+                                    abs_tol=1e-3, max_iter=max_iter)
     solve_times, solve_iters, x_sols, y_sols = osqp_c_out
-    diff_x = x_sols[0,:] - prev_sol_out[1][3][0, max_iter, :n]
-    diff_y = y_sols[0,:] - prev_sol_out[1][3][0, max_iter, n:n + m]
+    diff_x = x_sols[0, :] - prev_sol_out[1][3][0, max_iter, :n]
+    diff_y = y_sols[0, :] - prev_sol_out[1][3][0, max_iter, n:n + m]
     # assert jnp.linalg.norm(diff_x) <= 1e-8
     # assert jnp.linalg.norm(diff_y) <= 1e-8
 
@@ -366,14 +374,14 @@ def test_osqp_exact():
     N_test = 50
     N = N_train + N_test
     factor, P, A, q_mat, theta_mat, x_bar, Ad, Bd, rho_vec = multiple_random_mpc_osqp(N,
-                                                              T=10,
-                                                              nx=10,
-                                                              nu=5,
-                                                              sigma=1,
-                                                              rho=1,
-                                                              Ad=None,
-                                                              Bd=None,
-                                                              seed=42)
+                                                                                      T=10,
+                                                                                      nx=10,
+                                                                                      nu=5,
+                                                                                      sigma=1,
+                                                                                      rho=1,
+                                                                                      Ad=None,
+                                                                                      Bd=None,
+                                                                                      seed=42)
     train_inputs, test_inputs = theta_mat[:N_train, :], theta_mat[N_train:, :]
     z_stars_train, z_stars_test = None, None
     q_mat_train, q_mat_test = q_mat[:N_train, :], q_mat[N_train:, :]
@@ -391,8 +399,8 @@ def test_osqp_exact():
                       adaptive_rho=False, scaling=0, max_iter=max_iter, verbose=True, eps_abs=1e-10, eps_rel=1e-10)
 
     # fix warm start
-    x_ws = np.random.normal(size=(n)) # 
-    y_ws = np.random.normal(size=(m)) # 1*np.ones(m)
+    x_ws = np.random.normal(size=(n))
+    y_ws = np.random.normal(size=(m))  # 1*np.ones(m)
     # s_ws = np.zeros(m)
 
     osqp_solver.warm_start(x=x_ws, y=y_ws)
@@ -411,7 +419,7 @@ def test_osqp_exact():
 
     xy0 = jnp.concatenate([x_ws, y_ws])
 
-    z_k, losses, z_all = k_steps_eval_osqp(
+    z_k, losses, z_all, primal_resids, dual_resids = k_steps_eval_osqp(
         max_iter, xy0, q_mat[0, :], factor, A, rho_vec, sigma, supervised=False, z_star=None, jit=True)
 
     x_jax = z_k[:n]
@@ -547,7 +555,7 @@ def test_basic_osqp():
     xy0 = jnp.zeros(n + m)
 
     # z_k, losses = k_steps_train_osqp(k, z0, b, lambd, A, step, supervised=False, z_star=None, jit=True)
-    z_k, losses, z_all = k_steps_eval_osqp(
+    z_k, losses, z_all, primal_resids, dual_resids = k_steps_eval_osqp(
         k, xy0, factor, A, q, rho, sigma, supervised=False, z_star=None, jit=True)
     assert losses[-1] < losses[0] * 1e-6 and losses[0] > .1
 
@@ -583,7 +591,7 @@ def test_infeas_qp():
     xy0 = jnp.zeros(n + m)
 
     # z_k, losses = k_steps_train_osqp(k, z0, b, lambd, A, step, supervised=False, z_star=None, jit=True)
-    z_k, losses, z_all = k_steps_eval_osqp(
+    z_k, losses, z_all, primal_resids, dual_resids = k_steps_eval_osqp(
         k, xy0, q, factor, A, rho, sigma, supervised=False, z_star=None, jit=True)
     assert jnp.abs(losses[-1] - losses[-2]) < 1e-6 and losses[0] > .1
     assert losses[-1] > 1e-2
