@@ -373,7 +373,7 @@ class Workspace:
         # extract information from the evaluation
         loss_train, out_train, train_time = eval_out
         iter_losses_mean = out_train[1].mean(axis=0)
-        angles = out_train[2]
+        angles = out_train[3]
         # iter_losses_mean = out_train[2].mean(axis=0)
         # angles = out_train[3]
         # primal_residuals = out_train[4].mean(axis=0)
@@ -404,7 +404,7 @@ class Workspace:
         # self.plot_angles(angles, r, train, col)
 
         # plot the warm-start predictions
-        z_all = out_train[3]
+        z_all = out_train[2]
         # u_all = out_train[0][3]
         # z_all = out_train[0][0]
         # self.plot_warm_starts(u_all, z_all, train, col)

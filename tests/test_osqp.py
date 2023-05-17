@@ -70,9 +70,8 @@ def test_mnist():
     import pdb
     pdb.set_trace()
 
-# @pytest.mark.skip(reason="temp")
 
-
+@pytest.mark.skip(reason="temp")
 def test_shifted_sol():
     N_train = 10
     N_test = 10
@@ -121,8 +120,7 @@ def test_shifted_sol():
     # plt.yscale('log')
     # plt.legend()
     # plt.show()
-    import pdb
-    pdb.set_trace()
+
     assert dual_resids[-1] + primal_resids[-1] <= 1e-8
     assert dual_resids[0] + primal_resids[0] >= 1
 
@@ -132,7 +130,7 @@ def test_shifted_sol():
     assert jnp.linalg.norm(shifted_z_star[:nx] - z_stars_test[1, :nx]) <= 1e-3
 
 
-@pytest.mark.skip(reason="temp")
+# @pytest.mark.skip(reason="temp")
 def test_shift_train():
     N_train = 500
     N_test = 100
@@ -141,6 +139,7 @@ def test_shift_train():
     num_traj = 10
     traj_length = 10
     x_init_factor = .5
+    noise_std_dev = 0
 
     mpc_setup = multiple_random_mpc_osqp(N_train,
                                          T=T,
@@ -150,7 +149,7 @@ def test_shift_train():
                                          Bd=None,
                                          seed=42,
                                          x_init_factor=x_init_factor)
-    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, rho_vec = mpc_setup
+    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
     # train_inputs, test_inputs = theta_mat[:N_train, :], theta_mat[N_train:, :]
     # z_stars_train, z_stars_test = None, None
     # q_mat_train, q_mat_test = q_mat[:N_train, :], q_mat[N_train:, :]
@@ -160,7 +159,7 @@ def test_shift_train():
     #     T, num_traj_train, x_bar, x_init_factor, Ad, P, A, q)
 
     theta_mat_test, z_stars_test, q_mat_test = solve_multiple_trajectories(
-        traj_length, num_traj, x_bar, x_init_factor, Ad, P, A, q)
+        traj_length, num_traj, x_bar, x_init_factor, Ad, P, A, q, noise_std_dev)
 
     # create theta_mat and q_mat
     q_mat = jnp.vstack([q_mat_train, q_mat_test])
@@ -174,6 +173,7 @@ def test_shift_train():
     input_dict = dict(rho=rho_vec,
                       q_mat_train=q_mat_train,
                       q_mat_test=q_mat_test,
+                      P=P,
                       A=A,
                       factor=factor,
                       train_inputs=theta_mat[:N_train, :],

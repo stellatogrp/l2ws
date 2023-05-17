@@ -70,7 +70,8 @@ class L2WSmodel(object):
             if diff_required:
                 z_final, iter_losses = self.k_steps_train_fn(k=iters, z0=z0, q=q, supervised=supervised, z_star=z_star)
             else:
-                z_final, iter_losses, z_all_plus_1 = self.k_steps_eval_fn(k=iters, z0=z0, q=q, supervised=supervised, z_star=z_star)
+                eval_out = self.k_steps_eval_fn(k=iters, z0=z0, q=q, supervised=supervised, z_star=z_star)
+                z_final, iter_losses, z_all_plus_1 = eval_out[0], eval_out[1], eval_out[2]
 
                 # compute angle(z^{k+1} - z^k, z^k - z^{k-1})
                 diffs = jnp.diff(z_all_plus_1, axis=0)
@@ -81,8 +82,8 @@ class L2WSmodel(object):
             if diff_required:
                 return loss
             else:
-                # out = z_all_plus_1, z_final
-                return loss, iter_losses, angles, z_all_plus_1
+                return_out = (loss, iter_losses, z_all_plus_1, angles) + eval_out[3:]
+                return return_out
         # loss_fn = predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
         # loss_fn = self.predict_2_loss_ista(predict, diff_required)
         loss_fn = self.predict_2_loss(predict, diff_required)
@@ -550,7 +551,13 @@ class L2WSmodel(object):
             # out_axes for
             #   (loss, iter_losses, angles, primal_residuals, dual_residuals, out)
             #   out = (all_z_, z_next, alpha, all_u, all_v)
-            out_axes = (0, 0, 0, 0)
+            # out_axes = (0, 0, 0, 0)
+            if self.out_axes_length is None:
+                out_axes = (0,) * 4
+            else:
+                out_axes = (0,) * self.out_axes_length
+            # import pdb
+            # pdb.set_trace()
         return out_axes
     
     def predict_2_loss(self, predict, diff_required):
@@ -567,8 +574,9 @@ class L2WSmodel(object):
             else:
                 predict_out = batch_predict(
                     params, inputs, b, iters, z_stars)
-                losses, iter_losses, angles, z_all = predict_out
-                loss_out = losses, iter_losses, angles, z_all
-                return losses.mean(), loss_out
+                # return predict_out
+                losses = predict_out[0]
+                # loss_out = losses, iter_losses, angles, z_all
+                return losses.mean(), predict_out
         return loss_fn
     

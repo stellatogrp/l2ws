@@ -29,6 +29,7 @@ class OSQPmodel(L2WSmodel):
 
         self.k_steps_train_fn = partial(k_steps_train_osqp, factor=factor, A=self.A, rho=rho, sigma=sigma, jit=self.jit)
         self.k_steps_eval_fn = partial(k_steps_eval_osqp, factor=factor, P=self.P, A=self.A, rho=rho, sigma=sigma, jit=self.jit)
+        self.out_axes_length = 6
 
 
     def solve_c(self, z0_mat, q_mat, rel_tol, abs_tol, max_iter=10000):
