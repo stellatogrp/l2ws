@@ -233,7 +233,8 @@ class L2WSmodel(object):
     def cluster_z(self):
         N_train = self.x_stars_train.shape[0]
         sample_indices = np.random.choice(N_train, self.num_clusters, replace=False)
-        Z_shared = self.z_stars_train[sample_indices, :].T
+        # Z_shared = self.z_stars_train[sample_indices, :].T
+        Z_shared = jnp.array(np.random.normal(size=(self.m + self.n, self.num_clusters)))
 
         # compute distance matrix
         def get_indices(input, flag):
