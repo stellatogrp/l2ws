@@ -9,3 +9,4 @@ N_train: 10000
 N_test: 1000
 seed: 42
 solve: True
+noise_std_dev: 0

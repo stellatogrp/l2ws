@@ -8,6 +8,9 @@ import yaml
 from l2ws.launcher import Workspace
 import os
 from examples.solve_script import osqp_setup_script
+import matplotlib.pyplot as plt
+from functools import partial
+from jax import vmap
 
 
 def run(run_cfg):
@@ -24,13 +27,7 @@ def run(run_cfg):
 
     # set the seed
     np.random.seed(setup_cfg['seed'])
-    # m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
-    # A = jnp.array(np.random.normal(size=(m_orig, n_orig)))
-    # evals, evecs = jnp.linalg.eigh(A.T @ A)
-    # ista_step =  1 / evals.max()
-    # lambd = setup_cfg['lambd']
 
-    # static_dict = dict(A=A, lambd=lambd, ista_step=ista_step)
     # setup the training
     T, x_init_factor = setup_cfg['T'], setup_cfg['x_init_factor']
     nx, nu = setup_cfg['nx'], setup_cfg['nu']
@@ -44,14 +41,20 @@ def run(run_cfg):
                                          Bd=None,
                                          seed=setup_cfg['seed'],
                                          x_init_factor=x_init_factor)
-    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, rho_vec = mpc_setup
+    # factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, rho_vec = mpc_setup
+    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
+    m, n = A.shape
 
-    static_dict = dict(factor=factor, A=A, rho_vec=rho_vec)
+    static_dict = dict(factor=factor, P=P, A=A, rho=rho_vec)
 
     # we directly save q now
     static_flag = True
     algo = 'osqp'
-    workspace = Workspace(algo, run_cfg, static_flag, static_dict, example, traj_length=traj_length)
+
+    partial_shifted_sol_fn = partial(shifted_sol, T=T, nx=nx, nu=nu, m=m, n=n)
+    batch_shifted_sol_fn = vmap(partial_shifted_sol_fn, in_axes=(0), out_axes=(0))
+    workspace = Workspace(algo, run_cfg, static_flag, static_dict, example, 
+                          traj_length=traj_length, shifted_sol_fn=batch_shifted_sol_fn)
 
     # run the workspace
     workspace.run()
@@ -83,6 +86,7 @@ def setup_probs(setup_cfg):
     # setup the training
     T, x_init_factor = cfg.T, cfg.x_init_factor
     nx, nu = cfg.nx, cfg.nu
+    noise_std_dev = cfg.noise_std_dev
     mpc_setup = multiple_random_mpc_osqp(N_train,
                                          T=T,
                                          nx=nx,
@@ -91,7 +95,7 @@ def setup_probs(setup_cfg):
                                          Bd=None,
                                          seed=cfg.seed,
                                          x_init_factor=x_init_factor)
-    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, rho_vec = mpc_setup
+    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
 
     # setup the testing
     q = q_mat_train[0, :]
@@ -104,7 +108,7 @@ def setup_probs(setup_cfg):
 
     num_traj_test = int(N_test / cfg.traj_length)
     theta_mat_test, z_stars_test, q_mat_test = solve_multiple_trajectories(
-        cfg.traj_length, num_traj_test, x_bar, x_init_factor, Ad, P, A, q)
+        cfg.traj_length, num_traj_test, x_bar, x_init_factor, Ad, P, A, q, noise_std_dev)
 
     # create theta_mat and q_mat
     q_mat = jnp.vstack([q_mat_train, q_mat_test])
@@ -115,6 +119,44 @@ def setup_probs(setup_cfg):
     osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=None)
     # import pdb
     # pdb.set_trace()
+
+
+def shifted_sol(z_star, T, nx, nu, m, n):
+    # shifted_z_star = jnp.zeros(z_star.size)
+
+    x_star = z_star[:n]
+    y_star = z_star[n:]
+
+    shifted_x_star = jnp.zeros(n)
+    shifted_y_star = jnp.zeros(m)
+
+    # indices markers
+    end_state = nx * T
+    end_dyn_cons = nx * T
+    end_state_cons = 2 * nx * T
+
+    # get primal vars
+    shifted_states = x_star[nx:end_state]
+    shifted_controls = x_star[end_state + nu:]
+
+    # insert into shifted x_star
+    shifted_x_star = shifted_x_star.at[:end_state - nx].set(shifted_states)
+    shifted_x_star = shifted_x_star.at[end_state:-nu].set(shifted_controls)
+
+    # get dual vars
+    shifted_dyn_cons = y_star[nx:end_dyn_cons]
+    shifted_state_cons = y_star[end_dyn_cons + nx:end_state_cons]
+    shifted_control_cons = y_star[end_state_cons + nu:]
+
+    # insert into shifted y_star
+    shifted_y_star = shifted_y_star.at[:end_dyn_cons - nx].set(shifted_dyn_cons)
+    shifted_y_star = shifted_y_star.at[end_dyn_cons:end_state_cons - nx].set(shifted_state_cons)
+    shifted_y_star = shifted_y_star.at[end_state_cons:-nu].set(shifted_control_cons)
+
+    # concatentate primal and dual
+    shifted_z_star = jnp.concatenate([shifted_x_star, shifted_y_star])
+
+    return shifted_z_star
 
 
 def generate_static_prob_data(nx, nu, seed):
@@ -197,15 +239,15 @@ def multiple_random_mpc_osqp(N,
 
     for i in range(N):
         # generate new rhs of first block constraint
-        l = l.at[:nx].set(Ad @ x_init_mat[i, :])
-        u = u.at[:nx].set(Ad @ x_init_mat[i, :])
+        l = l.at[:nx].set(-Ad @ x_init_mat[i, :])
+        u = u.at[:nx].set(-Ad @ x_init_mat[i, :])
 
         q_osqp = jnp.concatenate([c, l, u])
         q_mat = q_mat.at[i, :].set(q_osqp)
     theta_mat = x_init_mat
     # return factor, P, A, q_mat, theta_mat
 
-    return factor, P, A, q_mat, theta_mat, x_bar, Ad, rho_vec
+    return factor, P, A, q_mat, theta_mat, x_bar, Ad, Bd, rho_vec
 
 def solve_many_probs_cvxpy(P, A, q_mat):
     """
@@ -242,7 +284,7 @@ def solve_many_probs_cvxpy(P, A, q_mat):
     return z_stars, objvals
 
 
-def solve_multiple_trajectories(traj_length, num_traj, x_bar, x_init_factor, Ad, P, A, q):
+def solve_multiple_trajectories(traj_length, num_traj, x_bar, x_init_factor, Ad, P, A, q, noise_std_dev):
     m, n = A.shape
     nx = Ad.shape[0]
     q_mat = jnp.zeros((traj_length * num_traj, n + 2 * m))
@@ -252,7 +294,8 @@ def solve_multiple_trajectories(traj_length, num_traj, x_bar, x_init_factor, Ad,
     q_mat_list = []
     for i in range(num_traj):
         first_x_init = first_x_inits[i, :]
-        theta_mat_curr, z_stars_curr, q_mat_curr = solve_trajectory(first_x_init, P, A, q, traj_length, Ad)
+        theta_mat_curr, z_stars_curr, q_mat_curr = solve_trajectory(first_x_init, P, A, q, 
+                                                                    traj_length, Ad, noise_std_dev)
         theta_mat_list.append(theta_mat_curr)
         z_stars_list.append(z_stars_curr)
         q_mat_list.append(q_mat_curr)
@@ -266,7 +309,7 @@ def solve_multiple_trajectories(traj_length, num_traj, x_bar, x_init_factor, Ad,
     return theta_mat, z_stars, q_mat
 
 
-def solve_trajectory(first_x_init, P, A, q, traj_length, Ad):
+def solve_trajectory(first_x_init, P, A, q, traj_length, Ad, noise_std_dev):
     """
     given the system and a first x_init, we model the MPC paradigm
 
@@ -303,10 +346,11 @@ def solve_trajectory(first_x_init, P, A, q, traj_length, Ad):
         u = q[n + m:]
         theta_mat = theta_mat.at[i, :].set(x_init)
         Ad_x_init = Ad @ x_init
-        l = l.at[:nx].set(Ad_x_init)
-        u = u.at[:nx].set(Ad_x_init)
+        l = l.at[:nx].set(-Ad_x_init)
+        u = u.at[:nx].set(-Ad_x_init)
         l_param.value = np.array(l)
         u_param.value = np.array(u)
+        print('i', i)
         prob.solve(verbose=False)
 
         x_star = jnp.array(x.value)
@@ -320,5 +364,8 @@ def solve_trajectory(first_x_init, P, A, q, traj_length, Ad):
         q_mat = q_mat.at[i, n + m:].set(u)
 
         # set the next x_init
-        x_init = -x_star[nx:2 * nx]
+        # x_init = x_star[nx:2 * nx]
+        noise = noise_std_dev * jnp.array(np.random.normal(size=(nx,))) #* x_bar
+        x_init = x_star[:nx] + noise
+        # print('x_init', x_init)
     return theta_mat, z_stars, q_mat

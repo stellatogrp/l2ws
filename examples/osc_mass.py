@@ -315,11 +315,13 @@ def static_canon_osqp(T, nx, nu, state_box, control_box, Q_val, QT_val, R_val, A
     if np.isscalar(state_box):
         state_box_vec = state_box*np.ones(T * nx)
     else:
-        state_box_vec = np.repeat(state_box, T)
+        # state_box_vec = np.repeat(state_box, T)
+        state_box_vec = np.tile(state_box, T)
     if np.isscalar(control_box):
         control_box_vec = control_box*np.ones(T * nu)
     else:
-        control_box_vec = np.repeat(control_box, T)
+        # control_box_vec = np.repeat(control_box, T)
+        control_box_vec = np.tile(control_box, T)
 
     b_upper = np.hstack(
         [state_box_vec, control_box_vec])

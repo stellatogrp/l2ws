@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import scs
 import numpy as np
 from scipy.sparse import csc_matrix
-from l2ws.algo_steps import k_steps_eval_osqp, k_steps_train_osqp, create_projection_fn, lin_sys_solve, k_steps_train_osqp
+from l2ws.algo_steps import k_steps_eval_osqp, k_steps_train_osqp, create_projection_fn, lin_sys_solve, k_steps_train_osqp, k_steps_eval
 import jax.scipy as jsp
 import pytest
 import matplotlib.pyplot as plt
@@ -12,7 +12,8 @@ import cvxpy as cp
 from jax import vmap
 from functools import partial
 from examples.osc_mass import multiple_random_osc_mass_osqp
-from examples.mpc import multiple_random_mpc_osqp, solve_many_probs_cvxpy, solve_multiple_trajectories
+from examples.mpc import multiple_random_mpc_osqp, solve_many_probs_cvxpy, solve_multiple_trajectories, shifted_sol
+from examples.mnist import get_mnist, vectorized2DBlurMatrix, mnist_canon
 from scipy.spatial import distance_matrix
 # from examples.ista import sol_2_obj_diff, solve_many_probs_cvxpy
 from l2ws.utils.nn_utils import get_nearest_neighbors
@@ -24,7 +25,113 @@ import osqp
 #     N, p = q_mat.shape
 #     for i in range(N):
 
-def test_mpc_prev_sol():
+@pytest.mark.skip(reason="temp")
+def test_mnist():
+    # load mnist data
+    x_train, x_test = get_mnist()
+
+    # create A matrix filter
+    A = vectorized2DBlurMatrix(28, 28, 8)
+
+    # blur img
+    blurred_img = np.reshape(A @ x_train[0, :], (28, 28))
+
+    # create cvxpy problem with TV regularization
+
+    # get P, A, q, l, u with cvxpy osqp canonicalization
+    lambd = 1e-4
+    P, A, c, l, u = mnist_canon(A, lambd, blurred_img)
+    q = jnp.concatenate([c, l, u])
+
+    # solve with our osqp
+    m, n = A.shape
+    k = 2000
+    sigma = 1e-6
+    rho_vec = jnp.ones(m)
+
+    rho_vec = rho_vec.at[l == u].set(1000)
+
+    # M = P + sigma * jnp.eye(n) + rho * A.T @ A
+    M = P + sigma * jnp.eye(n) + A.T @ jnp.diag(rho_vec) @ A
+
+    factor = jsp.linalg.lu_factor(M)
+
+    z_final, iter_losses, z_all_plus_1, primal_resids, dual_resids = k_steps_eval_osqp(k, np.zeros(
+        m + n), q, factor, P, A, rho_vec, sigma=sigma, supervised=False, z_star=None, jit=True)
+
+    img = z_final[:784]
+
+    plt.imshow(np.reshape(img, (28, 28)))
+    plt.show()
+
+    plt.plot(iter_losses)
+    plt.yscale('log')
+    plt.show()
+    import pdb
+    pdb.set_trace()
+
+
+@pytest.mark.skip(reason="temp")
+def test_shifted_sol():
+    N_train = 10
+    N_test = 10
+    N = N_train + N_test
+    T = 10
+    num_traj = 10
+    traj_length = 10
+    x_init_factor = .5
+
+    nx = 40
+    nu = 20
+    mpc_setup = multiple_random_mpc_osqp(N_train,
+                                         T=T,
+                                         nx=nx,
+                                         nu=nu,
+                                         Ad=None,
+                                         Bd=None,
+                                         seed=42,
+                                         x_init_factor=x_init_factor)
+    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
+    # train_inputs, test_inputs = theta_mat[:N_train, :], theta_mat[N_train:, :]
+    # z_stars_train, z_stars_test = None, None
+    # q_mat_train, q_mat_test = q_mat[:N_train, :], q_mat[N_train:, :]
+    q = q_mat_train[0, :]
+
+    # theta_mat_train, z_stars_train, q_mat_train = solve_multiple_trajectories(
+    #     T, num_traj_train, x_bar, x_init_factor, Ad, P, A, q)
+    noise_std_dev = 0
+    theta_mat_test, z_stars_test, q_mat_test = solve_multiple_trajectories(
+        traj_length, num_traj, x_bar, x_init_factor, Ad, P, A, q, noise_std_dev)
+
+    m, n = A.shape
+
+    # get the shifted solution
+    shifted_z_star = shifted_sol(z_stars_test[0, :], T, nx, nu, m, n)
+
+    # warm-start with it
+    k = 1000
+    prev_sol_z_k, prev_sol_losses, prev_sol_z_all, prev_sol_pr, prev_sol_dr = k_steps_eval_osqp(k, shifted_z_star, q_mat_test[1, :], factor, P, A, rho_vec, sigma=1,
+                                                                                                supervised=False, z_star=None, jit=True)
+    z_k, losses, z_all, primal_resids, dual_resids = k_steps_eval_osqp(k, shifted_z_star * 0, q_mat_test[1, :], factor, P, A, rho_vec, sigma=1,
+                                                                       supervised=False, z_star=None, jit=True)
+    # plt.title('state perturbation')
+    # plt.plot(losses, label='cold-start')
+    # plt.plot(prev_sol_losses, label='shifted prev sol warm-start')
+    # plt.yscale('log')
+    # plt.legend()
+    # plt.show()
+
+    assert dual_resids[-1] + primal_resids[-1] <= 1e-8
+    assert dual_resids[0] + primal_resids[0] >= 1
+
+    assert losses[200] >= prev_sol_losses[200] * 100
+
+    assert jnp.linalg.norm(z_stars_test[0, nx:2*nx] - z_stars_test[1, :nx]) <= 1e-3
+    assert jnp.linalg.norm(shifted_z_star[:nx] - z_stars_test[1, :nx]) <= 1e-3
+
+
+# @pytest.mark.skip(reason="temp")
+def test_shift_train():
     N_train = 500
     N_test = 100
     N = N_train + N_test
@@ -32,6 +139,7 @@ def test_mpc_prev_sol():
     num_traj = 10
     traj_length = 10
     x_init_factor = .5
+    noise_std_dev = 0
 
     mpc_setup = multiple_random_mpc_osqp(N_train,
                                          T=T,
@@ -41,7 +149,7 @@ def test_mpc_prev_sol():
                                          Bd=None,
                                          seed=42,
                                          x_init_factor=x_init_factor)
-    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, rho_vec = mpc_setup
+    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
     # train_inputs, test_inputs = theta_mat[:N_train, :], theta_mat[N_train:, :]
     # z_stars_train, z_stars_test = None, None
     # q_mat_train, q_mat_test = q_mat[:N_train, :], q_mat[N_train:, :]
@@ -51,7 +159,7 @@ def test_mpc_prev_sol():
     #     T, num_traj_train, x_bar, x_init_factor, Ad, P, A, q)
 
     theta_mat_test, z_stars_test, q_mat_test = solve_multiple_trajectories(
-        traj_length, num_traj, x_bar, x_init_factor, Ad, P, A, q)
+        traj_length, num_traj, x_bar, x_init_factor, Ad, P, A, q, noise_std_dev)
 
     # create theta_mat and q_mat
     q_mat = jnp.vstack([q_mat_train, q_mat_test])
@@ -65,6 +173,70 @@ def test_mpc_prev_sol():
     input_dict = dict(rho=rho_vec,
                       q_mat_train=q_mat_train,
                       q_mat_test=q_mat_test,
+                      P=P,
+                      A=A,
+                      factor=factor,
+                      train_inputs=theta_mat[:N_train, :],
+                      test_inputs=theta_mat[N_train:, :],
+                      train_unrolls=train_unrolls,
+                      nn_cfg={'intermediate_layer_sizes': [300]},
+                      jit=True)
+    osqp_model = OSQPmodel(input_dict)
+
+    train_inputs, test_inputs = theta_mat_train, theta_mat_test
+
+    # full evaluation on the test set with nearest neighbor
+    k = 500
+    nearest_neighbors_z = get_nearest_neighbors(train_inputs, test_inputs, z_stars_train)
+    nn_eval_out = osqp_model.evaluate(k, nearest_neighbors_z,
+                                      q_mat_test, z_stars=z_stars_test,
+                                      fixed_ws=True, tag='test')
+    nn_losses = nn_eval_out[1][1].mean(axis=0)
+
+
+@pytest.mark.skip(reason="temp")
+def test_mpc_prev_sol():
+    N_train = 1000
+    N_test = 100
+    N = N_train + N_test
+    T = 10
+    num_traj = 10
+    traj_length = 10
+    x_init_factor = .5
+    noise_std_dev = 0
+    nx, nu = 10, 5
+
+    mpc_setup = multiple_random_mpc_osqp(N_train,
+                                         T=T,
+                                         nx=nx,
+                                         nu=nu,
+                                         Ad=None,
+                                         Bd=None,
+                                         seed=42,
+                                         x_init_factor=x_init_factor)
+    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
+    m, n = A.shape
+    q = q_mat_train[0, :]
+
+    # theta_mat_train, z_stars_train, q_mat_train = solve_multiple_trajectories(
+    #     T, num_traj_train, x_bar, x_init_factor, Ad, P, A, q)
+
+    theta_mat_test, z_stars_test, q_mat_test = solve_multiple_trajectories(
+        traj_length, num_traj, x_bar, x_init_factor, Ad, P, A, q, noise_std_dev)
+
+    # create theta_mat and q_mat
+    q_mat = jnp.vstack([q_mat_train, q_mat_test])
+    theta_mat = jnp.vstack([theta_mat_train, theta_mat_test])
+
+    # solve the QPs
+    z_stars, objvals = solve_many_probs_cvxpy(P, A, q_mat)
+    z_stars_train, z_stars_test = z_stars[:N_train, :], z_stars[N_train:, :]
+
+    train_unrolls = 10
+    input_dict = dict(rho=rho_vec,
+                      q_mat_train=q_mat_train,
+                      q_mat_test=q_mat_test,
+                      P=P,
                       A=A,
                       factor=factor,
                       train_inputs=theta_mat[:N_train, :],
@@ -87,11 +259,13 @@ def test_mpc_prev_sol():
     # full evaluation on the test set with prev solution
     non_first_indices = jnp.mod(jnp.arange(N_test), num_traj) != 0
     non_last_indices = jnp.mod(jnp.arange(N_test), num_traj) != num_traj - 1
-    # print(jnp.mod(jnp.arange(N_test), num_traj))
-    # print('non_first_indices', non_first_indices)
-    # print('non_last_indices', non_last_indices)
     q_mat_prev = q_mat_test[non_first_indices, :]
-    prev_z = z_stars_test[non_last_indices, :]
+
+    # batch_shifted_sol = vmap(shifted_sol_partial, in_axes=(0,), out_axes=(0,))
+    partial_shifted_sol_fn = partial(shifted_sol, T=T, nx=nx, nu=nu, m=m, n=n)
+    batch_shifted_sol_fn = vmap(partial_shifted_sol_fn, in_axes=(0), out_axes=(0))
+
+    prev_z = batch_shifted_sol_fn(z_stars_test[non_last_indices, :])
     prev_sol_out = osqp_model.evaluate(k, prev_z,
                                        q_mat_prev, z_stars=None,
                                        fixed_ws=True, tag='test')
@@ -105,7 +279,7 @@ def test_mpc_prev_sol():
     # train the osqp_model
     # call train_batch without jitting
     params, state = osqp_model.params, osqp_model.state
-    num_epochs = 500
+    num_epochs = 2
     train_losses = jnp.zeros(num_epochs)
     for i in range(num_epochs):
         train_result = osqp_model.train_full_batch(params, state)
@@ -115,40 +289,82 @@ def test_mpc_prev_sol():
     osqp_model.params, osqp_model.state = params, state
 
     # full evaluation on the test set
-    # k = 200
     final_eval_out = osqp_model.evaluate(
         k, test_inputs, q_mat_test, z_stars=z_stars_test, fixed_ws=False, tag='test')
     final_test_losses = final_eval_out[1][1].mean(axis=0)
-    # final_z_all = init_eval_out[1][3]
 
-    plt.plot(init_test_losses, label='cold start')
-    plt.plot(final_test_losses, label=f"learned warm-start k={train_unrolls}")
-    plt.plot(prev_sol_losses, label='prev sol')
-    plt.plot(nn_losses, label='nearest neighbor')
-    plt.yscale('log')
-    plt.legend()
-    plt.show()
-    # print(prev_sol_losses)
+    # plotting
+    # plt.plot(init_test_losses, label='cold start')
+    # plt.plot(final_test_losses, label=f"learned warm-start k={train_unrolls}")
+    # plt.plot(prev_sol_losses, label='prev sol')
+    # plt.plot(nn_losses, label='nearest neighbor')
+    # plt.yscale('log')
+    # plt.legend()
+    # plt.show()
 
-    plt.title('losses')
-    plt.plot(train_losses, label='train')
-    init_test_loss = init_test_losses[train_unrolls]
-    final_test_loss = final_test_losses[train_unrolls]
-    test_losses = np.array([init_test_loss, final_test_loss])
-    epochs_array = np.array([0, num_epochs])
-    plt.plot(epochs_array, test_losses, label='test')
-    plt.xlabel('epochs')
-    plt.ylabel('loss')
-    plt.yscale('log')
-    plt.legend()
-    plt.show()
+    # plt.title('losses')
+    # plt.plot(train_losses, label='train')
+    # init_test_loss = init_test_losses[train_unrolls]
+    # final_test_loss = final_test_losses[train_unrolls]
+    # test_losses = np.array([init_test_loss, final_test_loss])
+    # epochs_array = np.array([0, num_epochs])
+    # plt.plot(epochs_array, test_losses, label='test')
+    # plt.xlabel('epochs')
+    # plt.ylabel('loss')
+    # plt.yscale('log')
+    # plt.legend()
+    # plt.show()
+
+    assert jnp.linalg.norm(z_stars_test[0, nx:2*nx] - z_stars_test[1, :nx]) <= 1e-3
 
     # plt.plot(train_losses)
     # plt.yscale('log')
     # # plt.legend()
     # plt.show()
+    # import pdb
+    # pdb.set_trace()
+
+    # test with osqp in C so that it exactly matches
+    #   test with the prev_sol
+    # for i in range(traj_length):
+    #     osqp_solver.setup(P=P_sparse, q=q, A=A_sparse, l=l, u=u, alpha=1, rho=1, sigma=1, polish=False,
+    #                   adaptive_rho=False, scaling=0, max_iter=k, verbose=True, eps_abs=1e-10, eps_rel=1e-10)
+
+    # # fix warm start
+    # x_ws = 1*np.ones(n)
+    # y_ws = 1*np.ones(m)
+    # # s_ws = np.zeros(m)
+
+    # osqp_solver.warm_start(x=x_ws, y=y_ws)
+    # results = osqp_solver.solve()
+    # z0_mat = prev_z
+
+    # cold-start
+    max_iter = 1000
+    z0_cs = init_eval_out[1][3][:, 0, :]
+    osqp_c_out = osqp_model.solve_c(z0_cs, q_mat_test, rel_tol=1e-3,
+                                    abs_tol=1e-3, max_iter=max_iter)
+    solve_times_cs, solve_iters_cs, x_sols_cs, y_sols_cs = osqp_c_out
+    diff_x_cs = x_sols_cs[0, :] - init_eval_out[1][3][0, max_iter, :n]
+    diff_y_cs = y_sols_cs[0, :] - init_eval_out[1][3][0, max_iter, n:n + m]
+    # assert jnp.linalg.norm(diff_x) <= 1e-8
+    # assert jnp.linalg.norm(diff_y) <= 1e-8
+    print("=========================================")
+
+    # previous solution
+    max_iter = 1000
+    osqp_c_out = osqp_model.solve_c(prev_z, q_mat_prev, rel_tol=1e-3,
+                                    abs_tol=1e-3, max_iter=max_iter)
+    solve_times, solve_iters, x_sols, y_sols = osqp_c_out
+    diff_x = x_sols[0, :] - prev_sol_out[1][3][0, max_iter, :n]
+    diff_y = y_sols[0, :] - prev_sol_out[1][3][0, max_iter, n:n + m]
+    # assert jnp.linalg.norm(diff_x) <= 1e-8
+    # assert jnp.linalg.norm(diff_y) <= 1e-8
+
     import pdb
     pdb.set_trace()
+    # assert jnp.linalg.norm(x_jax - results.x) < 1e-10
+    # assert jnp.linalg.norm(y_jax - results.y) < 1e-10
 
 
 @pytest.mark.skip(reason="temp")
@@ -157,15 +373,15 @@ def test_osqp_exact():
     N_train = 500
     N_test = 50
     N = N_train + N_test
-    factor, P, A, q_mat, theta_mat = multiple_random_mpc_osqp(N,
-                                                              T=10,
-                                                              nx=10,
-                                                              nu=5,
-                                                              sigma=1,
-                                                              rho=1,
-                                                              Ad=None,
-                                                              Bd=None,
-                                                              seed=42)
+    factor, P, A, q_mat, theta_mat, x_bar, Ad, Bd, rho_vec = multiple_random_mpc_osqp(N,
+                                                                                      T=10,
+                                                                                      nx=10,
+                                                                                      nu=5,
+                                                                                      sigma=1,
+                                                                                      rho=1,
+                                                                                      Ad=None,
+                                                                                      Bd=None,
+                                                                                      seed=42)
     train_inputs, test_inputs = theta_mat[:N_train, :], theta_mat[N_train:, :]
     z_stars_train, z_stars_test = None, None
     q_mat_train, q_mat_test = q_mat[:N_train, :], q_mat[N_train:, :]
@@ -175,7 +391,7 @@ def test_osqp_exact():
     q, l, u = np.array(q_mat_train[0, :n]), np.array(
         q_mat_train[0, n:n + m]), np.array(q_mat_train[0, n + m:])
 
-    max_iter = 1000
+    max_iter = 10
     osqp_solver = osqp.OSQP()
     P_sparse, A_sparse = csc_matrix(np.array(P)), csc_matrix(np.array(A))
 
@@ -183,8 +399,8 @@ def test_osqp_exact():
                       adaptive_rho=False, scaling=0, max_iter=max_iter, verbose=True, eps_abs=1e-10, eps_rel=1e-10)
 
     # fix warm start
-    x_ws = 1*np.ones(n)
-    y_ws = 1*np.ones(m)
+    x_ws = np.random.normal(size=(n))
+    y_ws = np.random.normal(size=(m))  # 1*np.ones(m)
     # s_ws = np.zeros(m)
 
     osqp_solver.warm_start(x=x_ws, y=y_ws)
@@ -203,7 +419,7 @@ def test_osqp_exact():
 
     xy0 = jnp.concatenate([x_ws, y_ws])
 
-    z_k, losses, z_all = k_steps_eval_osqp(
+    z_k, losses, z_all, primal_resids, dual_resids = k_steps_eval_osqp(
         max_iter, xy0, q_mat[0, :], factor, A, rho_vec, sigma, supervised=False, z_star=None, jit=True)
 
     x_jax = z_k[:n]
@@ -217,6 +433,8 @@ def test_osqp_exact():
     # these should match to machine precision
     assert jnp.linalg.norm(x_jax - results.x) < 1e-10
     assert jnp.linalg.norm(y_jax - results.y) < 1e-10
+    import pdb
+    pdb.set_trace()
 
 
 @pytest.mark.skip(reason="temp")
@@ -337,7 +555,7 @@ def test_basic_osqp():
     xy0 = jnp.zeros(n + m)
 
     # z_k, losses = k_steps_train_osqp(k, z0, b, lambd, A, step, supervised=False, z_star=None, jit=True)
-    z_k, losses, z_all = k_steps_eval_osqp(
+    z_k, losses, z_all, primal_resids, dual_resids = k_steps_eval_osqp(
         k, xy0, factor, A, q, rho, sigma, supervised=False, z_star=None, jit=True)
     assert losses[-1] < losses[0] * 1e-6 and losses[0] > .1
 
@@ -373,7 +591,7 @@ def test_infeas_qp():
     xy0 = jnp.zeros(n + m)
 
     # z_k, losses = k_steps_train_osqp(k, z0, b, lambd, A, step, supervised=False, z_star=None, jit=True)
-    z_k, losses, z_all = k_steps_eval_osqp(
+    z_k, losses, z_all, primal_resids, dual_resids = k_steps_eval_osqp(
         k, xy0, q, factor, A, rho, sigma, supervised=False, z_star=None, jit=True)
     assert jnp.abs(losses[-1] - losses[-2]) < 1e-6 and losses[0] > .1
     assert losses[-1] > 1e-2

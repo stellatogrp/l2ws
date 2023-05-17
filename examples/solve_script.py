@@ -42,7 +42,7 @@ def osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=None):
             c_param.value = np.array(q_mat[i, :n])
             l_param.value = np.array(q_mat[i, n:n + m])
             u_param.value = np.array(q_mat[i, n + m:])
-            prob.solve(verbose=False)
+            prob.solve(verbose=True, solver=cp.OSQP, eps_abs=1e-03, eps_rel=1e-03)
             objvals = objvals.at[i].set(prob.value)
 
             x_star = jnp.array(x.value)

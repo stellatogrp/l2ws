@@ -14,7 +14,7 @@ import hydra
 import time
 from scipy.spatial import distance_matrix
 from l2ws.algo_steps import create_projection_fn, get_psd_sizes
-from l2ws.utils.generic_utils import sample_plot, setup_permutation
+from l2ws.utils.generic_utils import sample_plot, setup_permutation, count_files_in_directory
 import scs
 from scipy.sparse import csc_matrix
 from functools import partial
@@ -29,19 +29,27 @@ config.update("jax_enable_x64", True)
 class Workspace:
     def __init__(self, algo, cfg, static_flag, static_dict, example,
                  traj_length=None,
-                 custom_visualize_fn=None):
+                 custom_visualize_fn=None,
+                 shifted_sol_fn=None):
         '''
         cfg is the run_cfg from hydra
         static_flag is True if the matrices P and A don't change from problem to problem
         static_dict holds the data that doesn't change from problem to problem
         example is the string (e.g. 'robust_kalman')
         '''
+        self.example = example
         self.eval_unrolls = cfg.eval_unrolls
         self.eval_every_x_epochs = cfg.eval_every_x_epochs
         self.save_every_x_epochs = cfg.save_every_x_epochs
         self.num_samples = cfg.num_samples
         self.pretrain_cfg = cfg.pretrain
         self.key_count = 0
+        self.save_weights_flag = cfg.get('save_weights_flag', False)
+        self.load_weights_datetime = cfg.get('load_weights_datetime', None)
+        self.shifted_sol_fn = shifted_sol_fn
+
+        self.rel_tols = cfg.get('rel_tols', [])
+        self.abs_tols = cfg.get('abs_tols', [])
 
         self.plot_iterates = cfg.plot_iterates
         # share_all = cfg.get('share_all', False)
@@ -145,13 +153,15 @@ class Workspace:
         elif algo == 'osqp':
             factor = static_dict['factor']
             A = static_dict['A']
-            rho_vec = static_dict['rho_vec']
+            P = static_dict['P']
+            rho = static_dict['rho']
 
             input_dict = dict(supervised=False,
-                              rho=rho_vec,
+                              rho=rho,
                               q_mat_train=q_mat_train,
                               q_mat_test=q_mat_test,
                               A=A,
+                              P=P,
                               factor=factor,
                               train_inputs=train_inputs,
                               test_inputs=test_inputs,
@@ -246,6 +256,44 @@ class Workspace:
                           }
             self.l2ws_model = L2WSmodel(input_dict)
 
+        # if self.load_weights_datetime is not None:
+        #     self.load_weights(example, self.load_weights_datetime)
+
+
+    def save_weights(self):
+        nn_weights = self.l2ws_model.params
+
+        # create directory
+        if not os.path.exists('nn_weights'):
+            os.mkdir('nn_weights')
+
+        # Save each weight matrix and bias vector separately using jnp.savez
+        for i, params in enumerate(nn_weights):
+            weight_matrix, bias_vector = params
+            jnp.savez(f"nn_weights/layer_{i}_params.npz", weight=weight_matrix, bias=bias_vector)
+
+
+    def load_weights(self, example, datetime):
+        # get the appropriate folder
+        orig_cwd = hydra.utils.get_original_cwd()
+        folder = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/nn_weights"
+
+        # find the number of layers based on the number of files
+        num_layers = count_files_in_directory(folder)
+
+        # iterate over the files/layers
+        params = []
+        for i in range(num_layers):
+            layer_file = f"{folder}/layer_{i}_params.npz"
+            loaded_layer = jnp.load(layer_file)
+            weight_matrix, bias_vector = loaded_layer['weight'], loaded_layer['bias']
+            weight_bias_tuple = (weight_matrix, bias_vector)
+            params.append(weight_bias_tuple)
+
+        # store the weights as the l2ws_model params
+        self.l2ws_model.params = params
+
+
     def normalize_inputs_fn(self, thetas, N_train, N_test):
         # normalize the inputs if the option is on
         N = N_train + N_test
@@ -325,7 +373,7 @@ class Workspace:
         # extract information from the evaluation
         loss_train, out_train, train_time = eval_out
         iter_losses_mean = out_train[1].mean(axis=0)
-        angles = out_train[2]
+        angles = out_train[3]
         # iter_losses_mean = out_train[2].mean(axis=0)
         # angles = out_train[3]
         # primal_residuals = out_train[4].mean(axis=0)
@@ -339,11 +387,17 @@ class Workspace:
         # update the eval csv files
         # df_out = self.update_eval_csv(
         #     iter_losses_mean, primal_residuals, dual_residuals, train, col)
-        # import pdb
-        # pdb.set_trace()
+        # df_out = self.update_eval_csv(
+        #     iter_losses_mean, train, col)
+        if len(out_train) == 6:
+            primal_residuals = out_train[4].mean(axis=0)
+            dual_residuals = out_train[5].mean(axis=0)
         df_out = self.update_eval_csv(
-            iter_losses_mean, train, col)
-        iters_df, primal_residuals_df, dual_residuals_df = df_out
+            iter_losses_mean, train, col, 
+            primal_residuals=primal_residuals,
+            dual_residuals=dual_residuals
+            )
+        iters_df, primal_residuals_df, dual_residuals_df, obj_vals_diff_df = df_out
 
         if not self.skip_startup:
             # write accuracies dataframe to csv
@@ -358,8 +412,9 @@ class Workspace:
         # self.plot_angles(angles, r, train, col)
 
         # plot the warm-start predictions
-        u_all = out_train[0][3]
-        z_all = out_train[0][0]
+        z_all = out_train[2]
+        # u_all = out_train[0][3]
+        # z_all = out_train[0][0]
         # self.plot_warm_starts(u_all, z_all, train, col)
 
         # plot the alpha coefficients
@@ -379,8 +434,85 @@ class Workspace:
         # z0_mat = z_all[:, 0, :]
         # self.solve_scs(z0_mat, train, col)
         # self.solve_scs(z_all, u_all, train, col)
+        z0_mat = z_all[:, 0, :]
+        # import pdb
+        # pdb.set_trace()
+        self.solve_c_helper(z0_mat, train, col)
+
+        if self.save_weights_flag:
+            self.save_weights()
 
         return out_train
+    
+
+    def solve_c_helper(self, z0_mat, train, col):
+        """
+        calls the self.solve_c method and does housekeeping
+        """
+        num_tols = len(self.rel_tols)
+
+        # get the q_mat
+        if train:
+            q_mat = self.l2ws_model.q_mat_train
+        else:
+            q_mat = self.l2ws_model.q_mat_test
+
+        # different behavior for prev_sol
+        if col == 'prev_sol':
+            non_first_indices = jnp.mod(jnp.arange(q_mat.shape[0]), self.traj_length) != 0
+            q_mat = q_mat[non_first_indices, :]
+            # import pdb
+            # pdb.set_trace()
+
+        mean_solve_times = np.zeros(num_tols)
+        mean_solve_iters = np.zeros(num_tols)
+        for i in range(num_tols):
+            rel_tol = self.rel_tols[i]
+            abs_tol = self.abs_tols[i]
+            acc_string = f"abs_{abs_tol}_rel_{rel_tol}"
+
+            
+            solve_c_out = self.l2ws_model.solve_c(z0_mat, q_mat, rel_tol, abs_tol)
+            solve_times, solve_iters = solve_c_out[0], solve_c_out[1]
+            mean_solve_times[i] = solve_times.mean()
+            mean_solve_iters[i] = solve_iters.mean()
+
+            # write the solve times to the csv file
+            solve_times_df = pd.DataFrame()
+            solve_times_df['solve_times'] = solve_times
+            solve_times_df['solve_iters'] = solve_iters
+
+            if not os.path.exists('solve_C'):
+                os.mkdir('solve_C')
+            if train:
+                solve_times_path = 'solve_C/train'
+            else:
+                solve_times_path = 'solve_C/test'
+            if not os.path.exists(solve_times_path):
+                os.mkdir(solve_times_path)
+            if not os.path.exists(f"{solve_times_path}/{col}"):
+                os.mkdir(f"{solve_times_path}/{col}")
+            if not os.path.exists(solve_times_path):
+                os.mkdir(solve_times_path)
+            if not os.path.exists(f"{solve_times_path}/{col}/{acc_string}"):
+                os.mkdir(f"{solve_times_path}/{col}/{acc_string}")
+            
+            solve_times_df.to_csv(f"{solve_times_path}/{col}/{acc_string}/solve_times.csv")
+
+        # update the mean values
+        if train:
+            train_str = 'train'
+            self.agg_solve_times_df_train[col] = mean_solve_times
+            self.agg_solve_iters_df_train[col] = mean_solve_iters
+            self.agg_solve_times_df_train.to_csv(f"solve_C/{train_str}_aggregate_solve_times.csv")
+            self.agg_solve_iters_df_train.to_csv(f"solve_C/{train_str}_aggregate_solve_iters.csv")
+        else:
+            train_str = 'test'
+            self.agg_solve_times_df_test[col] = mean_solve_times
+            self.agg_solve_iters_df_test[col] = mean_solve_iters
+            self.agg_solve_times_df_test.to_csv(f"solve_C/{train_str}_aggregate_solve_times.csv")
+            self.agg_solve_iters_df_test.to_csv(f"solve_C/{train_str}_aggregate_solve_iters.csv")
+    
 
     def solve_scs(self, z0_mat, train, col):
         # create the path
@@ -527,6 +659,11 @@ class Workspace:
             # pretrain evaluation
             if self.pretrain_on:
                 self.pretrain()
+
+        # load the weights AFTER the cold-start
+        if self.load_weights_datetime is not None:
+            self.load_weights(self.example, self.load_weights_datetime)
+
 
         # eval test data to start
         self.test_eval_write()
@@ -700,7 +837,6 @@ class Workspace:
         if col == 'prev_sol':
             q_mat_full = self.l2ws_model.q_mat_train[:num,
                                             :] if train else self.l2ws_model.q_mat_test[:num, :]
-            # last_indices = jnp.mod(jnp.arange(num), self.traj_length) != 0
             non_first_indices = jnp.mod(jnp.arange(num), self.traj_length) != 0
             q_mat = q_mat_full[non_first_indices, :]
             z_stars = z_stars[non_first_indices, :]
@@ -727,13 +863,13 @@ class Workspace:
             if col == 'nearest_neighbor':
                 inputs = self.get_nearest_neighbors(train, num)
             elif col == 'prev_sol':
-                z_size = self.z_stars_test.shape[1]
-                inputs = jnp.zeros((num, z_size))
-                inputs = inputs.at[1:, :].set(self.z_stars_test[:num - 1, :])
+                # z_size = self.z_stars_test.shape[1]
+                # inputs = jnp.zeros((num, z_size))
+                # inputs = inputs.at[1:, :].set(self.z_stars_test[:num - 1, :])
 
                 # now set the indices (0, num_traj, 2 * num_traj) to zero
-                
                 non_last_indices = jnp.mod(jnp.arange(num), self.traj_length) != self.traj_length - 1
+<<<<<<< HEAD
                 inputs = inputs[non_last_indices, :]
                 # first_indices = jnp.mod(jnp.arange(num), self.traj_length) == 0
                 # inputs = inputs.at[first_indices, :].set(0)
@@ -748,13 +884,13 @@ class Workspace:
                 # print('non_last_indices', non_last_indices)
                 # q_mat_prev = q_mat_test[non_first_indices, :]
                 # prev_z = z_stars_test[non_last_indices, :]
+=======
+                # inputs = inputs[non_last_indices, :]
+                # inputs = self.shifted_sol_fn(inputs)
+
+                inputs = self.shifted_sol_fn(self.z_stars_test[non_last_indices, :])
+>>>>>>> 5f86af72db02a0ac3142e2552dc5b9e980a3a1c3
         else:
-            # elif col == 'no_train': (possible case to consider)
-            # random init with neural network ()
-            # _, predict_size = self.l2ws_model.z_stars_test.shape
-            # random_start = np.random.normal(size=(num, predict_size))
-            # inputs = jnp.array(random_start)
-            # fixed_ws = True
             if train:
                 inputs = self.l2ws_model.train_inputs[:num, :]
             else:
@@ -792,6 +928,7 @@ class Workspace:
             columns=['iterations', 'no_train'])
         self.iters_df_test['iterations'] = np.arange(1, self.eval_unrolls+1)
 
+        # primal and dual residuals
         self.primal_residuals_df_train = pd.DataFrame(
             columns=['iterations'])
         self.primal_residuals_df_train['iterations'] = np.arange(
@@ -809,6 +946,32 @@ class Workspace:
             columns=['iterations'])
         self.dual_residuals_df_test['iterations'] = np.arange(
             1, self.eval_unrolls+1)
+        
+        # obj_vals_diff
+        self.obj_vals_diff_df_train = pd.DataFrame(
+            columns=['iterations'])
+        self.obj_vals_diff_df_train['iterations'] = np.arange(
+            1, self.eval_unrolls+1)
+        self.obj_vals_diff_df_test = pd.DataFrame(
+            columns=['iterations'])
+        self.obj_vals_diff_df_test['iterations'] = np.arange(
+            1, self.eval_unrolls+1)
+        
+        # setup solve times
+        self.agg_solve_times_df_train = pd.DataFrame()
+        self.agg_solve_times_df_train['rel_tol'] = self.rel_tols
+        self.agg_solve_times_df_train['abs_tol'] = self.abs_tols
+        self.agg_solve_iters_df_train = pd.DataFrame()
+        self.agg_solve_iters_df_train['rel_tol'] = self.rel_tols
+        self.agg_solve_iters_df_train['abs_tol'] = self.abs_tols
+        
+        self.agg_solve_times_df_test = pd.DataFrame()
+        self.agg_solve_times_df_test['rel_tol'] = self.rel_tols
+        self.agg_solve_times_df_test['abs_tol'] = self.abs_tols
+        self.agg_solve_iters_df_test = pd.DataFrame()
+        self.agg_solve_iters_df_test['rel_tol'] = self.rel_tols
+        self.agg_solve_iters_df_test['abs_tol'] = self.abs_tols
+
 
     def train_full(self):
         print("Training full...")
@@ -908,8 +1071,9 @@ class Workspace:
         plt.savefig('train_losses_over_training.pdf', bbox_inches='tight')
         plt.clf()
 
-    # def update_eval_csv(self, iter_losses_mean, primal_residuals, dual_residuals, train, col):
-    def update_eval_csv(self, iter_losses_mean, train, col):
+    def update_eval_csv(self, iter_losses_mean, train, col, primal_residuals=None, 
+                        dual_residuals=None, obj_val_diffs=None):
+    # def update_eval_csv(self, iter_losses_mean, train, col):
         """
         update the eval csv files
             fixed point residuals
@@ -918,83 +1082,180 @@ class Workspace:
         returns the new dataframes
         """
         primal_residuals_df, dual_residuals_df = None, None
+        obj_val_diffs_df = None
         if train:
             self.iters_df_train[col] = iter_losses_mean
             self.iters_df_train.to_csv('iters_compared_train.csv')
-            # self.primal_residuals_df_train[col] = primal_residuals
-            # self.primal_residuals_df_train.to_csv('primal_residuals_train.csv')
-            # self.dual_residuals_df_train[col] = dual_residuals
-            # self.dual_residuals_df_train.to_csv('dual_residuals_train.csv')
-
+            if primal_residuals is not None:
+                self.primal_residuals_df_train[col] = primal_residuals
+                self.primal_residuals_df_train.to_csv('primal_residuals_train.csv')
+                self.dual_residuals_df_train[col] = dual_residuals
+                self.dual_residuals_df_train.to_csv('dual_residuals_train.csv')
+                primal_residuals_df = self.primal_residuals_df_train
+                dual_residuals_df = self.dual_residuals_df_train
+            if obj_val_diffs is not None:
+                self.obj_val_diffs_df_train[col] = obj_val_diffs
+                self.obj_val_diffs_df_train.to_csv('obj_val_diffs_train.csv')
+                obj_val_diffs_df = self.obj_val_diffs_df_train
             iters_df = self.iters_df_train
-            # primal_residuals_df = self.primal_residuals_df_train
-            # dual_residuals_df = self.dual_residuals_df_train
+            
         else:
             self.iters_df_test[col] = iter_losses_mean
             self.iters_df_test.to_csv('iters_compared_test.csv')
-            # self.primal_residuals_df_test[col] = primal_residuals
-            # self.primal_residuals_df_test.to_csv('primal_residuals_test.csv')
-            # self.dual_residuals_df_test[col] = dual_residuals
-            # self.dual_residuals_df_test.to_csv('dual_residuals_test.csv')
+            if primal_residuals is not None:
+                self.primal_residuals_df_test[col] = primal_residuals
+                self.primal_residuals_df_test.to_csv('primal_residuals_test.csv')
+                self.dual_residuals_df_test[col] = dual_residuals
+                self.dual_residuals_df_test.to_csv('dual_residuals_test.csv')
+                primal_residuals_df = self.primal_residuals_df_test
+                dual_residuals_df = self.dual_residuals_df_test
+            if obj_val_diffs is not None:
+                self.obj_val_diffs_df_test[col] = obj_val_diffs
+                self.obj_val_diffs_df_test.to_csv('obj_val_diffs_test.csv')
+                obj_val_diffs_df = self.obj_val_diffs_df_test
 
             iters_df = self.iters_df_test
-            # primal_residuals_df = self.primal_residuals_df_test
-            # dual_residuals_df = self.dual_residuals_df_test
-        return iters_df, primal_residuals_df, dual_residuals_df
+            
+        return iters_df, primal_residuals_df, dual_residuals_df, obj_val_diffs_df
+    
 
-    def plot_eval_iters(self, iters_df, primal_residuals_df, dual_residuals_df, plot_pretrain,
-                        train, col):
+    def plot_eval_iters_df(self, df, train, col, ylabel, filename):
         # plot the cold-start if applicable
-        if 'no_train' in iters_df.keys():
-            plt.plot(iters_df['no_train'], 'k-', label='no learning')
+        if 'no_train' in df.keys():
+            plt.plot(df['no_train'], 'k-', label='no learning')
 
         # plot the nearest_neighbor if applicable
-        if col != 'no_train' and 'nearest_neighbor' in iters_df.keys():
-            plt.plot(iters_df['nearest_neighbor'], 'm-', label='nearest neighbor')
+        if col != 'no_train' and 'nearest_neighbor' in df.keys():
+            plt.plot(df['nearest_neighbor'], 'm-', label='nearest neighbor')
 
         # plot the prev_sol if applicable
-        if col != 'no_train' and col != 'nearest_neighbor' and 'prev_sol' in iters_df.keys():
-            plt.plot(iters_df['prev_sol'], 'c-', label='prev solution')
+        if col != 'no_train' and col != 'nearest_neighbor' and 'prev_sol' in df.keys():
+            plt.plot(df['prev_sol'], 'c-', label='prev solution')
         # if plot_pretrain:
         #     plt.plot(iters_df['pretrain'], 'r-', label='pretraining')
 
         # plot the learned warm-start if applicable
         if col != 'no_train' and col != 'pretrain' and col != 'nearest_neighbor' and col != 'prev_sol':
-            plt.plot(iters_df[col], label=f"train k={self.train_unrolls}")
+            plt.plot(df[col], label=f"train k={self.train_unrolls}")
         plt.yscale('log')
         plt.xlabel('evaluation iterations')
-        plt.ylabel('test fixed point residuals')
+        plt.ylabel(f"test {ylabel}")
         plt.legend()
         if train:
             plt.title('train problems')
-            plt.savefig('eval_iters_train.pdf', bbox_inches='tight')
+            plt.savefig(f"{filename}_train.pdf", bbox_inches='tight')
         else:
             plt.title('test problems')
-            plt.savefig('eval_iters_test.pdf', bbox_inches='tight')
+            plt.savefig(f"{filename}_test.pdf", bbox_inches='tight')
         plt.clf()
 
-        # plot of the primal and dual residuals
-        # if 'no_train' in iters_df.keys():
-        #     plt.plot(primal_residuals_df['no_train'],
-        #             'k+', label='no learning primal')
-        #     plt.plot(dual_residuals_df['no_train'],
-        #             'ko', label='no learning dual')
 
-        # if plot_pretrain:
-        #     plt.plot(
-        #         primal_residuals_df['pretrain'], 'r+', label='pretraining primal')
-        #     plt.plot(dual_residuals_df['pretrain'],
-        #              'ro', label='pretraining dual')
-        # if col != 'no_train' and col != 'pretrain' and col != 'fixed_ws':
-        #     plt.plot(
-        #         primal_residuals_df[col], label=f"train k={self.train_unrolls} primal")
-        #     plt.plot(
-        #         dual_residuals_df[col], label=f"train k={self.train_unrolls} dual")
-        # plt.yscale('log')
-        # plt.xlabel('evaluation iterations')
-        # plt.ylabel('test primal-dual residuals')
-        # plt.legend()
-        # plt.savefig('primal_dual_residuals.pdf', bbox_inches='tight')
+    def plot_eval_iters(self, iters_df, primal_residuals_df, dual_residuals_df, plot_pretrain,
+                        train, col):
+        self.plot_eval_iters_df(iters_df, train, col, 'fixed point residual', 'eval_iters')
+        if primal_residuals_df is not None:
+            self.plot_eval_iters_df(primal_residuals_df, train, col, 'primal residual', 'primal_residuals')
+            self.plot_eval_iters_df(dual_residuals_df, train, col, 'dual residual', 'dual_residuals')
+
+
+    # def plot_eval_iters(self, iters_df, primal_residuals_df, dual_residuals_df, plot_pretrain,
+    #                     train, col):
+    #     # plot the cold-start if applicable
+    #     if 'no_train' in iters_df.keys():
+    #         plt.plot(iters_df['no_train'], 'k-', label='no learning')
+
+    #     # plot the nearest_neighbor if applicable
+    #     if col != 'no_train' and 'nearest_neighbor' in iters_df.keys():
+    #         plt.plot(iters_df['nearest_neighbor'], 'm-', label='nearest neighbor')
+
+    #     # plot the prev_sol if applicable
+    #     if col != 'no_train' and col != 'nearest_neighbor' and 'prev_sol' in iters_df.keys():
+    #         plt.plot(iters_df['prev_sol'], 'c-', label='prev solution')
+    #     # if plot_pretrain:
+    #     #     plt.plot(iters_df['pretrain'], 'r-', label='pretraining')
+
+    #     # plot the learned warm-start if applicable
+    #     if col != 'no_train' and col != 'pretrain' and col != 'nearest_neighbor' and col != 'prev_sol':
+    #         plt.plot(iters_df[col], label=f"train k={self.train_unrolls}")
+    #     plt.yscale('log')
+    #     plt.xlabel('evaluation iterations')
+    #     plt.ylabel('test fixed point residuals')
+    #     plt.legend()
+    #     if train:
+    #         plt.title('train problems')
+    #         plt.savefig('eval_iters_train.pdf', bbox_inches='tight')
+    #     else:
+    #         plt.title('test problems')
+    #         plt.savefig('eval_iters_test.pdf', bbox_inches='tight')
+    #     plt.clf()
+
+    #     # plot of the primal residuals
+    #     if 'no_train' in iters_df.keys():
+    #         plt.plot(primal_residuals_df['no_train'],
+    #                 'k-', label='no learning primal')
+    #         # plt.plot(dual_residuals_df['no_train'],
+    #         #         'ko', label='no learning dual')
+
+    #     # plot the nearest_neighbor if applicable
+    #     if col != 'no_train' and 'nearest_neighbor' in iters_df.keys():
+    #         plt.plot(primal_residuals_df['nearest_neighbor'], 'm-', label='nearest neighbor')
+
+    #     # plot the prev_sol if applicable
+    #     if col != 'no_train' and col != 'nearest_neighbor' and 'prev_sol' in iters_df.keys():
+    #         plt.plot(primal_residuals_df['prev_sol'], 'c-', label='prev solution')
+
+    #     if col != 'no_train' and col != 'pretrain' and col != 'fixed_ws' and col != 'prev_sol':
+    #         plt.plot(
+    #             primal_residuals_df[col], label=f"train k={self.train_unrolls} primal")
+    #         # plt.plot(
+    #         #     dual_residuals_df[col], label=f"train k={self.train_unrolls} dual")
+    #     plt.yscale('log')
+    #     plt.xlabel('evaluation iterations')
+    #     plt.ylabel('primal residuals')
+    #     plt.legend()
+    #     # plt.savefig('primal_residuals.pdf', bbox_inches='tight')
+    #     # plt.clf()
+    #     if train:
+    #         plt.title('train problems')
+    #         plt.savefig('primal_residuals_train.pdf', bbox_inches='tight')
+    #     else:
+    #         plt.title('test problems')
+    #         plt.savefig('primal_residuals_test.pdf', bbox_inches='tight')
+    #     plt.clf()
+
+
+
+    #     # plot of the dual residuals
+    #     if 'no_train' in iters_df.keys():
+    #         # plt.plot(primal_residuals_df['no_train'],
+    #         #         'k+', label='no learning primal')
+    #         plt.plot(dual_residuals_df['no_train'],
+    #                 'k-', label='no learning dual')
+            
+    #     # plot the nearest_neighbor if applicable
+    #     if col != 'no_train' and 'nearest_neighbor' in iters_df.keys():
+    #         plt.plot(dual_residuals_df['nearest_neighbor'], 'm-', label='nearest neighbor')
+
+    #     # plot the prev_sol if applicable
+    #     if col != 'no_train' and col != 'nearest_neighbor' and 'prev_sol' in iters_df.keys():
+    #         plt.plot(dual_residuals_df['prev_sol'], 'c-', label='prev solution')
+
+    #     if col != 'no_train' and col != 'pretrain' and col != 'fixed_ws' and col != 'prev_sol':
+    #         # plt.plot(
+    #         #     primal_residuals_df[col], label=f"train k={self.train_unrolls} primal")
+    #         plt.plot(
+    #             dual_residuals_df[col], label=f"train k={self.train_unrolls} dual")
+    #     plt.yscale('log')
+    #     plt.xlabel('evaluation iterations')
+    #     plt.ylabel('dual residuals')
+    #     plt.legend()
+    #     # plt.savefig('dual_residuals.pdf', bbox_inches='tight')
+    #     if train:
+    #         plt.title('train problems')
+        #     plt.savefig('dual_residuals_train.pdf', bbox_inches='tight')
+        # else:
+        #     plt.title('test problems')
+        #     plt.savefig('dual_residuals_test.pdf', bbox_inches='tight')
         # plt.clf()
 
     def plot_alphas(self, alpha, train, col):
