@@ -154,10 +154,10 @@ class Workspace:
             factor = static_dict['factor']
             A = static_dict['A']
             P = static_dict['P']
-            rho_vec = static_dict['rho_vec']
+            rho = static_dict['rho']
 
             input_dict = dict(supervised=False,
-                              rho=rho_vec,
+                              rho=rho,
                               q_mat_train=q_mat_train,
                               q_mat_test=q_mat_test,
                               A=A,
@@ -427,6 +427,8 @@ class Workspace:
         # self.solve_scs(z0_mat, train, col)
         # self.solve_scs(z_all, u_all, train, col)
         z0_mat = z_all[:, 0, :]
+        # import pdb
+        # pdb.set_trace()
         self.solve_c_helper(z0_mat, train, col)
 
         if self.save_weights_flag:
@@ -447,21 +449,26 @@ class Workspace:
         else:
             q_mat = self.l2ws_model.q_mat_test
 
+        # different behavior for prev_sol
+        if col == 'prev_sol':
+            non_first_indices = jnp.mod(jnp.arange(q_mat.shape[0]), self.traj_length) != 0
+            q_mat = q_mat[non_first_indices, :]
+            # import pdb
+            # pdb.set_trace()
+
         mean_solve_times = np.zeros(num_tols)
         mean_solve_iters = np.zeros(num_tols)
         for i in range(num_tols):
             rel_tol = self.rel_tols[i]
             abs_tol = self.abs_tols[i]
 
-            # different behavior for prev_sol
-            if col == 'prev_sol':
-                non_first_indices = jnp.mod(jnp.arange(q_mat.shape[0]), self.traj_length) != 0
-                q_mat = q_mat[non_first_indices, :]
-                import pdb
-                pdb.set_trace()
-            solve_times, solve_iters = self.l2ws_model.solve_c(z0_mat, q_mat, rel_tol, abs_tol)
+            
+            solve_c_out = self.l2ws_model.solve_c(z0_mat, q_mat, rel_tol, abs_tol)
+            solve_times, solve_iters = solve_c_out[0], solve_c_out[1]
             mean_solve_times[i] = solve_times.mean()
             mean_solve_iters[i] = solve_iters.mean()
+        # import pdb
+        # pdb.set_trace()
 
         # write the solve times to the csv file
         solve_times_df = pd.DataFrame()
@@ -481,16 +488,18 @@ class Workspace:
         solve_times_df.to_csv(f"{solve_times_path}/{col}/solve_times.csv")
 
         # update the mean values
-        self.agg_solve_times_df[col] = mean_solve_times
-        self.agg_solve_iters_df[col] = mean_solve_iters
-
         if train:
             train_str = 'train'
+            self.agg_solve_times_df_train[col] = mean_solve_times
+            self.agg_solve_iters_df_train[col] = mean_solve_iters
+            self.agg_solve_times_df_train.to_csv(f"solve_C/{train_str}_aggregate_solve_times.csv")
+            self.agg_solve_iters_df_train.to_csv(f"solve_C/{train_str}_aggregate_solve_iters.csv")
         else:
             train_str = 'test'
-        # filename = f"solve_C/train_aggregate_solve_times.csv"
-        self.agg_solve_times_df.to_csv(f"solve_C/{train_str}_aggregate_solve_times.csv")
-        self.agg_solve_iters_df.to_csv(f"solve_C/{train_str}_aggregate_solve_iters.csv")
+            self.agg_solve_times_df_test[col] = mean_solve_times
+            self.agg_solve_iters_df_test[col] = mean_solve_iters
+            self.agg_solve_times_df_test.to_csv(f"solve_C/{train_str}_aggregate_solve_times.csv")
+            self.agg_solve_iters_df_test.to_csv(f"solve_C/{train_str}_aggregate_solve_iters.csv")
     
 
     def solve_scs(self, z0_mat, train, col):
@@ -835,7 +844,8 @@ class Workspace:
         inputs = self.get_inputs_for_eval(fixed_ws, num, train, col)
         # eval_out = self.l2ws_model.evaluate(self.eval_unrolls, inputs, factors,
         #                                     M_tensor, q_mat, z_stars, fixed_ws, tag=tag)
-        
+        # import pdb
+        # pdb.set_trace()
         eval_out = self.l2ws_model.evaluate(
             self.eval_unrolls, inputs, q_mat, z_stars, fixed_ws, tag=tag)
         return eval_out
@@ -912,13 +922,19 @@ class Workspace:
             1, self.eval_unrolls+1)
         
         # setup solve times
-        self.agg_solve_times_df = pd.DataFrame()
-        self.agg_solve_times_df['rel_tol'] = self.rel_tols
-        self.agg_solve_times_df['abs_tol'] = self.abs_tols
+        self.agg_solve_times_df_train = pd.DataFrame()
+        self.agg_solve_times_df_train['rel_tol'] = self.rel_tols
+        self.agg_solve_times_df_train['abs_tol'] = self.abs_tols
+        self.agg_solve_iters_df_train = pd.DataFrame()
+        self.agg_solve_iters_df_train['rel_tol'] = self.rel_tols
+        self.agg_solve_iters_df_train['abs_tol'] = self.abs_tols
         
-        self.agg_solve_iters_df = pd.DataFrame()
-        self.agg_solve_iters_df['rel_tol'] = self.rel_tols
-        self.agg_solve_iters_df['abs_tol'] = self.abs_tols
+        self.agg_solve_times_df_test = pd.DataFrame()
+        self.agg_solve_times_df_test['rel_tol'] = self.rel_tols
+        self.agg_solve_times_df_test['abs_tol'] = self.abs_tols
+        self.agg_solve_iters_df_test = pd.DataFrame()
+        self.agg_solve_iters_df_test['rel_tol'] = self.rel_tols
+        self.agg_solve_iters_df_test['abs_tol'] = self.abs_tols
 
 
     def train_full(self):

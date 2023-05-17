@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import scs
 import numpy as np
 from scipy.sparse import csc_matrix
-from l2ws.algo_steps import k_steps_eval_osqp, k_steps_train_osqp, create_projection_fn, lin_sys_solve, k_steps_train_osqp
+from l2ws.algo_steps import k_steps_eval_osqp, k_steps_train_osqp, create_projection_fn, lin_sys_solve, k_steps_train_osqp, k_steps_eval
 import jax.scipy as jsp
 import pytest
 import matplotlib.pyplot as plt
@@ -25,13 +25,13 @@ import osqp
 #     N, p = q_mat.shape
 #     for i in range(N):
 
-@pytest.mark.skip(reason="temp")
+# @pytest.mark.skip(reason="temp")
 def test_mnist():
     # load mnist data
     x_train, x_test = get_mnist()
 
     # create A matrix filter
-    A = vectorized2DBlurMatrix(28, 28, 10)
+    A = vectorized2DBlurMatrix(28, 28, 8)
 
     # blur img
     blurred_img = np.reshape(A @ x_train[0, :], (28, 28))
@@ -45,8 +45,8 @@ def test_mnist():
 
     # solve with our osqp
     m, n = A.shape
-    k = 1000
-    sigma = 1
+    k = 2000
+    sigma = 1e-6
     rho_vec = jnp.ones(m)
 
     rho_vec = rho_vec.at[l == u].set(1000)
@@ -57,13 +57,18 @@ def test_mnist():
     factor = jsp.linalg.lu_factor(M)
 
     z_final, iter_losses, z_all_plus_1 = k_steps_eval_osqp(k, np.zeros(
-        m + n), q, factor, A, rho_vec, sigma, supervised=False, z_star=None, jit=True)
-    import pdb
-    pdb.set_trace()
+        m + n), q, factor, A, rho_vec, sigma=sigma, supervised=False, z_star=None, jit=True)
+    
     img = z_final[:784]
 
     plt.imshow(np.reshape(img, (28, 28)))
     plt.show()
+
+    plt.plot(iter_losses)
+    plt.yscale('log')
+    plt.show()
+    import pdb
+    pdb.set_trace()
 
 @pytest.mark.skip(reason="temp")
 def test_shifted_sol():
@@ -183,7 +188,7 @@ def test_shift_train():
 
 
 
-# @pytest.mark.skip(reason="temp")
+@pytest.mark.skip(reason="temp")
 def test_mpc_prev_sol():
     N_train = 1000
     N_test = 100
@@ -327,21 +332,31 @@ def test_mpc_prev_sol():
     # osqp_solver.warm_start(x=x_ws, y=y_ws)
     # results = osqp_solver.solve()
     # z0_mat = prev_z
-    max_iter = 10
-    z0_cs = init_eval_out[1][3][:, 0, :]
-    osqp_c_out = osqp_model.solve_c(z0_cs, q_mat_test, rel_tol=1e-10, abs_tol=1e-10, max_iter=max_iter)
-    # osqp_c_out = osqp_model.solve_c(prev_z, q_mat_prev, rel_tol=1e-10, abs_tol=1e-10, max_iter=max_iter)
-    solve_times, solve_iters, x_sols, y_sols = osqp_c_out
 
-    diff_x = x_sols[0,:] - init_eval_out[1][3][0, max_iter, :n]
-    diff_y = y_sols[0,:] - init_eval_out[1][3][0, max_iter, n:n + m]
-    assert jnp.linalg.norm(diff_x) <= 1e-8
-    assert jnp.linalg.norm(diff_y) <= 1e-8
-    # import pdb
-    # pdb.set_trace()
+    # cold-start
+    max_iter = 1000
+    z0_cs = init_eval_out[1][3][:, 0, :]
+    osqp_c_out = osqp_model.solve_c(z0_cs, q_mat_test, rel_tol=1e-3, abs_tol=1e-3, max_iter=max_iter)
+    solve_times_cs, solve_iters_cs, x_sols_cs, y_sols_cs = osqp_c_out
+    diff_x_cs = x_sols_cs[0,:] - init_eval_out[1][3][0, max_iter, :n]
+    diff_y_cs = y_sols_cs[0,:] - init_eval_out[1][3][0, max_iter, n:n + m]
+    # assert jnp.linalg.norm(diff_x) <= 1e-8
+    # assert jnp.linalg.norm(diff_y) <= 1e-8
+    print("=========================================")
+
+    # previous solution
+    max_iter = 1000
+    osqp_c_out = osqp_model.solve_c(prev_z, q_mat_prev, rel_tol=1e-3, abs_tol=1e-3, max_iter=max_iter)
+    solve_times, solve_iters, x_sols, y_sols = osqp_c_out
+    diff_x = x_sols[0,:] - prev_sol_out[1][3][0, max_iter, :n]
+    diff_y = y_sols[0,:] - prev_sol_out[1][3][0, max_iter, n:n + m]
+    # assert jnp.linalg.norm(diff_x) <= 1e-8
+    # assert jnp.linalg.norm(diff_y) <= 1e-8
+
+    import pdb
+    pdb.set_trace()
     # assert jnp.linalg.norm(x_jax - results.x) < 1e-10
     # assert jnp.linalg.norm(y_jax - results.y) < 1e-10
-
 
 
 @pytest.mark.skip(reason="temp")

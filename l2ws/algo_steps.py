@@ -105,7 +105,8 @@ def fp_train_osqp(i, val, supervised, z_star, factor, A, q, rho, sigma):
     return z_next, loss_vec
 
 
-def fp_eval_osqp(i, val, supervised, z_star, factor, A, q, rho, sigma):
+def fp_eval_osqp(i, val, supervised, z_star, factor, A, q, rho, sigma, lightweight=False):
+    m, n = A.shape
     z, loss_vec, z_all = val
     z_next = fixed_point_osqp(z, factor, A, q, rho, sigma)
     if supervised:
@@ -114,6 +115,13 @@ def fp_eval_osqp(i, val, supervised, z_star, factor, A, q, rho, sigma):
         diff = jnp.linalg.norm(z_next - z)
     loss_vec = loss_vec.at[i].set(diff)
     z_all = z_all.at[i, :].set(z_next)
+
+    # primal and dual residuals
+    if not lightweight:
+        pr = jnp.linalg.norm(A @ z[:n] - z[n + m:])
+        dr = jnp.linalg.norm(P @ z[:n] + A.T @ z[n:n + m] + q[:n])
+        primal_residuals = primal_residuals.at[i].set(pr)
+        dual_residuals = dual_residuals.at[i].set(dr)
     return z_next, loss_vec, z_all
 
 
