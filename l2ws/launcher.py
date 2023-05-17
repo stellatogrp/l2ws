@@ -469,31 +469,35 @@ class Workspace:
         for i in range(num_tols):
             rel_tol = self.rel_tols[i]
             abs_tol = self.abs_tols[i]
+            acc_string = f"abs_{abs_tol}_rel_{rel_tol}"
 
             
             solve_c_out = self.l2ws_model.solve_c(z0_mat, q_mat, rel_tol, abs_tol)
             solve_times, solve_iters = solve_c_out[0], solve_c_out[1]
             mean_solve_times[i] = solve_times.mean()
             mean_solve_iters[i] = solve_iters.mean()
-        # import pdb
-        # pdb.set_trace()
 
-        # write the solve times to the csv file
-        solve_times_df = pd.DataFrame()
-        solve_times_df['solve_times'] = solve_times
-        solve_times_df['solve_iters'] = solve_iters
+            # write the solve times to the csv file
+            solve_times_df = pd.DataFrame()
+            solve_times_df['solve_times'] = solve_times
+            solve_times_df['solve_iters'] = solve_iters
 
-        if not os.path.exists('solve_C'):
-            os.mkdir('solve_C')
-        if train:
-            solve_times_path = 'solve_C/train'
-        else:
-            solve_times_path = 'solve_C/test'
-        if not os.path.exists(solve_times_path):
-            os.mkdir(solve_times_path)
-        if not os.path.exists(f"{solve_times_path}/{col}"):
-            os.mkdir(f"{solve_times_path}/{col}")
-        solve_times_df.to_csv(f"{solve_times_path}/{col}/solve_times.csv")
+            if not os.path.exists('solve_C'):
+                os.mkdir('solve_C')
+            if train:
+                solve_times_path = 'solve_C/train'
+            else:
+                solve_times_path = 'solve_C/test'
+            if not os.path.exists(solve_times_path):
+                os.mkdir(solve_times_path)
+            if not os.path.exists(f"{solve_times_path}/{col}"):
+                os.mkdir(f"{solve_times_path}/{col}")
+            if not os.path.exists(solve_times_path):
+                os.mkdir(solve_times_path)
+            if not os.path.exists(f"{solve_times_path}/{col}/{acc_string}"):
+                os.mkdir(f"{solve_times_path}/{col}/{acc_string}")
+            
+            solve_times_df.to_csv(f"{solve_times_path}/{col}/{acc_string}/solve_times.csv")
 
         # update the mean values
         if train:
