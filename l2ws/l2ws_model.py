@@ -14,7 +14,7 @@ import pandas as pd
 from jax.config import config
 from scipy.spatial import distance_matrix
 import logging
-from l2ws.algo_steps import k_steps_train, k_steps_eval, lin_sys_solve, k_steps_train_ista, k_steps_eval_ista
+# from l2ws.algo_steps import k_steps_train, k_steps_eval, lin_sys_solve, k_steps_train_ista, k_steps_eval_ista
 from functools import partial
 config.update("jax_enable_x64", True)
 
@@ -108,7 +108,8 @@ class L2WSmodel(object):
         return self.static_eval(k, inputs, b, z_stars, tag=tag, fixed_ws=fixed_ws)
 
     def short_test_eval(self):
-        z_stars_test = self.z_stars_test if self.supervised else None
+        # z_stars_test = self.z_stars_test if self.supervised else None
+        z_stars_test = self.z_stars_test
         
         test_loss, test_out, time_per_prob = self.static_eval(self.train_unrolls,
                                                               self.test_inputs,

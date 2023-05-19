@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 from jax import random
 import jax
 from l2ws.algo_steps import create_M, create_projection_fn, lin_sys_solve, \
-    extract_sol, k_steps_eval, get_scale_vec, get_scaled_vec_and_factor
+    extract_sol, k_steps_eval_scs, get_scale_vec, get_scaled_vec_and_factor
 
 
 class SCSinstance(object):

@@ -23,3 +23,4 @@ class ISTAmodel(L2WSmodel):
         # else:
         self.k_steps_train_fn = partial(k_steps_train_ista, A=A, lambd=lambd, ista_step=ista_step, jit=self.jit)
         self.k_steps_eval_fn = partial(k_steps_eval_ista, A=A, lambd=lambd, ista_step=ista_step, jit=self.jit)
+        self.out_axes_length = 5

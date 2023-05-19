@@ -36,8 +36,6 @@ class OSQPmodel(L2WSmodel):
         # assume M doesn't change across problems
         # static problem data
         m, n = self.m, self.n
-        # P = csc_matrix(self.l2ws_model.static_M[:n, :n])
-        # A = csc_matrix(-self.l2ws_model.static_M[n:, :n])
         P, A = self.P, self.A
 
         # set the solver
@@ -57,31 +55,21 @@ class OSQPmodel(L2WSmodel):
         x_sols = jnp.zeros((num, n))
         y_sols = jnp.zeros((num, m))
         for i in range(num):
-            # get the current q
-            # q = q_mat[i, :]
-
             # set c, l, u
             c, l, u = q_mat[i, :n], q_mat[i, n:n + m], q_mat[i, n + m:]
             osqp_solver.update(q=np.array(c))
             osqp_solver.update(l=np.array(l), u=np.array(u))
-            # osqp_solver.update(u=np.array(u))
 
             # set the warm start
             # x, y, s = self.get_xys_from_z(z0_mat[i, :])
             x_ws, y_ws = np.array(z0_mat[i, :n]), np.array(z0_mat[i, n:n + m])
 
-            # solve
             # fix warm start
-            # x_ws = 1*np.ones(n)
-            # y_ws = 1*np.ones(m)
-            # import pdb
-            # pdb.set_trace()
             osqp_solver.warm_start(x=x_ws, y=y_ws)
+
+            # solve
             results = osqp_solver.solve()
             # sol = solver.solve(warm_start=True, x=np.array(x), y=np.array(y), s=np.array(s))
-
-            # import pdb
-            # pdb.set_trace()
 
             # set the solve time in seconds
             solve_times[i] = results.info.solve_time

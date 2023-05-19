@@ -73,8 +73,11 @@ class Workspace:
         self.thetas_test = thetas[N_train:N, :]
 
         self.traj_length = traj_length
+        
         if traj_length is not None:
             self.prev_sol_eval = True
+        else:
+            self.prev_sol_eval = False
 
         if algo != 'ista':
             q_mat = jnp.array(jnp_load_obj['q_mat'])
@@ -389,13 +392,18 @@ class Workspace:
         #     iter_losses_mean, primal_residuals, dual_residuals, train, col)
         # df_out = self.update_eval_csv(
         #     iter_losses_mean, train, col)
+        primal_residuals, dual_residuals, obj_vals_diff = None, None, None
         if len(out_train) == 6:
             primal_residuals = out_train[4].mean(axis=0)
             dual_residuals = out_train[5].mean(axis=0)
+        elif len(out_train) == 5:
+            obj_vals_diff = out_train[4].mean(axis=0)
+
         df_out = self.update_eval_csv(
             iter_losses_mean, train, col, 
             primal_residuals=primal_residuals,
-            dual_residuals=dual_residuals
+            dual_residuals=dual_residuals,
+            obj_vals_diff=obj_vals_diff
             )
         iters_df, primal_residuals_df, dual_residuals_df, obj_vals_diff_df = df_out
 
@@ -405,7 +413,7 @@ class Workspace:
 
         # plot the evaluation iterations
         self.plot_eval_iters(iters_df, primal_residuals_df,
-                             dual_residuals_df, plot_pretrain, train, col)
+                             dual_residuals_df, plot_pretrain, obj_vals_diff_df, train, col)
 
         # SRG-type plots
         # r = out_train[2]
@@ -437,7 +445,8 @@ class Workspace:
         z0_mat = z_all[:, 0, :]
         # import pdb
         # pdb.set_trace()
-        self.solve_c_helper(z0_mat, train, col)
+        if 'solve_c' in dir(self.l2ws_model):
+            self.solve_c_helper(z0_mat, train, col)
 
         if self.save_weights_flag:
             self.save_weights()
@@ -869,27 +878,10 @@ class Workspace:
 
                 # now set the indices (0, num_traj, 2 * num_traj) to zero
                 non_last_indices = jnp.mod(jnp.arange(num), self.traj_length) != self.traj_length - 1
-<<<<<<< HEAD
-                inputs = inputs[non_last_indices, :]
-                # first_indices = jnp.mod(jnp.arange(num), self.traj_length) == 0
-                # inputs = inputs.at[first_indices, :].set(0)
-                # import pdb
-                # pdb.set_trace()
-                
-                # full evaluation on the test set with prev solution
-                # non_first_indices = jnp.mod(jnp.arange(N_test), self.num_traj) != 0
-                # non_last_indices = jnp.mod(jnp.arange(N_test), self.num_traj) != self.num_traj - 1
-                # print(jnp.mod(jnp.arange(N_test), num_traj))
-                # print('non_first_indices', non_first_indices)
-                # print('non_last_indices', non_last_indices)
-                # q_mat_prev = q_mat_test[non_first_indices, :]
-                # prev_z = z_stars_test[non_last_indices, :]
-=======
                 # inputs = inputs[non_last_indices, :]
                 # inputs = self.shifted_sol_fn(inputs)
 
                 inputs = self.shifted_sol_fn(self.z_stars_test[non_last_indices, :])
->>>>>>> 5f86af72db02a0ac3142e2552dc5b9e980a3a1c3
         else:
             if train:
                 inputs = self.l2ws_model.train_inputs[:num, :]
@@ -1072,7 +1064,7 @@ class Workspace:
         plt.clf()
 
     def update_eval_csv(self, iter_losses_mean, train, col, primal_residuals=None, 
-                        dual_residuals=None, obj_val_diffs=None):
+                        dual_residuals=None, obj_vals_diff=None):
     # def update_eval_csv(self, iter_losses_mean, train, col):
         """
         update the eval csv files
@@ -1082,7 +1074,7 @@ class Workspace:
         returns the new dataframes
         """
         primal_residuals_df, dual_residuals_df = None, None
-        obj_val_diffs_df = None
+        obj_vals_diff_df = None
         if train:
             self.iters_df_train[col] = iter_losses_mean
             self.iters_df_train.to_csv('iters_compared_train.csv')
@@ -1093,10 +1085,10 @@ class Workspace:
                 self.dual_residuals_df_train.to_csv('dual_residuals_train.csv')
                 primal_residuals_df = self.primal_residuals_df_train
                 dual_residuals_df = self.dual_residuals_df_train
-            if obj_val_diffs is not None:
-                self.obj_val_diffs_df_train[col] = obj_val_diffs
-                self.obj_val_diffs_df_train.to_csv('obj_val_diffs_train.csv')
-                obj_val_diffs_df = self.obj_val_diffs_df_train
+            if obj_vals_diff is not None:
+                self.obj_vals_diff_df_train[col] = obj_vals_diff
+                self.obj_vals_diff_df_train.to_csv('obj_vals_diff_train.csv')
+                obj_vals_diff_df = self.obj_vals_diff_df_train
             iters_df = self.iters_df_train
             
         else:
@@ -1109,14 +1101,14 @@ class Workspace:
                 self.dual_residuals_df_test.to_csv('dual_residuals_test.csv')
                 primal_residuals_df = self.primal_residuals_df_test
                 dual_residuals_df = self.dual_residuals_df_test
-            if obj_val_diffs is not None:
-                self.obj_val_diffs_df_test[col] = obj_val_diffs
-                self.obj_val_diffs_df_test.to_csv('obj_val_diffs_test.csv')
-                obj_val_diffs_df = self.obj_val_diffs_df_test
+            if obj_vals_diff is not None:
+                self.obj_vals_diff_df_test[col] = obj_vals_diff
+                self.obj_vals_diff_df_test.to_csv('obj_vals_diff_test.csv')
+                obj_vals_diff_df = self.obj_vals_diff_df_test
 
             iters_df = self.iters_df_test
             
-        return iters_df, primal_residuals_df, dual_residuals_df, obj_val_diffs_df
+        return iters_df, primal_residuals_df, dual_residuals_df, obj_vals_diff_df
     
 
     def plot_eval_iters_df(self, df, train, col, ylabel, filename):
@@ -1151,11 +1143,14 @@ class Workspace:
 
 
     def plot_eval_iters(self, iters_df, primal_residuals_df, dual_residuals_df, plot_pretrain,
+                        obj_vals_diff_df,
                         train, col):
         self.plot_eval_iters_df(iters_df, train, col, 'fixed point residual', 'eval_iters')
         if primal_residuals_df is not None:
             self.plot_eval_iters_df(primal_residuals_df, train, col, 'primal residual', 'primal_residuals')
             self.plot_eval_iters_df(dual_residuals_df, train, col, 'dual residual', 'dual_residuals')
+        if obj_vals_diff_df is not None:
+            self.plot_eval_iters_df(obj_vals_diff_df, train, col, 'obj diff', 'obj_diffs')
 
 
     # def plot_eval_iters(self, iters_df, primal_residuals_df, dual_residuals_df, plot_pretrain,

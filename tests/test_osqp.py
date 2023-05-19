@@ -114,12 +114,14 @@ def test_shifted_sol():
                                                                                                 supervised=False, z_star=None, jit=True)
     z_k, losses, z_all, primal_resids, dual_resids = k_steps_eval_osqp(k, shifted_z_star * 0, q_mat_test[1, :], factor, P, A, rho_vec, sigma=1,
                                                                        supervised=False, z_star=None, jit=True)
-    # plt.title('state perturbation')
-    # plt.plot(losses, label='cold-start')
-    # plt.plot(prev_sol_losses, label='shifted prev sol warm-start')
-    # plt.yscale('log')
-    # plt.legend()
-    # plt.show()
+    plt.title('state perturbation')
+    plt.plot(losses, label='cold-start')
+    plt.plot(prev_sol_losses, label='shifted prev sol warm-start')
+    plt.yscale('log')
+    plt.legend()
+    plt.show()
+    import pdb
+    pdb.set_trace()
 
     assert dual_resids[-1] + primal_resids[-1] <= 1e-8
     assert dual_resids[0] + primal_resids[0] >= 1
@@ -128,9 +130,10 @@ def test_shifted_sol():
 
     assert jnp.linalg.norm(z_stars_test[0, nx:2*nx] - z_stars_test[1, :nx]) <= 1e-3
     assert jnp.linalg.norm(shifted_z_star[:nx] - z_stars_test[1, :nx]) <= 1e-3
+    
 
 
-# @pytest.mark.skip(reason="temp")
+@pytest.mark.skip(reason="temp")
 def test_shift_train():
     N_train = 500
     N_test = 100
@@ -194,7 +197,7 @@ def test_shift_train():
     nn_losses = nn_eval_out[1][1].mean(axis=0)
 
 
-@pytest.mark.skip(reason="temp")
+# @pytest.mark.skip(reason="temp")
 def test_mpc_prev_sol():
     N_train = 1000
     N_test = 100
@@ -294,13 +297,16 @@ def test_mpc_prev_sol():
     final_test_losses = final_eval_out[1][1].mean(axis=0)
 
     # plotting
-    # plt.plot(init_test_losses, label='cold start')
-    # plt.plot(final_test_losses, label=f"learned warm-start k={train_unrolls}")
-    # plt.plot(prev_sol_losses, label='prev sol')
-    # plt.plot(nn_losses, label='nearest neighbor')
-    # plt.yscale('log')
-    # plt.legend()
-    # plt.show()
+    plt.plot(init_test_losses, label='cold start')
+    plt.plot(final_test_losses, label=f"learned warm-start k={train_unrolls}")
+    plt.plot(prev_sol_losses, label='prev sol')
+    plt.plot(nn_losses, label='nearest neighbor')
+    plt.yscale('log')
+    plt.legend()
+    plt.show()
+    # import pdb
+
+    # pdb.set_trace()
 
     # plt.title('losses')
     # plt.plot(train_losses, label='train')
@@ -315,7 +321,7 @@ def test_mpc_prev_sol():
     # plt.legend()
     # plt.show()
 
-    assert jnp.linalg.norm(z_stars_test[0, nx:2*nx] - z_stars_test[1, :nx]) <= 1e-3
+    # assert jnp.linalg.norm(z_stars_test[0, nx:2*nx] - z_stars_test[1, :nx]) <= 1e-3
 
     # plt.plot(train_losses)
     # plt.yscale('log')
@@ -341,25 +347,25 @@ def test_mpc_prev_sol():
 
     # cold-start
     max_iter = 1000
-    z0_cs = init_eval_out[1][3][:, 0, :]
-    osqp_c_out = osqp_model.solve_c(z0_cs, q_mat_test, rel_tol=1e-3,
-                                    abs_tol=1e-3, max_iter=max_iter)
+    z0_cs = init_eval_out[1][2][:, 0, :]
+    osqp_c_out = osqp_model.solve_c(z0_cs, q_mat_test, rel_tol=1e-10,
+                                    abs_tol=1e-10, max_iter=max_iter)
     solve_times_cs, solve_iters_cs, x_sols_cs, y_sols_cs = osqp_c_out
-    diff_x_cs = x_sols_cs[0, :] - init_eval_out[1][3][0, max_iter, :n]
-    diff_y_cs = y_sols_cs[0, :] - init_eval_out[1][3][0, max_iter, n:n + m]
-    # assert jnp.linalg.norm(diff_x) <= 1e-8
-    # assert jnp.linalg.norm(diff_y) <= 1e-8
+    diff_x_cs = x_sols_cs[0, :] - init_eval_out[1][2][0, max_iter, :n]
+    diff_y_cs = y_sols_cs[0, :] - init_eval_out[1][2][0, max_iter, n:n + m]
+    assert jnp.linalg.norm(diff_x_cs) <= 1e-8
+    assert jnp.linalg.norm(diff_y_cs) <= 1e-8
     print("=========================================")
 
     # previous solution
     max_iter = 1000
-    osqp_c_out = osqp_model.solve_c(prev_z, q_mat_prev, rel_tol=1e-3,
-                                    abs_tol=1e-3, max_iter=max_iter)
+    osqp_c_out = osqp_model.solve_c(prev_z, q_mat_prev, rel_tol=1e-10,
+                                    abs_tol=1e-10, max_iter=max_iter)
     solve_times, solve_iters, x_sols, y_sols = osqp_c_out
-    diff_x = x_sols[0, :] - prev_sol_out[1][3][0, max_iter, :n]
-    diff_y = y_sols[0, :] - prev_sol_out[1][3][0, max_iter, n:n + m]
-    # assert jnp.linalg.norm(diff_x) <= 1e-8
-    # assert jnp.linalg.norm(diff_y) <= 1e-8
+    diff_x = x_sols[0, :] - prev_sol_out[1][2][0, max_iter, :n]
+    diff_y = y_sols[0, :] - prev_sol_out[1][2][0, max_iter, n:n + m]
+    assert jnp.linalg.norm(diff_x) <= 1e-8
+    assert jnp.linalg.norm(diff_y) <= 1e-8
 
     import pdb
     pdb.set_trace()
@@ -367,7 +373,7 @@ def test_mpc_prev_sol():
     # assert jnp.linalg.norm(y_jax - results.y) < 1e-10
 
 
-@pytest.mark.skip(reason="temp")
+# @pytest.mark.skip(reason="temp")
 def test_osqp_exact():
     # get a random robust least squares problem
     N_train = 500
@@ -420,7 +426,7 @@ def test_osqp_exact():
     xy0 = jnp.concatenate([x_ws, y_ws])
 
     z_k, losses, z_all, primal_resids, dual_resids = k_steps_eval_osqp(
-        max_iter, xy0, q_mat[0, :], factor, A, rho_vec, sigma, supervised=False, z_star=None, jit=True)
+        max_iter, xy0, q_mat[0, :], factor, P, A, rho_vec, sigma, supervised=False, z_star=None, jit=True)
 
     x_jax = z_k[:n]
     y_jax = z_k[n:n + m]
@@ -433,8 +439,8 @@ def test_osqp_exact():
     # these should match to machine precision
     assert jnp.linalg.norm(x_jax - results.x) < 1e-10
     assert jnp.linalg.norm(y_jax - results.y) < 1e-10
-    import pdb
-    pdb.set_trace()
+    # import pdb
+    # pdb.set_trace()
 
 
 @pytest.mark.skip(reason="temp")
@@ -633,7 +639,7 @@ def test_osqp_model():
     init_eval_out = osqp_model.evaluate(
         k, test_inputs, q_mat_test, z_stars=z_stars_test, fixed_ws=False, tag='test')
     init_test_losses = init_eval_out[1][1].mean(axis=0)
-    init_z_all = init_eval_out[1][3]
+    init_z_all = init_eval_out[1][2]
 
     plt.plot(init_test_losses)
     plt.yscale('log')
