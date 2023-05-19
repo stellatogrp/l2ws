@@ -472,7 +472,7 @@ class Workspace:
             acc_string = f"abs_{abs_tol}_rel_{rel_tol}"
 
             
-            solve_c_out = self.l2ws_model.solve_c(z0_mat, q_mat, rel_tol, abs_tol)
+            solve_c_out = self.l2ws_model.solve_c(z0_mat[:20,:], q_mat[:20,:], rel_tol, abs_tol)
             solve_times, solve_iters = solve_c_out[0], solve_c_out[1]
             mean_solve_times[i] = solve_times.mean()
             mean_solve_iters[i] = solve_iters.mean()
@@ -869,27 +869,10 @@ class Workspace:
 
                 # now set the indices (0, num_traj, 2 * num_traj) to zero
                 non_last_indices = jnp.mod(jnp.arange(num), self.traj_length) != self.traj_length - 1
-<<<<<<< HEAD
-                inputs = inputs[non_last_indices, :]
-                # first_indices = jnp.mod(jnp.arange(num), self.traj_length) == 0
-                # inputs = inputs.at[first_indices, :].set(0)
-                # import pdb
-                # pdb.set_trace()
-                
-                # full evaluation on the test set with prev solution
-                # non_first_indices = jnp.mod(jnp.arange(N_test), self.num_traj) != 0
-                # non_last_indices = jnp.mod(jnp.arange(N_test), self.num_traj) != self.num_traj - 1
-                # print(jnp.mod(jnp.arange(N_test), num_traj))
-                # print('non_first_indices', non_first_indices)
-                # print('non_last_indices', non_last_indices)
-                # q_mat_prev = q_mat_test[non_first_indices, :]
-                # prev_z = z_stars_test[non_last_indices, :]
-=======
                 # inputs = inputs[non_last_indices, :]
                 # inputs = self.shifted_sol_fn(inputs)
 
-                inputs = self.shifted_sol_fn(self.z_stars_test[non_last_indices, :])
->>>>>>> 5f86af72db02a0ac3142e2552dc5b9e980a3a1c3
+                inputs = self.shifted_sol_fn(self.z_stars_test[:num, :][non_last_indices, :])
         else:
             if train:
                 inputs = self.l2ws_model.train_inputs[:num, :]
