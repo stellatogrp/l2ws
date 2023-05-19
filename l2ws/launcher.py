@@ -481,7 +481,7 @@ class Workspace:
             acc_string = f"abs_{abs_tol}_rel_{rel_tol}"
 
             
-            solve_c_out = self.l2ws_model.solve_c(z0_mat, q_mat, rel_tol, abs_tol)
+            solve_c_out = self.l2ws_model.solve_c(z0_mat[:20,:], q_mat[:20,:], rel_tol, abs_tol)
             solve_times, solve_iters = solve_c_out[0], solve_c_out[1]
             mean_solve_times[i] = solve_times.mean()
             mean_solve_iters[i] = solve_iters.mean()
@@ -881,7 +881,7 @@ class Workspace:
                 # inputs = inputs[non_last_indices, :]
                 # inputs = self.shifted_sol_fn(inputs)
 
-                inputs = self.shifted_sol_fn(self.z_stars_test[non_last_indices, :])
+                inputs = self.shifted_sol_fn(self.z_stars_test[:num, :][non_last_indices, :])
         else:
             if train:
                 inputs = self.l2ws_model.train_inputs[:num, :]

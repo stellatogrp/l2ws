@@ -1,5 +1,5 @@
-nx: 10
-nu: 5
+nx: 20
+nu: 10
 T: 10
 traj_length: 10
 x_init_factor: .5
@@ -9,4 +9,8 @@ N_train: 1000
 N_test: 100
 seed: 42
 solve: True
+<<<<<<< HEAD
 noise_std_dev: 0.0
+=======
+noise_std_dev: 0.1
+>>>>>>> e0e5dae175583fad344e5ec78e2a05afacef884b
