@@ -1,9 +1,9 @@
-output_datetimes: ['2023-05-19/15-28-13', '2023-05-19/15-33-56']
+output_datetimes: ['2023-05-18/20-08-46', '2023-05-18/20-08-46', '2023-05-18/10-34-45', '2023-05-20/15-54-06', '2023-05-20/15-47-51']
 loss_overlay_titles: [] 
-nearest_neighbor_datetime: '2023-05-19/15-28-13'
-prev_sol_datetime: '2023-05-19/15-28-13'
+nearest_neighbor_datetime: '2023-05-18/20-08-46'
+prev_sol_datetime: '2023-05-18/20-08-46'
 pretrain_datetime: ''
-cold_start_datetime: '2023-05-19/15-28-13'
+cold_start_datetime: '2023-05-18/20-08-46'
 eval_iters: 500
 accuracies: [1e-1, 1e-2, 1e-3, 1e-4]
 rel_tols: [1e-1, 1e-2, 1e-3, 1e-4, 1e-5]

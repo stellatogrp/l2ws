@@ -18,8 +18,8 @@ echo "Executing on the machine:" $(hostname)
 
 # python gif_script.py robust_pca cluster
 # python utils/portfolio_utils.py
-# python plot_script.py lasso cluster
-python l2ws_setup_script.py mpc cluster
+python plot_script.py mpc cluster
+# python l2ws_setup_script.py mpc cluster
 #python scs_c_speed.py markowitz
 # python aggregate_slurm_runs_script.py robust_pca cluster
 

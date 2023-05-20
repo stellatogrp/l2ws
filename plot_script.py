@@ -20,12 +20,12 @@ plt.rcParams.update({
 })
 titles_2_colors = dict(cold_start='black', 
                        nearest_neighbor='magenta', 
-                       prev_sol='purple',
+                       prev_sol='cyan',
                        k5='blue',
                        k15='orange',
                        k30='green',
-                       k60='',
-                       k120='')
+                       k60='red',
+                       k120='gray')
 titles_2_styles = dict(cold_start='--', 
                        nearest_neighbor='--', 
                        prev_sol='--',
