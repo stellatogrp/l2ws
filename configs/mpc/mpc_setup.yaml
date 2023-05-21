@@ -1,5 +1,5 @@
-nx: 20
-nu: 10
+nx: 10
+nu: 5
 T: 10
 traj_length: 10
 x_init_factor: .5
