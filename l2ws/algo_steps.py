@@ -400,7 +400,7 @@ def k_steps_eval_gd(k, z0, q, A, gd_step, supervised, z_star, jit):
     return z_final, iter_losses, z_all_plus_1
 
 
-def k_steps_eval_scs(k, z0, q, factor, proj, P, A, c, b, jit, hsde, zero_cone_size,
+def k_steps_eval_scs(k, z0, q, factor, proj, P, A, supervised, z_star, jit, hsde, zero_cone_size,
                  rho_x=1, scale=1, alpha=1.0):
     """
     if k = 500 we store u_1, ..., u_500 and z_0, z_1, ..., z_500
@@ -434,6 +434,10 @@ def k_steps_eval_scs(k, z0, q, factor, proj, P, A, c, b, jit, hsde, zero_cone_si
         all_v = all_v.at[0, :].set(v)
         iter_losses = iter_losses.at[0].set(jnp.linalg.norm(z_next - z0))
         z0 = z_next
+    # c, b = q[:n], q[n:]
+    M = create_M(P, A)
+    rhs = (M + jnp.eye(m + n)) @ q
+    c, b = rhs[:n], rhs[n:]
 
     fp_eval_partial = partial(fp_eval, q_r=q, factor=factor,
                               proj=proj, P=P, A=A, c=c, b=b, hsde=hsde,
@@ -448,7 +452,8 @@ def k_steps_eval_scs(k, z0, q, factor, proj, P, A, c, b, jit, hsde, zero_cone_si
     z_final, z_penult, iter_losses, all_z, all_u, all_v, primal_residuals, dual_residuals = out
     all_z_plus_1 = all_z_plus_1.at[1:, :].set(all_z)
 
-    return z_final, iter_losses, primal_residuals, dual_residuals, all_z_plus_1, all_u, all_v
+    # return z_final, iter_losses, primal_residuals, dual_residuals, all_z_plus_1, all_u, all_v
+    return z_final, iter_losses, all_z_plus_1, primal_residuals, dual_residuals, all_u, all_v
 
 
 def get_scale_vec(rho_x, scale, m, n, zero_cone_size, hsde=True):

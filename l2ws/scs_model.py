@@ -21,6 +21,10 @@ class SCSmodel(L2WSmodel):
         self.proj, self.static_flag = input_dict['proj'], input_dict['static_flag']
         self.q_mat_train, self.q_mat_test = input_dict['q_mat_train'], input_dict['q_mat_test']
 
+        M = input_dict['static_M']
+        self.P = M[:self.n, :self.n]
+        self.A = M[self.n:, :self.n]
+
         # if self.static_flag:
         #     self.static_M = input_dict['static_M']
         #     self.static_algo_factor = input_dict['static_algo_factor']
@@ -32,6 +36,7 @@ class SCSmodel(L2WSmodel):
         #     self.matrix_invs_test = input_dict['matrix_invs_test']
 
         factor = input_dict['static_algo_factor']
+        self.factor = factor
 
         # hyperparameters of scs
         self.rho_x = input_dict['rho_x']
@@ -42,16 +47,22 @@ class SCSmodel(L2WSmodel):
         self.zero_cone_size = input_dict['zero_cone_size']
 
         self.output_size = self.n + self.m
-        self.out_axes_length = 6
+        self.out_axes_length = 8
 
         self.k_steps_train_fn = partial(k_steps_train_scs, factor=factor, proj=self.proj,
                                         rho_x=self.rho_x, scale=self.scale,
-                                        alpha=self.alpha_relax, jit=self.jit)
+                                        alpha=self.alpha_relax, jit=self.jit,
+                                        m=self.m,
+                                        n=self.n,
+                                        zero_cone_size=self.zero_cone_size,
+                                        hsde=True)
         self.k_steps_eval_fn = partial(k_steps_eval_scs, factor=factor, proj=self.proj,
                                        P=self.P, A=self.A,
                                        zero_cone_size=self.zero_cone_size,
                                        rho_x=self.rho_x, scale=self.scale,
-                                       alpha=self.alpha_relax, jit=self.jit)
+                                       alpha=self.alpha_relax, 
+                                       jit=self.jit,
+                                       hsde=True)
 
     def setup_optimal_solutions(self, dict):
         if dict.get('x_stars_train', None) is not None:

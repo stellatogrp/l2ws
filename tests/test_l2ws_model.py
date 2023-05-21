@@ -111,11 +111,15 @@ def test_minimal_l2ws_model():
 
     # evaluate the training set for a different number of iterations
     dynamic_factor, M_dynamic = None, None
-    loss, eval_out, time_per_prob = l2ws_model.evaluate(300, train_inputs, dynamic_factor,
-                                                        M_dynamic, q_mat_train,
+    # loss, eval_out, time_per_prob = l2ws_model.evaluate(300, train_inputs, dynamic_factor,
+    #                                                     M_dynamic, q_mat_train,
+    #                                                     z_stars=None, fixed_ws=False, tag='train')
+    loss, eval_out, time_per_prob = l2ws_model.evaluate(300, train_inputs, q_mat_train,
                                                         z_stars=None, fixed_ws=False, tag='train')
-    out, losses, iter_losses, angles, primal_residuals, dual_residuals = eval_out
-    z_all_plus_1, z_final, alpha, u_all, v_all = out
+    
+    # out, losses, iter_losses, angles, primal_residuals, dual_residuals = eval_out
+    losses, iter_losses, z_all_plus_1, angles, primal_residuals, dual_residuals, u_all, v_all = eval_out
+    # z_all_plus_1, z_final, alpha, u_all, v_all = out
 
     # warm-start SCS with z0 from all_z_plus_1
     # SCS setup
@@ -150,6 +154,9 @@ def test_minimal_l2ws_model():
     x_jax = u_final[:n] / u_all[0, max_iters - 1, -1]
     y_jax = u_final[n:n + m] / u_all[0, max_iters - 1, -1]
     s_jax = v_all[0, max_iters - 1, n:n+m] / u_all[0, max_iters - 1, -1]
+
+    import pdb
+    pdb.set_trace()
 
     assert jnp.linalg.norm(x_jax - x_c) < 1e-10
     assert jnp.linalg.norm(y_jax - y_c) < 1e-10

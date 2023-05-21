@@ -7,6 +7,7 @@ import pandas as pd
 from l2ws.l2ws_model import L2WSmodel
 from l2ws.ista_model import ISTAmodel
 from l2ws.osqp_model import OSQPmodel
+from l2ws.scs_model import SCSmodel
 import jax.numpy as jnp
 import jax.scipy as jsp
 from jax import lax
@@ -175,6 +176,7 @@ class Workspace:
                               jit=True)
             self.l2ws_model = OSQPmodel(input_dict)
         elif algo == 'scs':
+            get_M_q = None
             if get_M_q is None:
                 q_mat = jnp_load_obj['q_mat']
 
@@ -214,6 +216,8 @@ class Workspace:
             self.cones = static_dict['cones_dict']
 
             # alternate -- load it if available (but this is memory-intensive)
+            import pdb
+            pdb.set_trace()
             q_mat_train = jnp.array(q_mat[:N_train, :])
             q_mat_test = jnp.array(q_mat[N_train:N, :])
 
@@ -257,7 +261,7 @@ class Workspace:
                           'alpha_relax': alpha_relax,
                           'zero_cone_size': cones['z']
                           }
-            self.l2ws_model = L2WSmodel(input_dict)
+            self.l2ws_model = SCSmodel(input_dict)
 
         # if self.load_weights_datetime is not None:
         #     self.load_weights(example, self.load_weights_datetime)
@@ -393,7 +397,7 @@ class Workspace:
         # df_out = self.update_eval_csv(
         #     iter_losses_mean, train, col)
         primal_residuals, dual_residuals, obj_vals_diff = None, None, None
-        if len(out_train) == 6:
+        if len(out_train) == 6 or len(out_train) == 8:
             primal_residuals = out_train[4].mean(axis=0)
             dual_residuals = out_train[5].mean(axis=0)
         elif len(out_train) == 5:
@@ -430,23 +434,22 @@ class Workspace:
         # self.plot_alphas(alpha, train, col)
 
         # custom visualize
-        if self.has_custom_visualization:
-            if self.l2ws_model.hsde:
-                tau = u_all[:, :, -1:]
-                x_primals = u_all[:, :, :self.l2ws_model.n] / tau
-            else:
-                x_primals = u_all[:, :, :self.l2ws_model.n]
-            self.custom_visualize(x_primals, train, col)
+        # if self.has_custom_visualization:
+        #     if self.l2ws_model.hsde:
+        #         tau = u_all[:, :, -1:]
+        #         x_primals = u_all[:, :, :self.l2ws_model.n] / tau
+        #     else:
+        #         x_primals = u_all[:, :, :self.l2ws_model.n]
+        #     self.custom_visualize(x_primals, train, col)
 
         # solve with scs
         # z0_mat = z_all[:, 0, :]
         # self.solve_scs(z0_mat, train, col)
         # self.solve_scs(z_all, u_all, train, col)
         z0_mat = z_all[:, 0, :]
-        # import pdb
-        # pdb.set_trace()
-        if 'solve_c' in dir(self.l2ws_model):
-            self.solve_c_helper(z0_mat, train, col)
+
+        # if 'solve_c' in dir(self.l2ws_model):
+        #     self.solve_c_helper(z0_mat, train, col)
 
         if self.save_weights_flag:
             self.save_weights()

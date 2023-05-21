@@ -11,6 +11,7 @@ from l2ws.algo_steps import k_steps_eval_scs, k_steps_train_scs, create_projecti
     create_M, get_scale_vec, get_scaled_factor
 import jax.scipy as jsp
 import pytest
+from matplotlib import pyplot as plt
 
 
 def test_train_vs_eval():
@@ -194,6 +195,7 @@ def test_c_socp_robust_kalman_filter_relaxation():
     # make sure the residuals start high and end very low
     assert fp_res_hsde[0] > 10
     assert fp_res_hsde[-1] < .5 and fp_res_hsde[-1] > 1e-16
+    
 
 
 def test_c_vs_jax_sdp():
