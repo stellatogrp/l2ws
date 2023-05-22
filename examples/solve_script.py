@@ -6,6 +6,7 @@ import time
 import jax.numpy as jnp
 from l2ws.scs_problem import SCSinstance
 import pdb
+import cvxpy as cp
 
 
 plt.rcParams.update(
@@ -16,6 +17,129 @@ plt.rcParams.update(
     }
 )
 log = logging.getLogger(__name__)
+
+
+
+def osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=None):
+    # def solve_many_probs_cvxpy(A, b_mat, lambd):
+    """
+    solves many lasso problems where each problem has a different b vector
+    """
+    m, n = A.shape
+    N = q_mat.shape[0]
+    # z, b_param = cp.Variable(n), cp.Parameter(m)
+    # prob = cp.Problem(cp.Minimize(.5 * cp.sum_squares(np.array(A) @ z - b_param) + lambd * cp.norm(z, p=1)))
+    x, w = cp.Variable(n), cp.Variable(m)
+    c_param, l_param, u_param = cp.Parameter(n), cp.Parameter(m), cp.Parameter(m)
+    constraints = [A @ x == w, l_param <= w, w <= u_param]
+    prob = cp.Problem(cp.Minimize(.5 * cp.quad_form(x, P) + c_param @ x), constraints)
+
+    solve_times = np.zeros(N)
+    if z_stars is None:
+        z_stars = jnp.zeros((N, n + m))
+        objvals = jnp.zeros((N))
+        for i in range(N):
+            log.info(f"solving problem number {i}")
+            c_param.value = np.array(q_mat[i, :n])
+            l_param.value = np.array(q_mat[i, n:n + m])
+            u_param.value = np.array(q_mat[i, n + m:])
+            # prob.solve(verbose=True, solver=cp.OSQP, eps_abs=1e-03, eps_rel=1e-03)
+            prob.solve(verbose=True, solver=cp.OSQP, eps_abs=1e-03, eps_rel=1e-03)
+            objvals = objvals.at[i].set(prob.value)
+
+            x_star = jnp.array(x.value)
+            # w_star = jnp.array(w.value)
+            y_star = jnp.array(constraints[0].dual_value)
+            # z_star = jnp.concatenate([x_star, w_star, y_star])
+            z_star = jnp.concatenate([x_star, y_star])
+            z_stars = z_stars.at[i, :].set(z_star)
+            solve_times[i] = prob.solver_stats.solve_time
+
+    # save the data
+    log.info("final saving final data...")
+    t0 = time.time()
+    jnp.savez(
+        output_filename,
+        thetas=jnp.array(theta_mat),
+        z_stars=z_stars,
+        q_mat=q_mat
+    )
+
+    # save solve times
+    df_solve_times = pd.DataFrame(solve_times, columns=['solve_times'])
+    df_solve_times.to_csv('solve_times.csv')
+
+    save_time = time.time()
+    log.info(f"finished saving final data... took {save_time-t0}'")
+
+    # save plot of first 5 solutions
+    for i in range(5):
+        plt.plot(z_stars[i, :])
+    plt.savefig("z_stars.pdf")
+    plt.clf()
+
+    # save plot of first 5 q
+    for i in range(5):
+        plt.plot(q_mat[i, :])
+    plt.savefig("q.pdf")
+    plt.clf()
+
+
+    # save plot of first 5 parameters
+    for i in range(5):
+        plt.plot(theta_mat[i, :])
+    plt.savefig("thetas.pdf")
+    plt.clf()
+
+
+def ista_setup_script(b_mat, A, lambd, output_filename):
+    # def solve_many_probs_cvxpy(A, b_mat, lambd):
+    """
+    solves many lasso problems where each problem has a different b vector
+    """
+    m, n = A.shape
+    N = b_mat.shape[0]
+    z, b_param = cp.Variable(n), cp.Parameter(m)
+    prob = cp.Problem(cp.Minimize(.5 * cp.sum_squares(np.array(A) @ z - b_param) + lambd * cp.norm(z, p=1)))
+    z_stars = jnp.zeros((N, n))
+    objvals = jnp.zeros((N))
+    solve_times = np.zeros(N)
+    for i in range(N):
+        b_param.value = np.array(b_mat[i, :])
+        prob.solve(verbose=False)
+        objvals = objvals.at[i].set(prob.value)
+        z_stars = z_stars.at[i, :].set(jnp.array(z.value))
+        solve_times[i] = prob.solver_stats.solve_time
+
+    # save the data
+    log.info("final saving final data...")
+    t0 = time.time()
+    jnp.savez(
+        output_filename,
+        thetas=jnp.array(b_mat),
+        z_stars=z_stars,
+    )
+
+    # save solve times
+    df_solve_times = pd.DataFrame(solve_times, columns=['solve_times'])
+    df_solve_times.to_csv('solve_times.csv')
+
+    save_time = time.time()
+    log.info(f"finished saving final data... took {save_time-t0}'")
+
+    # save plot of first 5 solutions
+    for i in range(5):
+        plt.plot(z_stars[i, :])
+    plt.savefig("z_stars.pdf")
+    plt.clf()
+
+
+    # save plot of first 5 parameters
+    for i in range(5):
+        plt.plot(b_mat[i, :])
+    plt.savefig("thetas.pdf")
+    plt.clf()
+
 
 
 def setup_script(q_mat, theta_mat, solver, data, cones_dict, output_filename, solve=True):

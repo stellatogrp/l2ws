@@ -1,6 +1,20 @@
 from jax import random, jit, vmap
 import jax.numpy as jnp
 import functools
+import numpy as np
+from scipy.spatial import distance_matrix
+
+
+def get_nearest_neighbors(train_inputs, test_inputs, z_stars_train):
+    distances = distance_matrix(np.array(test_inputs), np.array(train_inputs))
+    indices = np.argmin(distances, axis=1)
+    best_val = np.min(distances, axis=1)
+
+    print('distances', distances)
+    print('indices', indices)
+    print('best val', best_val)
+
+    return z_stars_train[indices, :]
 
 
 def random_layer_params(m, n, key, scale=1e-2):

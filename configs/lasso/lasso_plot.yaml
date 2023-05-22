@@ -1,0 +1,7 @@
+output_datetimes: ['2023-05-18/11-59-35']
+loss_overlay_titles: [] 
+nearest_neighbor_datetime: '2023-05-18/11-59-35'
+pretrain_datetime: ''
+cold_start_datetime: '2023-05-18/11-59-35'
+eval_iters: 150
+accuracies: [1e-1, 1e-2, 1e-3, 1e-4]
