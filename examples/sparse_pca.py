@@ -51,9 +51,12 @@ def run(run_cfg):
     static_dict = static_canon(n_orig, k, rho_x=rho_x, scale=scale)
 
     # we directly save q now
-    get_q = None
+    # get_q = None
     static_flag = True
-    workspace = Workspace(run_cfg, static_flag, static_dict, example, get_q)
+    # workspace = Workspace(run_cfg, static_flag, static_dict, example, get_q)
+
+    algo = 'scs'
+    workspace = Workspace(algo, run_cfg, static_flag, static_dict, example)
 
     # run the workspace
     workspace.run()
