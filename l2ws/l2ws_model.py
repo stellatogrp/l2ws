@@ -69,12 +69,12 @@ class L2WSmodel(object):
             z0, alpha = self.predict_warm_start(params, input, bypass_nn, hsde=self.hsde)
 
             if self.out_axes_length == 8:
-                q = lin_sys_solve(self.factor, q)
+                q_r = lin_sys_solve(self.factor, q)
 
             if diff_required:
-                z_final, iter_losses = self.k_steps_train_fn(k=iters, z0=z0, q=q, supervised=supervised, z_star=z_star)
+                z_final, iter_losses = self.k_steps_train_fn(k=iters, z0=z0, q=q_r, supervised=supervised, z_star=z_star)
             else:
-                eval_out = self.k_steps_eval_fn(k=iters, z0=z0, q=q, supervised=supervised, z_star=z_star)
+                eval_out = self.k_steps_eval_fn(k=iters, z0=z0, q=q_r, supervised=supervised, z_star=z_star)
                 z_final, iter_losses, z_all_plus_1 = eval_out[0], eval_out[1], eval_out[2]
 
                 # compute angle(z^{k+1} - z^k, z^k - z^{k-1})
@@ -97,8 +97,6 @@ class L2WSmodel(object):
         batch_inputs = self.train_inputs[batch_indices, :]
         batch_q_data = self.q_mat_train[batch_indices, :]
         batch_z_stars = self.z_stars_train[batch_indices, :] if self.supervised else None
-        # import pdb
-        # pdb.set_trace()
         results = self.optimizer.update(params=params,
                                         state=state,
                                         inputs=batch_inputs,

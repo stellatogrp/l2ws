@@ -5,6 +5,8 @@ from l2ws.algo_steps import k_steps_eval_scs, k_steps_train_scs, lin_sys_solve
 from functools import partial
 from jax import vmap, jit
 import numpy as np
+import scs
+from scipy.sparse import csc_matrix
 
 
 class SCSmodel(L2WSmodel):
@@ -18,12 +20,13 @@ class SCSmodel(L2WSmodel):
         """
         self.hsde = input_dict.get('hsde', True)
         self.m, self.n = input_dict['m'], input_dict['n']
+        self.cones = input_dict['cones']
         self.proj, self.static_flag = input_dict['proj'], input_dict['static_flag']
         self.q_mat_train, self.q_mat_test = input_dict['q_mat_train'], input_dict['q_mat_test']
 
         M = input_dict['static_M']
         self.P = M[:self.n, :self.n]
-        self.A = M[self.n:, :self.n]
+        self.A = -M[self.n:, :self.n]
 
         # if self.static_flag:
         #     self.static_M = input_dict['static_M']
@@ -60,7 +63,7 @@ class SCSmodel(L2WSmodel):
                                        P=self.P, A=self.A,
                                        zero_cone_size=self.zero_cone_size,
                                        rho_x=self.rho_x, scale=self.scale,
-                                       alpha=self.alpha_relax, 
+                                       alpha=self.alpha_relax,
                                        jit=self.jit,
                                        hsde=True)
 
@@ -275,15 +278,30 @@ class SCSmodel(L2WSmodel):
         P, A = self.P, self.A
 
         # set the solver
-        # b_zeros, c_zeros = np.zeros(m), np.zeros(n)
+        b_zeros, c_zeros = np.zeros(m), np.zeros(n)
 
-        osqp_solver = osqp.OSQP()
+        # osqp_solver = osqp.OSQP()
         P_sparse, A_sparse = csc_matrix(np.array(P)), csc_matrix(np.array(A))
+        c_data = dict(P=P_sparse, A=A_sparse, c=c_zeros, b=b_zeros)
+        
+        solver = scs.SCS(c_data,
+                         self.cones,
+                         normalize=False,
+                         scale=self.scale,
+                         adaptive_scale=False,
+                         rho_x=self.rho_x,
+                         alpha=self.alpha_relax,
+                         acceleration_lookback=0,
+                         max_iters=max_iter,
+                         eps_abs=abs_tol,
+                         eps_rel=rel_tol)
+
+        
 
         # q = q_mat[0, :]
-        c, l, u = np.zeros(n), np.zeros(m), np.zeros(m)
-        osqp_solver.setup(P=P_sparse, q=c, A=A_sparse, l=l, u=u, alpha=1, rho=1, sigma=1, polish=False,
-                          adaptive_rho=False, scaling=0, max_iter=max_iter, verbose=True, eps_abs=abs_tol, eps_rel=rel_tol)
+        # c, l, u = np.zeros(n), np.zeros(m), np.zeros(m)
+        # osqp_solver.setup(P=P_sparse, q=c, A=A_sparse, l=l, u=u, alpha=1, rho=1, sigma=1, polish=False,
+        #                   adaptive_rho=False, scaling=0, max_iter=max_iter, verbose=True, eps_abs=abs_tol, eps_rel=rel_tol)
 
         num = z0_mat.shape[0]
         solve_times = np.zeros(num)
@@ -292,27 +310,119 @@ class SCSmodel(L2WSmodel):
         y_sols = jnp.zeros((num, m))
         for i in range(num):
             # set c, l, u
-            c, l, u = q_mat[i, :n], q_mat[i, n:n + m], q_mat[i, n + m:]
-            osqp_solver.update(q=np.array(c))
-            osqp_solver.update(l=np.array(l), u=np.array(u))
+            # c, l, u = q_mat[i, :n], q_mat[i, n:n + m], q_mat[i, n + m:]
+            # osqp_solver.update(q=np.array(c))
+            # osqp_solver.update(l=np.array(l), u=np.array(u))
+            b, c = q_mat[i, n:], q_mat[i, :n]
+            solver.update(b=np.array(b))
+            solver.update(c=np.array(c))
 
             # set the warm start
-            # x, y, s = self.get_xys_from_z(z0_mat[i, :])
-            x_ws, y_ws = np.array(z0_mat[i, :n]), np.array(z0_mat[i, n:n + m])
+            x, y, s = self.get_xys_from_z(z0_mat[i, :], m, n)
+            x_ws, y_ws = np.array(x), np.array(y)
+            s_ws = np.array(s)
 
             # fix warm start
-            osqp_solver.warm_start(x=x_ws, y=y_ws)
+            # osqp_solver.warm_start(x=x_ws, y=y_ws)
+            sol = solver.solve(warm_start=True, x=x_ws, y=y_ws, s=s_ws)
 
             # solve
-            results = osqp_solver.solve()
+            # results = osqp_solver.solve()
             # sol = solver.solve(warm_start=True, x=np.array(x), y=np.array(y), s=np.array(s))
 
             # set the solve time in seconds
-            solve_times[i] = results.info.solve_time
-            solve_iters[i] = results.info.iter
+            # solve_times[i] = results.info.solve_time
+            # solve_iters[i] = results.info.iter
+            solve_times[i] = sol['info']['solve_time'] #/ 1000
+            solve_iters[i] = sol['info']['iter']
 
             # set the results
-            x_sols = x_sols.at[i, :].set(results.x)
-            y_sols = y_sols.at[i, :].set(results.y)
+            x_sols = x_sols.at[i, :].set(sol['x'])
+            y_sols = y_sols.at[i, :].set(sol['y'])
 
         return solve_times, solve_iters, x_sols, y_sols
+    
+    def get_xys_from_z(self, z_init, m, n):
+        """
+        z = (x, y + s, 1)
+        we always set the last entry of z to be 1
+        we allow s to be zero (we just need z[n:m + n] = y + s)
+        """
+        # m, n = self.l2ws_model.m, self.l2ws_model.n
+        x = z_init[:n]
+        y = z_init[n:n + m]
+        s = jnp.zeros(m)
+        return x, y, s
+
+
+# def solve_scs(self, z0_mat, train, col):
+#     # create the path
+#     if train:
+#         scs_path = 'scs_train'
+#     else:
+#         scs_path = 'scs_test'
+#     if not os.path.exists(scs_path):
+#         os.mkdir(scs_path)
+#     if not os.path.exists(f"{scs_path}/{col}"):
+#         os.mkdir(f"{scs_path}/{col}")
+
+#     # assume M doesn't change across problems
+#     # extract P, A
+#     m, n = self.l2ws_model.m, self.l2ws_model.n
+#     P = csc_matrix(self.l2ws_model.static_M[:n, :n])
+#     A = csc_matrix(-self.l2ws_model.static_M[n:, :n])
+
+#     # set the solver
+#     b_zeros, c_zeros = np.zeros(m), np.zeros(n)
+#     scs_data = dict(P=P, A=A, b=b_zeros, c=c_zeros)
+#     cones_dict = self.cones
+
+#     solver = scs.SCS(scs_data,
+#                      cones_dict,
+#                      normalize=False,
+#                      scale=1,
+#                      adaptive_scale=False,
+#                      rho_x=1,
+#                      alpha=1,
+#                      acceleration_lookback=0,
+#                      eps_abs=1e-2,
+#                      eps_rel=1e-2)
+
+#     num = 20
+#     solve_times = np.zeros(num)
+#     solve_iters = np.zeros(num)
+
+#     if train:
+#         q_mat = self.l2ws_model.q_mat_train
+#     else:
+#         q_mat = self.l2ws_model.q_mat_test
+
+#     for i in range(num):
+#         # get the current q
+#         # q = q_mat[i, :]
+
+#         # set b, c
+#         b, c = q_mat[i, n:], q_mat[i, :n]
+#         # scs_data = dict(P=P, A=A, b=b, c=c)
+#         solver.update(b=np.array(b))
+#         solver.update(c=np.array(c))
+
+#         # set the warm start
+#         x, y, s = self.get_xys_from_z(z0_mat[i, :])
+
+#         # solve
+#         sol = solver.solve(warm_start=True, x=np.array(x), y=np.array(y), s=np.array(s))
+
+#         # set the solve time in seconds
+#         solve_times[i] = sol['info']['solve_time'] / 1000
+#         solve_iters[i] = sol['info']['iter']
+#     mean_time = solve_times.mean()
+#     mean_iters = solve_iters.mean()
+
+#     # write the solve times to the csv file
+#     scs_df = pd.DataFrame()
+#     scs_df['solve_times'] = solve_times
+#     scs_df['solve_iters'] = solve_iters
+#     scs_df['mean_time'] = mean_time
+#     scs_df['mean_iters'] = mean_iters
+#     scs_df.to_csv(f"{scs_path}/{col}/scs_solve_times.csv")

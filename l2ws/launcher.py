@@ -49,9 +49,6 @@ class Workspace:
         self.load_weights_datetime = cfg.get('load_weights_datetime', None)
         self.shifted_sol_fn = shifted_sol_fn
 
-        self.rel_tols = cfg.get('rel_tols', [])
-        self.abs_tols = cfg.get('abs_tols', [])
-
         self.plot_iterates = cfg.plot_iterates
         # share_all = cfg.get('share_all', False)
         self.normalize_inputs = cfg.get('normalize_inputs', True)
@@ -65,6 +62,13 @@ class Workspace:
         # from the run cfg retrieve the following via the data cfg
         N_train, N_test = cfg.N_train, cfg.N_test
         N = N_train + N_test
+
+        # solve C
+        self.solve_c_num = cfg.get('solve_c_num', 0)
+        self.rel_tols = cfg.get('rel_tols', [1e-1, 1e-2, 1e-3, 1e-4, 1e-5])
+        self.abs_tols = cfg.get('abs_tols', [1e-1, 1e-2, 1e-3, 1e-4, 1e-5])
+        if self.solve_c_num == 'all':
+            self.solve_c_num = N_test
 
         # load the data from problem to problem
         jnp_load_obj = self.load_setup_data(example, cfg.data.datetime)
@@ -216,8 +220,6 @@ class Workspace:
             self.cones = static_dict['cones_dict']
 
             # alternate -- load it if available (but this is memory-intensive)
-            import pdb
-            pdb.set_trace()
             q_mat_train = jnp.array(q_mat[:N_train, :])
             q_mat_test = jnp.array(q_mat[N_train:N, :])
 
@@ -259,7 +261,8 @@ class Workspace:
                           'rho_x': rho_x,
                           'scale': scale,
                           'alpha_relax': alpha_relax,
-                          'zero_cone_size': cones['z']
+                          'zero_cone_size': cones['z'],
+                          'cones': cones
                           }
             self.l2ws_model = SCSmodel(input_dict)
 
@@ -448,8 +451,9 @@ class Workspace:
         # self.solve_scs(z_all, u_all, train, col)
         z0_mat = z_all[:, 0, :]
 
-        # if 'solve_c' in dir(self.l2ws_model):
-        #     self.solve_c_helper(z0_mat, train, col)
+        if self.solve_c_num > 0:
+            if 'solve_c' in dir(self.l2ws_model):
+                self.solve_c_helper(z0_mat, train, col)
 
         if self.save_weights_flag:
             self.save_weights()
@@ -473,8 +477,6 @@ class Workspace:
         if col == 'prev_sol':
             non_first_indices = jnp.mod(jnp.arange(q_mat.shape[0]), self.traj_length) != 0
             q_mat = q_mat[non_first_indices, :]
-            # import pdb
-            # pdb.set_trace()
 
         mean_solve_times = np.zeros(num_tols)
         mean_solve_iters = np.zeros(num_tols)
@@ -484,7 +486,7 @@ class Workspace:
             acc_string = f"abs_{abs_tol}_rel_{rel_tol}"
 
             
-            solve_c_out = self.l2ws_model.solve_c(z0_mat[:20,:], q_mat[:20,:], rel_tol, abs_tol)
+            solve_c_out = self.l2ws_model.solve_c(z0_mat[:self.solve_c_num,:], q_mat[:self.solve_c_num,:], rel_tol, abs_tol)
             solve_times, solve_iters = solve_c_out[0], solve_c_out[1]
             mean_solve_times[i] = solve_times.mean()
             mean_solve_iters[i] = solve_iters.mean()
@@ -864,8 +866,7 @@ class Workspace:
         inputs = self.get_inputs_for_eval(fixed_ws, num, train, col)
         # eval_out = self.l2ws_model.evaluate(self.eval_unrolls, inputs, factors,
         #                                     M_tensor, q_mat, z_stars, fixed_ws, tag=tag)
-        # import pdb
-        # pdb.set_trace()
+
         eval_out = self.l2ws_model.evaluate(
             self.eval_unrolls, inputs, q_mat, z_stars, fixed_ws, tag=tag)
         return eval_out

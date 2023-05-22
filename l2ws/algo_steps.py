@@ -206,7 +206,7 @@ def fp_eval_fista(i, val, supervised, z_star, A, b, lambd, ista_step):
 
 
 def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, scale_vec, alpha,
-            lightweight=True, verbose=False):
+            lightweight=False, verbose=False):
     """
     q_r = r if hsde else q_r = q
     homogeneous tells us if we set tau = 1.0 or use the root_plus method
@@ -227,8 +227,9 @@ def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, scale_vec,
 
     # primal and dual residuals
     if not lightweight:
-        pr = jnp.linalg.norm(A @ u[:n] + v[n:] - b)
-        dr = jnp.linalg.norm(A.T @ u[n:] + P @ u[:n] + c)
+        x, y, s = extract_sol(u, v, n, hsde)
+        pr = jnp.linalg.norm(A @ x + s - b)
+        dr = jnp.linalg.norm(A.T @ y + P @ x + c)
         primal_residuals = primal_residuals.at[i].set(pr)
         dual_residuals = dual_residuals.at[i].set(dr)
     all_z = all_z.at[i, :].set(z_next)
