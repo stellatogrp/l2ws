@@ -493,6 +493,12 @@ def get_scaled_factor(M, scale_vec):
     """
     scale_vec_diag = jnp.diag(scale_vec)
     factor = jsp.linalg.lu_factor(M + scale_vec_diag)
+
+    # this is to replace the lu factor and use cg
+    # M_plus_scale = M + scale_vec_diag
+    # def lhs_mat(x):
+    #     return M_plus_scale @ x
+    # factor = jit(lhs_mat)
     return factor
 
 
@@ -754,6 +760,7 @@ def lin_sys_solve(factor, b):
     where factor is the lu factorization of A
     """
     return jsp.linalg.lu_solve(factor, b)
+    # return jsp.sparse.linalg.cg(factor, b)
 
 
 def proj(input, n, zero_cone_int, nonneg_cone_int, soc_proj_sizes, soc_num_proj, sdp_row_sizes,
