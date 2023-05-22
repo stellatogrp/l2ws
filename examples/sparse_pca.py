@@ -51,9 +51,12 @@ def run(run_cfg):
     static_dict = static_canon(n_orig, k, rho_x=rho_x, scale=scale)
 
     # we directly save q now
-    get_q = None
+    # get_q = None
     static_flag = True
-    workspace = Workspace(run_cfg, static_flag, static_dict, example, get_q)
+    # workspace = Workspace(run_cfg, static_flag, static_dict, example, get_q)
+
+    algo = 'scs'
+    workspace = Workspace(algo, run_cfg, static_flag, static_dict, example)
 
     # run the workspace
     workspace.run()
@@ -74,6 +77,8 @@ def multiple_random_sparse_pca(n_orig, k, r, N, factor=True, seed=42):
     # get theta_mat
     m, n = A.shape
     q_mat = get_q_mat(A_tensor, prob, A_param, m, n)
+    # import pdb
+    # pdb.set_trace()
 
     return P, A, cones, q_mat, theta_mat_jax, A_tensor
 

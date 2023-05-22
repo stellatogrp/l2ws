@@ -80,7 +80,8 @@ def run(run_cfg):
     #   means that the matrices don't change across problems
 
     static_flag = True
-    workspace = Workspace(run_cfg, static_flag, static_dict, example, get_q)
+    algo = 'scs'
+    workspace = Workspace(algo, run_cfg, static_flag, static_dict, example)
 
     # run the workspace
     workspace.run()

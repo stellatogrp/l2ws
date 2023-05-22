@@ -6,8 +6,10 @@ import scs
 import numpy as np
 from scipy.sparse import csc_matrix
 from l2ws.l2ws_model import L2WSmodel
+from l2ws.scs_model import SCSmodel
 from l2ws.algo_steps import create_projection_fn, create_M, get_scaled_vec_and_factor
 import jax.scipy as jsp
+import matplotlib.pyplot as plt
 
 
 def multiple_random_robust_ls_setup(m_orig, n_orig, rho, b_center, b_range, N_train, N_test, rho_x,
@@ -66,7 +68,8 @@ def test_minimal_l2ws_model():
     zero_cone_size = cones['z']
 
     # enter into the L2WSmodel
-    input_dict = dict(m=m, n=n, hsde=True, static_flag=True, proj=static_prob_data['proj'],
+    input_dict = dict(algorithm='scs',
+                      m=m, n=n, hsde=True, static_flag=True, proj=static_prob_data['proj'],
                       train_unrolls=20, jit=True,
                       q_mat_train=q_mat_train, q_mat_test=q_mat_test,
                       train_inputs=train_inputs, test_inputs=test_inputs,
@@ -74,7 +77,8 @@ def test_minimal_l2ws_model():
                       static_algo_factor=static_prob_data['static_algo_factor'],
                       rho_x=rho_x, scale=scale, alpha_relax=alpha_relax,
                       zero_cone_size=zero_cone_size)
-    l2ws_model = L2WSmodel(input_dict)
+    # l2ws_model = L2WSmodel(input_dict)
+    l2ws_model = SCSmodel(input_dict)
 
     # evaluate test before training
     init_test_loss, init_time_per_iter = l2ws_model.short_test_eval()
@@ -94,6 +98,8 @@ def test_minimal_l2ws_model():
     # final loss should be at least 60% better than the first loss
     assert losses[-1] / losses[0] < 0.6
 
+    l2ws_model.params, l2ws_model.state = params, state
+
     # evaluate test after training
     final_test_loss, final_time_per_iter = l2ws_model.short_test_eval()
 
@@ -105,11 +111,15 @@ def test_minimal_l2ws_model():
 
     # evaluate the training set for a different number of iterations
     dynamic_factor, M_dynamic = None, None
-    loss, eval_out, time_per_prob = l2ws_model.evaluate(300, train_inputs, dynamic_factor,
-                                                        M_dynamic, q_mat_train,
+    # loss, eval_out, time_per_prob = l2ws_model.evaluate(300, train_inputs, dynamic_factor,
+    #                                                     M_dynamic, q_mat_train,
+    #                                                     z_stars=None, fixed_ws=False, tag='train')
+    loss, eval_out, time_per_prob = l2ws_model.evaluate(300, train_inputs, q_mat_train,
                                                         z_stars=None, fixed_ws=False, tag='train')
-    out, losses, iter_losses, angles, primal_residuals, dual_residuals = eval_out
-    z_all_plus_1, z_final, alpha, u_all, v_all = out
+    
+    # out, losses, iter_losses, angles, primal_residuals, dual_residuals = eval_out
+    losses, iter_losses, z_all_plus_1, angles, primal_residuals, dual_residuals, u_all, v_all = eval_out
+    # z_all_plus_1, z_final, alpha, u_all, v_all = out
 
     # warm-start SCS with z0 from all_z_plus_1
     # SCS setup
@@ -144,6 +154,9 @@ def test_minimal_l2ws_model():
     x_jax = u_final[:n] / u_all[0, max_iters - 1, -1]
     y_jax = u_final[n:n + m] / u_all[0, max_iters - 1, -1]
     s_jax = v_all[0, max_iters - 1, n:n+m] / u_all[0, max_iters - 1, -1]
+
+    import pdb
+    pdb.set_trace()
 
     assert jnp.linalg.norm(x_jax - x_c) < 1e-10
     assert jnp.linalg.norm(y_jax - y_c) < 1e-10

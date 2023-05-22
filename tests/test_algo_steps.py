@@ -7,10 +7,11 @@ from l2ws.scs_problem import scs_jax
 import scs
 import numpy as np
 from scipy.sparse import csc_matrix
-from l2ws.algo_steps import k_steps_eval, k_steps_train, create_projection_fn, lin_sys_solve, \
+from l2ws.algo_steps import k_steps_eval_scs, k_steps_train_scs, create_projection_fn, lin_sys_solve, \
     create_M, get_scale_vec, get_scaled_factor
 import jax.scipy as jsp
 import pytest
+from matplotlib import pyplot as plt
 
 
 def test_train_vs_eval():
@@ -34,12 +35,12 @@ def test_train_vs_eval():
     q = jnp.concatenate([c, b])
     q_r = lin_sys_solve(factor, q)
 
-    train_out = k_steps_train(k, z0, q_r, factor, supervised=False,
+    train_out = k_steps_train_scs(k, z0, q_r, factor, supervised=False,
                               z_star=None, proj=proj, jit=False, hsde=True,
                               m=m, n=n, zero_cone_size=zero_cone_size, rho_x=rho_x, scale=scale)
     z_final_train, iter_losses_train = train_out
 
-    eval_out = k_steps_eval(k, z0, q_r, factor, proj, P, A, c, b, jit=True,
+    eval_out = k_steps_eval_scs(k, z0, q_r, factor, proj, P, A, c, b, jit=True,
                             hsde=True, zero_cone_size=zero_cone_size, rho_x=rho_x, scale=scale)
     z_final_eval, iter_losses_eval = eval_out[:2]
     assert jnp.linalg.norm(iter_losses_train - iter_losses_eval) <= 1e-10
@@ -194,6 +195,7 @@ def test_c_socp_robust_kalman_filter_relaxation():
     # make sure the residuals start high and end very low
     assert fp_res_hsde[0] > 10
     assert fp_res_hsde[-1] < .5 and fp_res_hsde[-1] > 1e-16
+    
 
 
 def test_c_vs_jax_sdp():
