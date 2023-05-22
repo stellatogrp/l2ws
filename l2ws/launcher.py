@@ -428,6 +428,9 @@ class Workspace:
 
         # plot the warm-start predictions
         z_all = out_train[2]
+        
+        if isinstance(self.l2ws_model, SCSmodel):
+            u_all = out_train[6]
         # u_all = out_train[0][3]
         # z_all = out_train[0][0]
         # self.plot_warm_starts(u_all, z_all, train, col)
@@ -437,13 +440,15 @@ class Workspace:
         # self.plot_alphas(alpha, train, col)
 
         # custom visualize
-        # if self.has_custom_visualization:
-        #     if self.l2ws_model.hsde:
-        #         tau = u_all[:, :, -1:]
-        #         x_primals = u_all[:, :, :self.l2ws_model.n] / tau
-        #     else:
-        #         x_primals = u_all[:, :, :self.l2ws_model.n]
-        #     self.custom_visualize(x_primals, train, col)
+        if self.has_custom_visualization:
+            # if self.l2ws_model.hsde:
+            #     tau = u_all[:, :, -1:]
+            #     x_primals = u_all[:, :, :self.l2ws_model.n] / tau
+            # else:
+            #     x_primals = u_all[:, :, :self.l2ws_model.n]
+
+            x_primals = u_all[:, :, :self.l2ws_model.n] / u_all[:, :, -1:]
+            self.custom_visualize(x_primals, train, col)
 
         # solve with scs
         # z0_mat = z_all[:, 0, :]
@@ -629,22 +634,34 @@ class Workspace:
         if train:
             x_stars = self.l2ws_model.x_stars_train
             thetas = self.thetas_train
+            # import pdb
+            # pdb.set_trace()
+            if 'x_nn_train' in dir(self):
+                x_nn = self.x_nn_train
         else:
             x_stars = self.l2ws_model.x_stars_test
             thetas = self.thetas_test
+            if 'x_nn_test' in dir(self):
+                x_nn = self.x_nn_test
 
         if col == 'no_train':
             if train:
                 self.x_no_learn_train = x_primals[:5, :, :]
             else:
                 self.x_no_learn_test = x_primals[:5, :, :]
+        elif col == 'nearest_neighbor':
+            if train:
+                self.x_nn_train = x_primals[:5, :, :]
+            else:
+                self.x_nn_test = x_primals[:5, :, :]
         if train:
             x_no_learn = self.x_no_learn_train[:5, :, :]
         else:
             x_no_learn = self.x_no_learn_test[:5, :, :]
 
-        self.custom_visualize_fn(x_primals, x_stars, x_no_learn,
-                                 thetas, self.iterates_visualize, visual_path)
+        if col != 'nearest_neighbor' and col != 'no_train':
+            self.custom_visualize_fn(x_primals, x_stars, x_no_learn, x_nn,
+                                    thetas, self.iterates_visualize, visual_path)
 
         # save x_primals to csv (TODO)
         # x_primals_df = pd.DataFrame(x_primals[:5, :])

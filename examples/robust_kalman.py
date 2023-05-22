@@ -312,7 +312,7 @@ def lighten_color(color, amount=0.5):
     return colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
 
 
-def plot_positions_overlay(traj, labels, num_dots=2, grayscales=[.8, .3, 1.0, 0.7], axis=None, filename=None):
+def plot_positions_overlay(traj, labels, num_dots=2, grayscales=[.8, .3, 1.0, 1.0, 0.7], axis=None, filename=None, legend=False):
     '''
     show point clouds for true, observed, and recovered positions
 
@@ -321,7 +321,7 @@ def plot_positions_overlay(traj, labels, num_dots=2, grayscales=[.8, .3, 1.0, 0.
     '''
     n = len(traj)
 
-    colors = ['green', 'red', 'blue', 'orange']
+    colors = ['green', 'red', 'blue', 'gray', 'orange']
 
     # for i in range(n - 2):
     #     shade = (i + 1) / (n - 2)
@@ -334,10 +334,11 @@ def plot_positions_overlay(traj, labels, num_dots=2, grayscales=[.8, .3, 1.0, 0.
         else:
             plt.plot(x[0, :], x[1, :], color=colors[i], alpha=alpha, label=labels[i])
 
-    plt.legend()
+    # save with legend
+    if legend:
+        plt.legend()
     plt.xlabel('x position')
     plt.ylabel('y position')
-
     if filename:
         plt.savefig(filename, bbox_inches='tight')
     else:
@@ -792,7 +793,7 @@ def setup_probs(setup_cfg):
                                filename=f"positions_plots/positions_{i}_rotated.pdf")
 
 
-def custom_visualize_fn(x_primals, x_stars, x_no_learn, thetas, iterates, visual_path, T):
+def custom_visualize_fn(x_primals, x_stars, x_no_learn, x_nn, thetas, iterates, visual_path, T):
     """
     assume len(iterates) == 1 for now
         point is to compare no-learning vs learned for 20 iterations
@@ -809,12 +810,16 @@ def custom_visualize_fn(x_primals, x_stars, x_no_learn, thetas, iterates, visual
             iter = iterates[j]
             x_no_learn_kalman = get_x_kalman_from_x_primal(x_no_learn[i, iter, :], T)
             x_hat_kalman = get_x_kalman_from_x_primal(x_primals[i, iter, :], T)
+            x_nn_kalman = get_x_kalman_from_x_primal(x_nn[i, iter, :], T)
             traj.append(x_no_learn_kalman)
+            traj.append(x_nn_kalman)
             traj.append(x_hat_kalman)
             titles.append(f"no learning: ${iter}$ iters")
+            titles.append(f"nearest neighbor: ${iter}$ iters")
             titles.append(f"learned: ${iter}$ iters")
 
-        plot_positions_overlay(traj, titles, filename=f"{visual_path}/positions_{i}_rotated.pdf")
+        plot_positions_overlay(traj, titles, filename=f"{visual_path}/positions_{i}_rotated_legend.pdf", legend=True)
+        plot_positions_overlay(traj, titles, filename=f"{visual_path}/positions_{i}_rotated.pdf", legend=False)
 
 
 def get_x_kalman_from_x_primal(x_primal, T):

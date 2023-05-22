@@ -17,6 +17,7 @@ import logging
 # from l2ws.algo_steps import k_steps_train, k_steps_eval, lin_sys_solve, k_steps_train_ista, k_steps_eval_ista
 from functools import partial
 from l2ws.algo_steps import lin_sys_solve
+# from l2ws.scs_model import SCSmodel
 config.update("jax_enable_x64", True)
 
 
@@ -66,15 +67,19 @@ class L2WSmodel(object):
         loss_method = self.loss_method
 
         def predict(params, input, q, iters, z_star):
-            z0, alpha = self.predict_warm_start(params, input, bypass_nn, hsde=self.hsde)
+            if self.out_axes_length == 8:
+                hsde = self.hsde
+            else:
+                hsde = False
+            z0, alpha = self.predict_warm_start(params, input, bypass_nn, hsde=hsde)
 
             if self.out_axes_length == 8:
-                q_r = lin_sys_solve(self.factor, q)
+                q = lin_sys_solve(self.factor, q)
 
             if diff_required:
-                z_final, iter_losses = self.k_steps_train_fn(k=iters, z0=z0, q=q_r, supervised=supervised, z_star=z_star)
+                z_final, iter_losses = self.k_steps_train_fn(k=iters, z0=z0, q=q, supervised=supervised, z_star=z_star)
             else:
-                eval_out = self.k_steps_eval_fn(k=iters, z0=z0, q=q_r, supervised=supervised, z_star=z_star)
+                eval_out = self.k_steps_eval_fn(k=iters, z0=z0, q=q, supervised=supervised, z_star=z_star)
                 z_final, iter_losses, z_all_plus_1 = eval_out[0], eval_out[1], eval_out[2]
 
                 # compute angle(z^{k+1} - z^k, z^k - z^{k-1})
