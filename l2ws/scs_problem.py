@@ -103,7 +103,8 @@ def scs_jax(data, hsde=True, rho_x=1e-6, scale=.1, alpha=1.5, iters=5000, jit=Tr
     supervised, z_star = False, None
     eval_out = k_steps_eval_scs(iters, z, q_r, algo_factor, proj, P, A, supervised, z_star,
                             jit, hsde, zero_cone_size, rho_x=rho_x, scale=scale, alpha=alpha)
-    z_final, iter_losses, primal_residuals, dual_residuals, z_all_plus_1, u_all, v_all = eval_out
+    # z_final, iter_losses, primal_residuals, dual_residuals, z_all_plus_1, u_all, v_all = eval_out
+    z_final, iter_losses, z_all_plus_1, primal_residuals, dual_residuals, u_all, v_all = eval_out
 
     u_final, v_final = u_all[-1, :], v_all[-1, :]
 
@@ -119,6 +120,8 @@ def scs_jax(data, hsde=True, rho_x=1e-6, scale=.1, alpha=1.5, iters=5000, jit=Tr
     # populate the sol dictionary
     sol = {}
     sol['fixed_point_residuals'] = iter_losses
+    sol['primal_residuals'] = primal_residuals
+    sol['dual_residuals'] = dual_residuals
     sol['x'], sol['y'], sol['s'] = x, y, s
     return sol
 
