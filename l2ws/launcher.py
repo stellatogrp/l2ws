@@ -340,12 +340,13 @@ class Workspace:
             sample_plot(z_stars, 'z_stars', num_plot)
 
     def init_custom_visualization(self, cfg, custom_visualize_fn):
-        if custom_visualize_fn is None:
+        iterates_visualize = cfg.get('iterates_visualize', 0)
+        if custom_visualize_fn is None or iterates_visualize == 0:
             self.has_custom_visualization = False
         else:
             self.has_custom_visualization = True
             self.custom_visualize_fn = custom_visualize_fn
-            self.iterates_visualize = cfg.get('iterates_visualize')
+            self.iterates_visualize = iterates_visualize
 
     def _init_logging(self):
         self.logf = open('log.csv', 'a')
