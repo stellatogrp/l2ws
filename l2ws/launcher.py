@@ -58,6 +58,7 @@ class Workspace:
 
         # custom visualization
         self.init_custom_visualization(cfg, custom_visualize_fn)
+        self.vis_num = 10
 
         # from the run cfg retrieve the following via the data cfg
         N_train, N_test = cfg.N_train, cfg.N_test
@@ -646,18 +647,18 @@ class Workspace:
 
         if col == 'no_train':
             if train:
-                self.x_no_learn_train = x_primals[:5, :, :]
+                self.x_no_learn_train = x_primals[:self.vis_num, :, :]
             else:
-                self.x_no_learn_test = x_primals[:5, :, :]
+                self.x_no_learn_test = x_primals[:self.vis_num, :, :]
         elif col == 'nearest_neighbor':
             if train:
-                self.x_nn_train = x_primals[:5, :, :]
+                self.x_nn_train = x_primals[:self.vis_num, :, :]
             else:
-                self.x_nn_test = x_primals[:5, :, :]
+                self.x_nn_test = x_primals[:self.vis_num, :, :]
         if train:
-            x_no_learn = self.x_no_learn_train[:5, :, :]
+            x_no_learn = self.x_no_learn_train[:self.vis_num, :, :]
         else:
-            x_no_learn = self.x_no_learn_test[:5, :, :]
+            x_no_learn = self.x_no_learn_test[:self.vis_num, :, :]
 
         if col != 'nearest_neighbor' and col != 'no_train':
             self.custom_visualize_fn(x_primals, x_stars, x_no_learn, x_nn,
