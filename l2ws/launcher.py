@@ -58,7 +58,7 @@ class Workspace:
 
         # custom visualization
         self.init_custom_visualization(cfg, custom_visualize_fn)
-        self.vis_num = 10
+        self.vis_num = 20
 
         # from the run cfg retrieve the following via the data cfg
         N_train, N_test = cfg.N_train, cfg.N_test

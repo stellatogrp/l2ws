@@ -799,9 +799,9 @@ def custom_visualize_fn(x_primals, x_stars, x_no_learn, x_nn, thetas, iterates, 
         point is to compare no-learning vs learned for 20 iterations
     """
     assert len(iterates) == 1
-    num = 5
+    num = x_no_learn.shape[0]
     y_mat_rotated = jnp.reshape(thetas[:num, :], (num, T, 2))
-    for i in range(5):
+    for i in range(num):
         titles = ['optimal solution', 'noisy trajectory']
         x_true_kalman = get_x_kalman_from_x_primal(x_stars[i, :], T)
         traj = [x_true_kalman, y_mat_rotated[i, :].T]
