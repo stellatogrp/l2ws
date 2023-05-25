@@ -42,7 +42,10 @@ class Workspace:
         self.eval_unrolls = cfg.eval_unrolls
         self.eval_every_x_epochs = cfg.eval_every_x_epochs
         self.save_every_x_epochs = cfg.save_every_x_epochs
+
         self.num_samples = cfg.num_samples
+        self.eval_batch_size = cfg.get('eval_batch_size', self.num_samples)
+
         self.pretrain_cfg = cfg.pretrain
         self.key_count = 0
         self.save_weights_flag = cfg.get('save_weights_flag', False)
@@ -380,7 +383,7 @@ class Workspace:
         fixed_ws = col == 'nearest_neighbor' or col == 'prev_sol'
 
         # do the actual evaluation (most important step in thie method)
-        eval_out = self.evaluate_only(fixed_ws, num, train, col)
+        eval_out = self.evaluate_only(fixed_ws, num, train, col, self.eval_batch_size)
 
         # extract information from the evaluation
         loss_train, out_train, train_time = eval_out
@@ -863,7 +866,7 @@ class Workspace:
             })
             self.logf.flush()
 
-    def evaluate_only(self, fixed_ws, num, train, col):
+    def evaluate_only(self, fixed_ws, num, train, col, batch_size):
         tag = 'train' if train else 'test'
         if self.l2ws_model.z_stars_train is None:
             z_stars = None
@@ -890,9 +893,49 @@ class Workspace:
         # eval_out = self.l2ws_model.evaluate(self.eval_unrolls, inputs, factors,
         #                                     M_tensor, q_mat, z_stars, fixed_ws, tag=tag)
 
-        eval_out = self.l2ws_model.evaluate(
-            self.eval_unrolls, inputs, q_mat, z_stars, fixed_ws, tag=tag)
-        return eval_out
+
+        # do the batching
+        num_batches = int(num / batch_size)
+        full_eval_out = []
+        if num_batches == 1:
+            eval_out = self.l2ws_model.evaluate(
+                self.eval_unrolls, inputs, q_mat, z_stars, fixed_ws, tag=tag)
+            return eval_out
+
+        for i in range(num_batches):
+            start = i * batch_size
+            end = (i + 1) * batch_size
+            curr_inputs = inputs[start: end]
+            curr_q_mat = q_mat[start: end]
+            if z_stars is not None:
+                curr_z_stars = z_stars[start: end]
+            else:
+                curr_z_stars = None
+            eval_out = self.l2ws_model.evaluate(
+                self.eval_unrolls, curr_inputs, curr_q_mat, curr_z_stars, fixed_ws, tag=tag)
+            full_eval_out.append(eval_out)
+        loss = np.array([curr_out[0] for curr_out in full_eval_out]).mean()
+        time_per_prob = np.array([curr_out[2] for curr_out in full_eval_out]).mean()
+        out = self.stack_tuples([curr_out[1] for curr_out in full_eval_out])
+
+        flattened_eval_out = (loss, out, time_per_prob)
+        return flattened_eval_out
+    
+    def stack_tuples(self, tuples_list):
+        result = []
+        num_tuples = len(tuples_list)
+        tuple_length = len(tuples_list[0])
+        
+        for i in range(tuple_length):
+            stacked_entry = []
+            for j in range(num_tuples):
+                stacked_entry.append(tuples_list[j][i])
+            # result.append(tuple(stacked_entry))
+            if tuples_list[j][i].ndim > 1:
+                result.append(jnp.vstack(stacked_entry))
+            elif tuples_list[j][i].ndim == 1:
+                result.append(jnp.hstack(stacked_entry))
+        return result
 
     def get_inputs_for_eval(self, fixed_ws, num, train, col):
         if fixed_ws:
