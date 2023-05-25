@@ -450,7 +450,10 @@ class Workspace:
             #     x_primals = u_all[:, :, :self.l2ws_model.n]
 
             x_primals = u_all[:, :, :self.l2ws_model.n] / u_all[:, :, -1:]
-            self.custom_visualize(x_primals, train, col)
+            try:
+                self.custom_visualize(x_primals, train, col)
+            except:
+                print('Exception occurred during custom visualization')
 
         # solve with scs
         # z0_mat = z_all[:, 0, :]
@@ -702,9 +705,10 @@ class Workspace:
         self.test_eval_write()
 
         # do all of the training
-        self.train()
+        test_zero = True if self.skip_startup else False
+        self.train(test_zero=test_zero)
 
-    def train(self):
+    def train(self, test_zero=False):
         """
         does all of the training
         jits together self.epochs_jit number of epochs together
@@ -718,7 +722,7 @@ class Workspace:
 
         for epoch_batch in range(num_epochs_jit):
             epoch = int(epoch_batch * self.epochs_jit)
-            if epoch % self.eval_every_x_epochs == 0 and epoch > 0:
+            if test_zero or epoch % self.eval_every_x_epochs == 0 and epoch > 0:
                 self.eval_iters_train_and_test(f"train_epoch_{epoch}", self.pretrain_on)
             # if epoch > self.l2ws_model.dont_decay_until:
             #     self.l2ws_model.decay_upon_plateau()

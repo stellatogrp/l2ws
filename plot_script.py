@@ -11,6 +11,7 @@ import hydra
 import numpy as np
 import pandas as pd
 import math
+import matplotlib.colors as mcolors
 from l2ws.utils.data_utils import recover_last_datetime
 plt.rcParams.update({
     "text.usetex": True,
@@ -21,6 +22,7 @@ plt.rcParams.update({
 titles_2_colors = dict(cold_start='black', 
                        nearest_neighbor='magenta', 
                        prev_sol='cyan',
+                       k0=mcolors.TABLEAU_COLORS['tab:brown'],
                        k5='blue',
                        k15='orange',
                        k30='green',
@@ -29,6 +31,7 @@ titles_2_colors = dict(cold_start='black',
 titles_2_styles = dict(cold_start='--', 
                        nearest_neighbor='--', 
                        prev_sol='--',
+                       k0='-',
                        k5='-',
                        k15='-',
                        k30='-',
@@ -63,8 +66,9 @@ def robust_pca_plot_eval_iters(cfg):
 @hydra.main(config_path='configs/robust_kalman', config_name='robust_kalman_plot.yaml')
 def robust_kalman_plot_eval_iters(cfg):
     example = 'robust_kalman'
-    plot_eval_iters(example, cfg, train=False)
-    overlay_training_losses(example, cfg)
+    # plot_eval_iters(example, cfg, train=False)
+    # overlay_training_losses(example, cfg)
+    create_journal_results(example, cfg, train=False)
 
 
 @hydra.main(config_path='configs/robust_ls', config_name='robust_ls_plot.yaml')
@@ -174,7 +178,7 @@ def create_timing_table(timing_data, titles, rel_tols, abs_tols):
     df['abs_tols'] = abs_tols
 
     for i in range(len(titles)):
-        df[titles[i]] = np.round(timing_data[i] * 1000, decimals=2)
+        df[titles[i]] = np.round(timing_data[i], decimals=2)
 
     # for i in range(len(titles)):
     #     df_acc = update_acc(df_acc, accs, titles[i], metrics_fp[i])
@@ -211,7 +215,7 @@ def create_journal_results(example, cfg, train=False):
     metrics, timing_data, titles = get_all_data(example, cfg, train=train)
 
     # step 2
-    plot_all_metrics(metrics, titles)
+    plot_all_metrics(metrics, titles, cfg.eval_iters)
 
     # step 3
     metrics_fp = metrics[0]
@@ -279,7 +283,12 @@ def get_all_data(example, cfg, train=False):
         metrics_list.append(metric)
         timing_data.append(timings)
 
-    titles = benchmarks + [f"k{int(k)}" for k in k_vals]
+    k_vals_new = []
+    for i in range(k_vals.size):
+        k = k_vals[i]
+        new_k = k if k >= 2 else 0
+        k_vals_new.append(new_k)
+    titles = benchmarks + [f"k{int(k)}" for k in k_vals_new]
 
     # titles = cfg.loss_overlay_titles
     # for i in range(len(datetimes)):
@@ -423,7 +432,7 @@ def create_fixed_point_residual_table(metrics_fp, titles, accs):
     df_acc_both.to_csv('accuracies_reduction_both.csv')
 
 
-def plot_all_metrics(metrics, titles):
+def plot_all_metrics(metrics, titles, eval_iters):
     """
     metrics is a list of lists
 
@@ -455,13 +464,18 @@ def plot_all_metrics(metrics, titles):
         axes[i].set_xlabel('evaluation iterations')
         axes[i].set_title(plt_titles[i])
 
+    if len(metrics) == 3:
+        start = 1
+    else:
+        start = 0
+
     for i in range(num_metrics):
         curr_metric = metrics[i]
         for j in range(len(curr_metric)):
             title = titles[j]
             color = titles_2_colors[title]
             style = titles_2_styles[title]
-            axes[i].plot(np.array(curr_metric[j]), linestyle=style, color=color)
+            axes[i].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, color=color)
 
     # pdb.set_trace()
 

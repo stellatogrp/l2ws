@@ -3,7 +3,7 @@ k: 10
 r: 10
 solve_acc_abs: 1e-4
 solve_acc_rel: 0
-N_train: 100
-N_test: 20
+N_train: 10000
+N_test: 1000
 seed: 42
 solve: True
