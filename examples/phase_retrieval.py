@@ -116,7 +116,7 @@ def generate_A_tensor(n_orig, d_mul):
             ai = np.multiply(Wl, curr_psi.conjugate(), dtype='complex_')
             Ai = ai.T @ ai.conjugate()
             A_out[(j-1) * n_orig + l, :, :] = Ai 
-    return A_out
+    return A_out / 100
 
 
 def cvxpy_prob(n_orig, d_mul, seed=42):
@@ -162,6 +162,8 @@ def generate_theta_mat_b_vals(N, A_tensor, x_mean, x_var, n_orig, d_mul):
         Xi = np.outer(xi, xi.conjugate())
         # col_idx, row_idx = np.triu_indices(n_orig)
         # theta_mat[i, :] = Xi[(col_idx, row_idx)]
+        # import pdb
+        # pdb.set_trace()
         for j in range(d):
             # the trace will be real for hermitian matrices, but we use np.real to remove small complex floats
             b_matrix[i, j] = np.real(np.trace(A_tensor[j] @ Xi))
