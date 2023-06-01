@@ -931,10 +931,12 @@ class Workspace:
             for j in range(num_tuples):
                 stacked_entry.append(tuples_list[j][i])
             # result.append(tuple(stacked_entry))
-            if tuples_list[j][i].ndim > 1:
+            if tuples_list[j][i].ndim == 2:
                 result.append(jnp.vstack(stacked_entry))
             elif tuples_list[j][i].ndim == 1:
                 result.append(jnp.hstack(stacked_entry))
+            elif tuples_list[j][i].ndim == 3 and i  == 0:
+                result.append(jnp.vstack(stacked_entry))
         return result
 
     def get_inputs_for_eval(self, fixed_ws, num, train, col):

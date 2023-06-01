@@ -74,8 +74,9 @@ def robust_kalman_plot_eval_iters(cfg):
 @hydra.main(config_path='configs/robust_ls', config_name='robust_ls_plot.yaml')
 def robust_ls_plot_eval_iters(cfg):
     example = 'robust_ls'
-    overlay_training_losses(example, cfg)
-    plot_eval_iters(example, cfg, train=False)
+    # overlay_training_losses(example, cfg)
+    # plot_eval_iters(example, cfg, train=False)
+    create_journal_results(example, cfg, train=False)
 
 
 @hydra.main(config_path='configs/lasso', config_name='lasso_plot.yaml')

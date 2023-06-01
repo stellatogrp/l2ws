@@ -1,4 +1,4 @@
-n_orig: 30
+n_orig: 40
 d_mul: 5  # number of constraints will equal d_mul * n_orig
 x_var: 1  # variance in the Gaussians for X
 x_mean: 5
@@ -6,7 +6,7 @@ x_mean: 5
 
 solve_acc_abs: 1e-4
 solve_acc_rel: 0
-N_train: 100
-N_test: 20
+N_train: 10000
+N_test: 1000
 seed: 42
 solve: True
