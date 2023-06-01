@@ -24,9 +24,10 @@ titles_2_colors = dict(cold_start='black',
                        prev_sol='cyan',
                        k0=mcolors.TABLEAU_COLORS['tab:brown'],
                        k5='blue',
-                       k15='orange',
+                       k15='red',
+                    #    k15='#FF7F0E',
                        k30='green',
-                       k60='red',
+                       k60='orange',
                        k120='gray')
 titles_2_styles = dict(cold_start='--', 
                        nearest_neighbor='--', 
@@ -67,14 +68,14 @@ def robust_pca_plot_eval_iters(cfg):
 def robust_kalman_plot_eval_iters(cfg):
     example = 'robust_kalman'
     # plot_eval_iters(example, cfg, train=False)
-    # overlay_training_losses(example, cfg)
+    overlay_training_losses(example, cfg)
     create_journal_results(example, cfg, train=False)
 
 
 @hydra.main(config_path='configs/robust_ls', config_name='robust_ls_plot.yaml')
 def robust_ls_plot_eval_iters(cfg):
     example = 'robust_ls'
-    # overlay_training_losses(example, cfg)
+    overlay_training_losses(example, cfg)
     # plot_eval_iters(example, cfg, train=False)
     create_journal_results(example, cfg, train=False)
 
@@ -451,16 +452,20 @@ def plot_all_metrics(metrics, titles, eval_iters):
         we will manually create the legend in latex later
     """
     num_metrics = len(metrics)
-    fig_width = 6 if num_metrics == 3 else 9
+    # fig_width = 6 if num_metrics == 3 else 9
+    fig_width = 9
         
-    fig, axes = plt.subplots(nrows=1, ncols=num_metrics, figsize=(18, fig_width), sharey=True)
+    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(18, fig_width), sharey=True)
 
-    scs_osqp_titles = ['fixed point residuals', 'primal residuals', 'dual residuals']
-    obj_titles = ['fixed point residuals', 'objective suboptimality']
-    plt_titles = scs_osqp_titles if len(metrics) == 3 else obj_titles
+    # scs_osqp_titles = ['fixed point residuals', 'primal residuals', 'dual residuals']
+    # obj_titles = ['fixed point residuals', 'objective suboptimality']
+    # plt_titles = scs_osqp_titles if len(metrics) == 3 else obj_titles
+
+    plt_titles = ['fixed point residuals', 'gain to cold-start']
 
 
-    for i in range(num_metrics):
+    # for i in range(num_metrics):
+    for i in range(2):
         axes[i].set_yscale('log')
         axes[i].set_xlabel('evaluation iterations')
         axes[i].set_title(plt_titles[i])
@@ -470,15 +475,32 @@ def plot_all_metrics(metrics, titles, eval_iters):
     else:
         start = 0
 
-    for i in range(num_metrics):
+    # for i in range(num_metrics):
+    # plot the fixed point residual
+    for i in range(1):
         curr_metric = metrics[i]
         for j in range(len(curr_metric)):
+        # for j in range(1):
             title = titles[j]
             color = titles_2_colors[title]
             style = titles_2_styles[title]
             axes[i].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, color=color)
 
-    # pdb.set_trace()
+    # plot the gain
+    for i in range(1):
+        curr_metric = metrics[i]
+        for j in range(len(curr_metric)):
+        # for j in range(1):
+            title = titles[j]
+            # title = 'gain to cold-start'
+            color = titles_2_colors[title]
+            style = titles_2_styles[title]
+
+            if j > 0:
+                gain = cs / np.array(curr_metric[j])[start:eval_iters + start]
+                axes[i + 1].plot(gain, linestyle=style, color=color)
+            else:
+                cs = np.array(curr_metric[j])[start:eval_iters + start]
 
     plt.savefig('all_metric_plots.pdf', bbox_inches='tight')
     fig.tight_layout()
@@ -573,7 +595,9 @@ def overlay_training_losses(example, cfg):
     relative_loss_df = pd.DataFrame()
     relative_loss_df['rows'] = ['relative_train_loss', 'relative_test_loss', 'relative_gap']
     k_values = []
-    rel_gen_gaps = []
+    # rel_gen_gaps = []
+    gain_gaps = []
+    gain_ratios = []
     rel_tr_losses = []
     rel_te_losses = []
     for i in range(len(datetimes)):
@@ -584,25 +608,43 @@ def overlay_training_losses(example, cfg):
         print(f"te_losses", te_losses)
         print(f"orig_loss: {orig_loss}")
         
-        rel_train_loss = tr_losses[-1:].mean() / orig_loss
-        rel_test_loss = te_losses.iloc[-1] / orig_loss
-        rel_gap = rel_test_loss - rel_train_loss 
+        train_gain = orig_loss / tr_losses[-1:].mean()
+        test_gain = orig_loss / te_losses.iloc[-1]
+        gain_gap = train_gain - test_gain
+        gain_ratio = test_gain / train_gain
+        # rel_train_loss = tr_losses[-1:].mean() / orig_loss
+        # rel_test_loss = te_losses.iloc[-1] / orig_loss
+        # rel_gap = rel_test_loss - rel_train_loss 
         k = get_k(orig_cwd, example, datetimes[i])
         k_values.append(k)
         col = f"k = {k}"
-        row = np.array([rel_train_loss, rel_test_loss, rel_gap])
-        rel_gen_gaps.append(rel_gap)
-        rel_tr_losses.append(rel_train_loss)
-        rel_te_losses.append(rel_test_loss)
+
+        # row = np.array([rel_train_loss, rel_test_loss, rel_gap])
+        # rel_gen_gaps.append(rel_gap)
+        # rel_tr_losses.append(rel_train_loss)
+        # rel_te_losses.append(rel_test_loss)
+
+        row = np.array([train_gain, test_gain, gain_gap])
+        gain_gaps.append(gain_gap)
+        gain_ratios.append(gain_ratio)
+        rel_tr_losses.append(train_gain)
+        rel_te_losses.append(test_gain)
         print(f"row: {row}")
         relative_loss_df[col] = np.round(row, decimals=3)
     relative_loss_df.to_csv('relative_losses.csv')
 
     # now give a plot for the generalization
-    plt.plot(np.array(k_values), np.array(rel_gen_gaps))
+    # plt.plot(np.array(k_values), np.array(rel_gen_gaps))
+    plt.plot(np.array(k_values), np.array(gain_gaps))
     plt.xlabel('k')
-    plt.ylabel('relative generalization gap')
-    plt.savefig('relative_generalization_gaps.pdf')
+    plt.ylabel('gain gap')
+    plt.savefig('gain_gaps.pdf')
+    plt.clf()
+
+    plt.plot(np.array(k_values), np.array(gain_ratios))
+    plt.xlabel('k')
+    plt.ylabel('gain ratio')
+    plt.savefig('gain_ratios.pdf')
     plt.clf()
 
     # plot the relative train and test final losses
