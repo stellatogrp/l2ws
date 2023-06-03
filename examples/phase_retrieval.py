@@ -46,11 +46,13 @@ def run(run_cfg):
     n_orig = setup_cfg['n_orig']
     d_mul = setup_cfg['d_mul']
     # k = setup_cfg['k']
-    static_dict = static_canon(n_orig, d_mul)
+    
 
     # non-identity DR scaling
     rho_x = run_cfg.get('rho_x', 1)
     scale = run_cfg.get('scale', 1)
+
+    static_dict = static_canon(n_orig, d_mul, rho_x=rho_x, scale=scale)
 
     # we directly save q now
     get_q = None
@@ -217,6 +219,9 @@ def static_canon(n_orig, d_mul, rho_x=1, scale=1, factor=True, seed=42):
         # algo_factor = jsp.linalg.lu_factor(M + jnp.eye(n + m))
     else:
         algo_factor = None
+
+    # import pdb
+    # pdb.set_trace()
 
     # set the dict
     cones = {'z': cones_cp.zero, 'l': cones_cp.nonneg, 'q': cones_cp.soc, 's': cones_cp.psd}

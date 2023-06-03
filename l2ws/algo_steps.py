@@ -25,7 +25,8 @@ def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous, s
     if supervised:
         diff = jnp.linalg.norm(z - z_star)
     else:
-        diff = jnp.linalg.norm(z_next - z)
+
+        diff = jnp.linalg.norm(z_next / z_next[-1] - z / z[-1])
     loss_vec = loss_vec.at[i].set(diff)
     return z_next, loss_vec
 
@@ -222,7 +223,7 @@ def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, scale_vec,
         q = q_r
         z_next, u, u_tilde, v = fixed_point(z, q, factor, proj, scale_vec, alpha, verbose=verbose)
 
-    diff = jnp.linalg.norm(z_next - z)
+    diff = jnp.linalg.norm(z_next / z_next[-1] - z / z[-1])
     loss_vec = loss_vec.at[i].set(diff)
 
     # primal and dual residuals

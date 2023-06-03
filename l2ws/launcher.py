@@ -439,6 +439,10 @@ class Workspace:
         # u_all = out_train[0][3]
         # z_all = out_train[0][0]
         # self.plot_warm_starts(u_all, z_all, train, col)
+        z_plot = z_all[:, :, :-1] / z_all[:, :, -1:]
+        # import pdb
+        # pdb.set_trace()
+        self.plot_warm_starts(None, z_plot, train, col)
 
         # plot the alpha coefficients
         # alpha = out_train[0][2]
@@ -1425,51 +1429,51 @@ class Workspace:
             os.mkdir(ws_path)
         if not os.path.exists(f"{ws_path}/{col}"):
             os.mkdir(f"{ws_path}/{col}")
-        m, n = self.l2ws_model.m, self.l2ws_model.n
+        # m, n = self.l2ws_model.m, self.l2ws_model.n
         for i in range(5):
-            if self.l2ws_model.hsde:
-                x_hats, y_hats = u_all[i, :, :n], u_all[i, :, n:]
-            else:
-                x_hats, y_hats = u_all[i, :, :n], u_all[i, :, n:]
+            # if self.l2ws_model.hsde:
+            #     x_hats, y_hats = u_all[i, :, :n], u_all[i, :, n:]
+            # else:
+            #     x_hats, y_hats = u_all[i, :, :n], u_all[i, :, n:]
 
-            # plot for x
-            for j in self.plot_iterates:
-                plt.plot(u_all[i, j, :n], label=f"prediction_{j}")
-            if train:
-                plt.plot(self.x_stars_train[i, :], label='optimal')
-            else:
-                plt.plot(self.x_stars_test[i, :], label='optimal')
-            plt.legend()
-            plt.savefig(f"{ws_path}/{col}/prob_{i}_x_ws.pdf")
-            plt.clf()
+            # # plot for x
+            # for j in self.plot_iterates:
+            #     plt.plot(u_all[i, j, :n], label=f"prediction_{j}")
+            # if train:
+            #     plt.plot(self.x_stars_train[i, :], label='optimal')
+            # else:
+            #     plt.plot(self.x_stars_test[i, :], label='optimal')
+            # plt.legend()
+            # plt.savefig(f"{ws_path}/{col}/prob_{i}_x_ws.pdf")
+            # plt.clf()
 
-            for j in self.plot_iterates:
-                plt.plot(u_all[i, j, :n] -
-                         self.x_stars_train[i, :], label=f"prediction_{j}")
-            plt.legend()
-            plt.title('diffs to optimal')
-            plt.savefig(f"{ws_path}/{col}/prob_{i}_diffs_x.pdf")
-            plt.clf()
+            # for j in self.plot_iterates:
+            #     plt.plot(u_all[i, j, :n] -
+            #              self.x_stars_train[i, :], label=f"prediction_{j}")
+            # plt.legend()
+            # plt.title('diffs to optimal')
+            # plt.savefig(f"{ws_path}/{col}/prob_{i}_diffs_x.pdf")
+            # plt.clf()
 
-            # plot for y
+            # # plot for y
 
-            for j in self.plot_iterates:
-                plt.plot(u_all[i, j, n:n + m], label=f"prediction_{j}")
-            if train:
-                plt.plot(self.y_stars_train[i, :], label='optimal')
-            else:
-                plt.plot(self.y_stars_test[i, :], label='optimal')
-            plt.legend()
-            plt.savefig(f"{ws_path}/{col}/prob_{i}_y_ws.pdf")
-            plt.clf()
+            # for j in self.plot_iterates:
+            #     plt.plot(u_all[i, j, n:n + m], label=f"prediction_{j}")
+            # if train:
+            #     plt.plot(self.y_stars_train[i, :], label='optimal')
+            # else:
+            #     plt.plot(self.y_stars_test[i, :], label='optimal')
+            # plt.legend()
+            # plt.savefig(f"{ws_path}/{col}/prob_{i}_y_ws.pdf")
+            # plt.clf()
 
-            for j in self.plot_iterates:
-                plt.plot(u_all[i, j, n:m + n] -
-                         self.y_stars_train[i, :], label=f"prediction_{j}")
-            plt.legend()
-            plt.title('diffs to optimal')
-            plt.savefig(f"{ws_path}/{col}/prob_{i}_diffs_y.pdf")
-            plt.clf()
+            # for j in self.plot_iterates:
+            #     plt.plot(u_all[i, j, n:m + n] -
+            #              self.y_stars_train[i, :], label=f"prediction_{j}")
+            # plt.legend()
+            # plt.title('diffs to optimal')
+            # plt.savefig(f"{ws_path}/{col}/prob_{i}_diffs_y.pdf")
+            # plt.clf()
 
             # plot for z
             for j in self.plot_iterates:
