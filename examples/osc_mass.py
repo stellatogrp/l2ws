@@ -35,22 +35,22 @@ def single_q(theta, m, n, T, nx, nu, state_box, control_box, A_dynamics):
     return q
 
 
-def get_q_mat_control_box_only(thetas, m, n, T, nx, nu,
-                               state_box, control_box,
-                               QB, vecc_gen):
-    N, nx = thetas.shape
-    q_mat = control_box*jnp.ones((N, n + m))
-    for i in range(N):
-        c = QB @ thetas[i, :]
-        b = control_box*jnp.ones(m)
-        if state_box != 'inf':
-            start = 2*T*nu
-            rhs = vecc_gen @ thetas[i, :]
-            b = b.at[start:start + T*nx].set(state_box - rhs)
-            b = b.at[start + T*nx:start + 2 *
-                     T*nx].set(state_box + rhs)
-        q_mat = q_mat.at[i, :n].set(c)
-    return q_mat
+# def get_q_mat_control_box_only(thetas, m, n, T, nx, nu,
+#                                state_box, control_box,
+#                                QB, vecc_gen):
+#     N, nx = thetas.shape
+#     q_mat = control_box*jnp.ones((N, n + m))
+#     for i in range(N):
+#         c = QB @ thetas[i, :]
+#         b = control_box*jnp.ones(m)
+#         if state_box != 'inf':
+#             start = 2*T*nu
+#             rhs = vecc_gen @ thetas[i, :]
+#             b = b.at[start:start + T*nx].set(state_box - rhs)
+#             b = b.at[start + T*nx:start + 2 *
+#                      T*nx].set(state_box + rhs)
+#         q_mat = q_mat.at[i, :n].set(c)
+#     return q_mat
 
 
 def run(run_cfg):
@@ -235,20 +235,6 @@ def setup_probs(setup_cfg):
             q_mat = q_mat.at[i, :].set(scs_instance.q)
             solve_times[i] = scs_instance.solve_time
 
-            # check with our jax implementation
-            # P_jax = jnp.array(P_sparse.todense())
-            # A_jax = jnp.array(A_sparse.todense())
-            # c_jax, b_jax = jnp.array(c), jnp.array(b)
-            # data = dict(P=P_jax, A=A_jax, b=b_jax, c=c_jax, cones=cones_dict)
-            # # data['x'] = x_stars[i, :]
-            # # data['y'] = y_stars[i, :]
-            # x_jax, y_jax, s_jax = scs_jax(data, iters=100)
-
-            # M, E, D = ruiz_equilibrate(M)
-            # pdb.set_trace()
-
-            ############
-
     # resave the data??
     # print('saving final data...', flush=True)
     log.info('saving final data...')
@@ -271,6 +257,90 @@ def setup_probs(setup_cfg):
     for i in range(5):
         plt.plot(x_init_mat[i, :])
     plt.savefig('thetas.pdf')
+
+
+def static_canon_osqp(T, nx, nu, state_box, control_box, Q_val, QT_val, R_val, Ad=None, Bd=None):
+    if np.isscalar(Q_val):
+        Q = Q_val * np.eye(nx)
+    else:
+        Q = Q_val
+    if np.isscalar(Q_val):
+        QT = QT_val * np.eye(nx)
+    else:
+        QT = QT_val
+    if np.isscalar(R_val):
+        R = R_val * np.eye(nu)
+    else:
+        R = R_val
+    q = np.zeros(nx)  # np.random.normal(size=(nx))#
+    qT = np.zeros(nx)
+
+    if Ad is None and Bd is None:
+        Ad = .1 * np.random.normal(size=(nx, nx))
+        Bd = .1 * np.random.normal(size=(nx, nu))
+
+    # Quadratic objective
+    P = sparse.block_diag(
+        [sparse.kron(sparse.eye(T-1), Q), QT, sparse.kron(sparse.eye(T), R)],
+        format="csc",
+    )
+
+    # Linear objective
+    c = np.hstack([np.kron(np.ones(T-1), q), qT, np.zeros(T * nu)])
+
+    # Linear dynamics
+    Ax = sparse.kron(sparse.eye(T + 1), -sparse.eye(nx)) + sparse.kron(
+        sparse.eye(T + 1, k=-1), Ad
+    )
+    Ax = Ax[nx:, nx:]
+    Bu = sparse.kron(
+        sparse.eye(T), Bd
+    )
+    Aeq = sparse.hstack([Ax, Bu])
+
+    A_ineq = sparse.vstack(
+        [sparse.eye(T * nx + T * nu)]
+    )
+
+    
+
+    A = sparse.vstack(
+        [
+            Aeq,
+            A_ineq
+        ]
+    )
+
+    # get b
+    if np.isscalar(state_box):
+        state_box_vec = state_box*np.ones(T * nx)
+    else:
+        # state_box_vec = np.repeat(state_box, T)
+        state_box_vec = np.tile(state_box, T)
+    if np.isscalar(control_box):
+        control_box_vec = control_box*np.ones(T * nu)
+    else:
+        # control_box_vec = np.repeat(control_box, T)
+        control_box_vec = np.tile(control_box, T)
+
+    b_upper = np.hstack(
+        [state_box_vec, control_box_vec])
+    b_lower = -np.hstack(
+        [state_box_vec, control_box_vec])
+    beq = np.zeros(T * nx)
+    l = np.hstack([beq, b_lower])
+    u = np.hstack([beq, b_upper])
+
+    cones = dict(z=T * nx, l=2 * (T * nx + T * nu))
+
+    out_dict = dict(cones=cones,
+                    A=jnp.array(A.todense()),
+                    P=jnp.array(P.todense()),
+                    l=jnp.array(l),
+                    u=jnp.array(u),
+                    c=jnp.array(c),
+                    A_dynamics=jnp.array(Ad))
+    return out_dict
 
 
 def static_canon(T, nx, nu, state_box, control_box, Q_val, QT_val, R_val, Ad=None, Bd=None):
@@ -429,3 +499,51 @@ def oscillating_masses_setup(nx, nu):
     B = Bc * dt
 
     return A, B
+
+
+def multiple_random_osc_mass_osqp(N, T=50, x_init_box=2, state_box=4,
+                                  control_box=.5, nx=36, nu=9, Q_val=1, QT_val=1, R_val=1,
+                                  sigma=1, rho=1,
+                                  seed=42):
+    np.random.seed(seed)
+    static_dict = static_canon_osqp(T, nx, nu, state_box, control_box, Q_val,
+                                    QT_val, R_val, Ad=None, Bd=None)
+    P, A = static_dict['P'], static_dict['A']
+    c, l, u = static_dict['c'], static_dict['l'], static_dict['u']
+    m, n = A.shape
+    Ad = static_dict['A_dynamics']
+    cones = static_dict['cones']
+
+    q_mat = jnp.zeros((N, n + 2 * m))
+    q_mat = q_mat.at[:, :n].set(c)
+
+    # factor
+    M = P + sigma * jnp.eye(n) + rho * A.T @ A
+    factor = jsp.linalg.lu_factor(M)
+
+    # x_init is theta
+    x_init_mat = jnp.array(x_init_box * (2 * np.random.rand(N, nx) - 1))
+
+    for i in range(N):
+        # generate new rhs of first block constraint
+        l = l.at[:nx].set(Ad @ x_init_mat[i, :])
+        u = u.at[:nx].set(Ad @ x_init_mat[i, :])
+
+        # convert to osqp
+        # l, u = convert_scs_2_osqp(b_scs, cones)
+
+        q_osqp = jnp.concatenate([c, l, u])
+        qmat = q_mat.at[i, :].set(q_osqp)
+    theta_mat = x_init_mat
+    return factor, A, q_mat, theta_mat
+
+
+def convert_scs_2_osqp(b_scs, cones):
+    m = b_scs.size
+    l, u = jnp.zeros(m), jnp.zeros(m)
+    num_zeros = cones['z']
+    num_ineq = cones['l']
+    l = l.at[:num_zeros].set(b_scs[:num_zeros])
+    l = l.at[num_zeros:].set(-jnp.inf)
+    u = b_scs
+    return l, u

@@ -44,9 +44,11 @@ pretrain_alpha: False
 normalize_inputs: True
 normalize_alpha: 'other'
 epochs_jit: 10
-accuracies: [.01, .001, .0001]
+accuracies: [.1, .01, .001, .0001]
 iterates_visualize: [10]
 
 rho_x: 1
 scale: 1
 alpha_relax: 1
+
+solve_c_num: 8

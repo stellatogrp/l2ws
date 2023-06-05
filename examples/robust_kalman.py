@@ -597,8 +597,9 @@ def run(run_cfg):
     static_flag = True
 
     custom_visualize_fn_partial = partial(custom_visualize_fn, T=setup_cfg['T'])
+    algo = 'scs'
 
-    workspace = Workspace(run_cfg, static_flag, static_dict, example, get_q,
+    workspace = Workspace(algo, run_cfg, static_flag, static_dict, example,
                           custom_visualize_fn=custom_visualize_fn_partial)
 
     """

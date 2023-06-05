@@ -18,6 +18,23 @@ plt.rcParams.update({
     # "font.size": 24,
     "font.size": 16,
 })
+titles_2_colors = dict(cold_start='black', 
+                       nearest_neighbor='magenta', 
+                       prev_sol='cyan',
+                       k5='blue',
+                       k15='orange',
+                       k30='green',
+                       k60='red',
+                       k120='gray')
+titles_2_styles = dict(cold_start='--', 
+                       nearest_neighbor='--', 
+                       prev_sol='--',
+                       k5='-',
+                       k15='-',
+                       k30='-',
+                       k60='-',
+                       k120='-')
+
 
 
 @hydra.main(config_path='configs/opt_power_flow', config_name='opt_power_flow_plot.yaml')
@@ -61,6 +78,22 @@ def robust_ls_plot_eval_iters(cfg):
     example = 'robust_ls'
     overlay_training_losses(example, cfg)
     plot_eval_iters(example, cfg, train=False)
+
+
+@hydra.main(config_path='configs/lasso', config_name='lasso_plot.yaml')
+def lasso_plot_eval_iters(cfg):
+    example = 'lasso'
+    overlay_training_losses(example, cfg)
+    # plot_eval_iters(example, cfg, train=False)
+    create_journal_results(example, cfg, train=False)
+
+
+@hydra.main(config_path='configs/mpc', config_name='mpc_plot.yaml')
+def mpc_plot_eval_iters(cfg):
+    example = 'mpc'
+    # overlay_training_losses(example, cfg)
+    # plot_eval_iters(example, cfg, train=False)
+    create_journal_results(example, cfg, train=False)
     
 @hydra.main(config_path='configs/phase_retrieval', config_name='phase_retrieval_plot.yaml')
 def phase_retrieval_plot_eval_iters(cfg):
@@ -135,6 +168,310 @@ def plot_l4dc(cfg):
     axes[2].set_title('markowitz')
 
     plt.savefig('combined_plots.pdf', bbox_inches='tight')
+    fig.tight_layout()
+
+
+
+
+def create_timing_table(timing_data, titles, rel_tols, abs_tols):
+    df = pd.DataFrame()
+
+    df['rel_tols'] = rel_tols
+    df['abs_tols'] = abs_tols
+
+    for i in range(len(titles)):
+        df[titles[i]] = np.round(timing_data[i] * 1000, decimals=2)
+
+    # for i in range(len(titles)):
+    #     df_acc = update_acc(df_acc, accs, titles[i], metrics_fp[i])
+    df.to_csv('timings.csv')
+    # pdb.set_trace()
+
+
+
+# def get_styles_from_titles(titles):
+#     style = []
+#     return styles
+
+
+def create_journal_results(example, cfg, train=False):
+    """
+    does the following steps
+
+    1. get data 
+        1.1 (fixed point residuals, primal residuals, dual residuals) or 
+            (fixed point residuals, obj_diffs)
+        store this in metrics
+
+        1.2 timing data
+        store this in time_results
+
+        also need: styles, titles
+            styles comes from titles
+    2. plot the metrics
+    3. create the table for fixed point residuals
+    4. create the table for timing results
+    """
+
+    # step 1
+    metrics, timing_data, titles = get_all_data(example, cfg, train=train)
+
+    # step 2
+    plot_all_metrics(metrics, titles)
+
+    # step 3
+    metrics_fp = metrics[0]
+    create_fixed_point_residual_table(metrics_fp, titles, cfg.accuracies)
+
+    # step 3
+    if len(metrics) == 3:
+        create_timing_table(timing_data, titles, cfg.rel_tols, cfg.abs_tols)
+
+
+def determine_scs_or_osqp(example):
+    if example == 'unconstrained_qp' or example == 'lasso':
+        return False
+    return True
+
+
+def get_all_data(example, cfg, train=False):
+    # setup
+    orig_cwd = hydra.utils.get_original_cwd()
+    eval_iters = cfg.eval_iters
+
+    # get the datetimes
+    learn_datetimes = cfg.output_datetimes
+    if learn_datetimes == []:
+        dt = recover_last_datetime(orig_cwd, example, 'train')
+        learn_datetimes = [dt]
+
+    cold_start_datetime = cfg.cold_start_datetime
+    if cold_start_datetime == '':
+        cold_start_datetime = recover_last_datetime(orig_cwd, example, 'train')
+
+    nn_datetime = cfg.nearest_neighbor_datetime
+    if nn_datetime == '':
+        nn_datetime = recover_last_datetime(orig_cwd, example, 'train')
+
+    metrics_list = []
+    timing_data = []
+
+    # check if prev_sol exists
+    # if 'prev_sol' in cfg.keys():
+    # prev_sol_bool = cfg.prev_sol_datetime
+    prev_sol_bool = 'prev_sol_datetime' in cfg.keys()
+
+    benchmarks = ['cold_start', 'nearest_neighbor']
+    benchmark_dts = [cold_start_datetime, nn_datetime]
+    if prev_sol_bool:
+        benchmarks.append('prev_sol')
+        benchmark_dts.append(cfg.prev_sol_datetime)
+
+    # for init in ['cold_start', 'nearest_neighbor', 'prev_sol']:
+    for i in range(len(benchmarks)):
+        init = benchmarks[i]
+        datetime = benchmark_dts[i]
+        metric, timings = load_data_per_title(example, init, datetime)
+        metrics_list.append(metric)
+        timing_data.append(timings)
+
+    # learned warm-starts
+    k_vals = np.zeros(len(learn_datetimes))
+    for i in range(len(k_vals)):
+        datetime = learn_datetimes[i]
+        k = get_k(orig_cwd, example, datetime)
+        k_vals[i] = k
+        metric, timings = load_data_per_title(example, k, datetime)
+        metrics_list.append(metric)
+        timing_data.append(timings)
+
+    titles = benchmarks + [f"k{int(k)}" for k in k_vals]
+
+    # titles = cfg.loss_overlay_titles
+    # for i in range(len(datetimes)):
+    #     datetime = datetimes[i]
+    #     path = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/{iters_file}"
+    #     df = read_csv(path)
+
+    #     '''
+    #     for the fully trained models, track the k value
+    #     - to do this, load the train_yaml file
+    #     '''
+    #     train_yaml_filename = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/.hydra/config.yaml"
+    #     with open(train_yaml_filename, "r") as stream:
+    #         try:
+    #             out_dict = yaml.safe_load(stream)
+    #         except yaml.YAMLError as exc:
+    #             print(exc)
+    #     k = out_dict['train_unrolls']
+    #     k_vals[i] = k
+
+    #     last_column = df.iloc[:, -1]
+
+    # combine metrics
+    # metrics = combine_metrics(metrics_list)
+    metrics = [[row[i] for row in metrics_list] for i in range(len(metrics_list[0]))]
+
+    return metrics, timing_data, titles
+
+
+# def combine_metrics(metrics_list):
+#     """
+#     metrics_list = [cs_metric, nn_metric, k10_metric]
+
+#     metrics = [fp, pr, dr]
+#     """
+#     metrics = []
+#     for i in range(len(metrics_list)):
+#         for j in range(len(metrics_list[i])):
+#             metrics[i]
+#     return metrics
+
+
+def load_data_per_title(example, title, datetime, train=False):
+    scs_or_osqp = determine_scs_or_osqp(example)
+
+    orig_cwd = hydra.utils.get_original_cwd()
+    path = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}"
+    # no_learning_path = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/{iters_file}"
+
+    # read the eval iters csv
+    # fp_file = 'eval_iters_train.csv' if train else 'eval_iters_test.csv'
+    fp_file = 'iters_compared_train.csv' if train else 'iters_compared_test.csv'
+    fp_df = read_csv(f"{path}/{fp_file}")
+    fp = get_eval_array(fp_df, title)
+    # fp = fp_df[title]
+
+    # read the primal and dual residausl csv
+    if scs_or_osqp:
+        pr_file = 'primal_residuals_train.csv' if train else 'primal_residuals_test.csv'
+        pr_df = read_csv(f"{path}/{pr_file}")
+        pr = get_eval_array(pr_df, title)
+        # pr = pr_df[title]
+
+        dr_file = 'dual_residuals_train.csv' if train else 'dual_residuals_test.csv'
+        dr_df = read_csv(f"{path}/{dr_file}")
+        # dr = dr_df[title]
+        dr = get_eval_array(dr_df, title)
+        metric = [fp, pr, dr]
+
+    # read the obj_diffs csv
+    else:
+        obj_file = 'obj_vals_diff_train.csv' if train else 'obj_vals_diff_test.csv'
+        obj_df = read_csv(f"{path}/{obj_file}")
+        # obj = obj_df[title]
+        obj = get_eval_array(obj_df, title)
+        metric = [fp, obj]
+    
+    # do timings
+    if scs_or_osqp:
+        train_str = 'train' if train else 'test'
+        timings_file = f"solve_C/{train_str}_aggregate_solve_times.csv"
+        timings_df = read_csv(f"{path}/{timings_file}")
+        # timings = timings_df[title]
+        timings = get_eval_array(timings_df, title)
+    else:
+        timings = None
+
+    return metric, timings
+
+
+
+
+
+def get_eval_array(df, title):
+    if title == 'cold_start' or title == 'no_learn':
+        data = df['no_train']
+    elif title == 'nearest_neighbor':
+        data = df['nearest_neighbor']
+    elif title == 'prev_sol':
+        data = df['prev_sol']
+    else:
+        # case of the learned warm-start, take the latest column
+        data = df.iloc[:, -1]
+    return data
+
+
+def load_learned_data(datetime):
+    return metric, timings
+
+
+
+def create_fixed_point_residual_table(metrics_fp, titles, accs):
+    # create pandas dataframe
+    df_acc = pd.DataFrame()
+    df_percent = pd.DataFrame()
+    df_acc_both = pd.DataFrame()
+
+    # df_acc
+    df_acc['accuracies'] = np.array(accs)
+    for i in range(len(titles)):
+        df_acc = update_acc(df_acc, accs, titles[i], metrics_fp[i])
+    df_acc.to_csv('accuracies.csv')
+
+    # df_percent
+    df_percent['accuracies'] = np.array(accs)
+    no_learning_acc = df_acc['cold_start']
+    for col in df_acc.columns:
+        if col != 'accuracies':
+            val = 1 - df_acc[col] / no_learning_acc
+            df_percent[col] = np.round(val, decimals=2)
+    df_percent.to_csv('iteration_reduction.csv')
+
+    # save both iterations and fraction reduction in single table
+    df_acc_both['accuracies'] = df_acc['cold_start']
+    df_acc_both['cold_start_iters'] = np.array(accs)
+
+    for col in df_percent.columns:
+        if col != 'accuracies' and col != 'cold_start':
+            df_acc_both[col + '_iters'] = df_acc[col]
+            df_acc_both[col + '_red'] = df_percent[col]
+    df_acc_both.to_csv('accuracies_reduction_both.csv')
+
+
+def plot_all_metrics(metrics, titles):
+    """
+    metrics is a list of lists
+
+    e.g.
+    metrics = [metric_fp, metric_pr, metric_dr]
+    metric_fp = [cs, nn-ws, ps-ws, k=5, k=10, ..., k=120]
+        where cs is a numpy array
+    same for metric_pr and metric_dr
+
+    each metric has a title
+
+    each line within each metric has a style
+
+    note that we do not explicitly care about the k values
+        we will manually create the legend in latex later
+    """
+    num_metrics = len(metrics)
+    fig_width = 6 if num_metrics == 3 else 9
+        
+    fig, axes = plt.subplots(nrows=1, ncols=num_metrics, figsize=(18, fig_width), sharey=True)
+
+    scs_osqp_titles = ['fixed point residuals', 'primal residuals', 'dual residuals']
+    obj_titles = ['fixed point residuals', 'objective suboptimality']
+    plt_titles = scs_osqp_titles if len(metrics) == 3 else obj_titles
+
+
+    for i in range(num_metrics):
+        axes[i].set_yscale('log')
+        axes[i].set_xlabel('evaluation iterations')
+        axes[i].set_title(plt_titles[i])
+
+    for i in range(num_metrics):
+        curr_metric = metrics[i]
+        for j in range(len(curr_metric)):
+            title = titles[j]
+            color = titles_2_colors[title]
+            style = titles_2_styles[title]
+            axes[i].plot(np.array(curr_metric[j]), linestyle=style, color=color)
+
+    # pdb.set_trace()
+
+    plt.savefig('all_metric_plots.pdf', bbox_inches='tight')
     fig.tight_layout()
 
 
@@ -305,9 +642,7 @@ def plot_eval_iters(example, cfg, train=False):
     else:
         iters_file = "iters_compared_test.csv"
 
-    '''
-    no learning
-    '''
+    # no learning
     no_learning_path = f"{orig_cwd}/outputs/{example}/train_outputs/{no_learning_datetime}/{iters_file}"
     no_learning_df = read_csv(no_learning_path)
     last_column = no_learning_df['no_train']
@@ -315,9 +650,7 @@ def plot_eval_iters(example, cfg, train=False):
     second_derivs_no_learn = second_derivative_fn(np.log(last_column[:eval_iters]))
     df_acc = update_acc(df_acc, accs, 'no_learn', last_column[:eval_iters])
 
-    '''
-    naive warm start
-    '''
+    # naive warm start
     naive_ws_path = f"{orig_cwd}/outputs/{example}/train_outputs/{naive_ws_datetime}/{iters_file}"
     naive_ws_df = read_csv(naive_ws_path)
     # last_column = naive_ws_df['fixed_ws']
@@ -327,9 +660,7 @@ def plot_eval_iters(example, cfg, train=False):
     second_derivs_naive_ws = second_derivative_fn(np.log(last_column[:eval_iters]))
     df_acc = update_acc(df_acc, accs, 'naive_ws', last_column[:eval_iters])
 
-    '''
-    pretraining
-    '''
+    # pretraining
     if pretrain_datetime != '':
         pretrain_path = f"{orig_cwd}/outputs/{example}/train_outputs/{pretrain_datetime}/{iters_file}"
         pretrain_df = read_csv(pretrain_path)
@@ -374,9 +705,7 @@ def plot_eval_iters(example, cfg, train=False):
     plt.clf()
 
 
-    '''
-    save the iterations required to reach a certain accuracy
-    '''
+    # save the iterations required to reach a certain accuracy
     df_acc.to_csv('accuracies.csv')
     df_percent = pd.DataFrame()
     df_percent['accuracies'] = np.array(accs)
@@ -388,9 +717,7 @@ def plot_eval_iters(example, cfg, train=False):
     
     df_percent.to_csv('iteration_reduction.csv')
 
-    '''
-    save both iterations and fraction reduction in single table
-    '''
+    # save both iterations and fraction reduction in single table
     df_acc_both = pd.DataFrame()
     df_acc_both['accuracies'] = df_acc['no_learn']
     df_acc_both['no_learn_iters'] = np.array(accs)
@@ -461,10 +788,6 @@ def plot_eval_iters(example, cfg, train=False):
     plt.savefig('smooth_deriv_plots.pdf', bbox_inches='tight')
     plt.clf()
 
-    '''
-    now write the iterations required to reach certain accuracy
-    '''
-
 
 def update_acc(df_acc, accs, col, losses):
     iter_vals = np.zeros(len(accs))
@@ -521,6 +844,14 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'phase_retrieval/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         phase_retrieval_plot_eval_iters()
+    elif sys.argv[1] == 'lasso':
+        sys.argv[1] = base + 'lasso/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        lasso_plot_eval_iters()
+    elif sys.argv[1] == 'mpc':
+        sys.argv[1] = base + 'mpc/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        mpc_plot_eval_iters()
     elif sys.argv[1] == 'all':
         sys.argv[1] = base + 'all/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]

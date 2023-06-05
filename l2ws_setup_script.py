@@ -8,6 +8,9 @@ import examples.robust_pca as robust_pca
 import examples.robust_ls as robust_ls
 import examples.sparse_pca as sparse_pca
 import examples.phase_retrieval as phase_retrieval
+import examples.lasso as lasso
+import examples.mpc as mpc
+import examples.unconstrained_qp as unconstrained_qp
 import hydra
 
 
@@ -56,6 +59,21 @@ def main_setup_phase_retrieval(cfg):
     phase_retrieval.setup_probs(cfg)
 
 
+@hydra.main(config_path='configs/lasso', config_name='lasso_setup.yaml')
+def main_setup_lasso(cfg):
+    lasso.setup_probs(cfg)
+
+
+@hydra.main(config_path='configs/mpc', config_name='mpc_setup.yaml')
+def main_setup_mpc(cfg):
+    mpc.setup_probs(cfg)
+
+
+@hydra.main(config_path='configs/unconstrained_qp', config_name='unconstrained_qp_setup.yaml')
+def main_setup_unconstrained_qp(cfg):
+    unconstrained_qp.setup_probs(cfg)
+
+
 if __name__ == '__main__':
     if sys.argv[2] == 'cluster':
         base = 'hydra.run.dir=/scratch/gpfs/vranjan/learn2warmstart/outputs/'
@@ -100,3 +118,15 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'phase_retrieval/data_setup_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_setup_phase_retrieval()
+    elif sys.argv[1] == 'lasso':
+        sys.argv[1] = base + 'lasso/data_setup_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_setup_lasso()
+    elif sys.argv[1] == 'mpc':
+        sys.argv[1] = base + 'mpc/data_setup_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_setup_mpc()
+    elif sys.argv[1] == 'unconstrained_qp':
+        sys.argv[1] = base + 'unconstrained_qp/data_setup_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_setup_unconstrained_qp()
