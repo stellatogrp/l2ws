@@ -46,16 +46,19 @@ def run(run_cfg):
     n_orig = setup_cfg['n_orig']
     d_mul = setup_cfg['d_mul']
     # k = setup_cfg['k']
-    static_dict = static_canon(n_orig, d_mul)
+    
 
     # non-identity DR scaling
     rho_x = run_cfg.get('rho_x', 1)
     scale = run_cfg.get('scale', 1)
 
+    static_dict = static_canon(n_orig, d_mul, rho_x=rho_x, scale=scale)
+
     # we directly save q now
     get_q = None
     static_flag = True
-    workspace = Workspace(run_cfg, static_flag, static_dict, example, get_q)
+    algo = 'scs'
+    workspace = Workspace(algo, run_cfg, static_flag, static_dict, example)
 
     # run the workspace
     workspace.run()
@@ -115,7 +118,7 @@ def generate_A_tensor(n_orig, d_mul):
             ai = np.multiply(Wl, curr_psi.conjugate(), dtype='complex_')
             Ai = ai.T @ ai.conjugate()
             A_out[(j-1) * n_orig + l, :, :] = Ai 
-    return A_out
+    return A_out / 100
 
 
 def cvxpy_prob(n_orig, d_mul, seed=42):
@@ -161,6 +164,8 @@ def generate_theta_mat_b_vals(N, A_tensor, x_mean, x_var, n_orig, d_mul):
         Xi = np.outer(xi, xi.conjugate())
         # col_idx, row_idx = np.triu_indices(n_orig)
         # theta_mat[i, :] = Xi[(col_idx, row_idx)]
+        # import pdb
+        # pdb.set_trace()
         for j in range(d):
             # the trace will be real for hermitian matrices, but we use np.real to remove small complex floats
             b_matrix[i, j] = np.real(np.trace(A_tensor[j] @ Xi))
@@ -215,6 +220,9 @@ def static_canon(n_orig, d_mul, rho_x=1, scale=1, factor=True, seed=42):
     else:
         algo_factor = None
 
+    # import pdb
+    # pdb.set_trace()
+
     # set the dict
     cones = {'z': cones_cp.zero, 'l': cones_cp.nonneg, 'q': cones_cp.soc, 's': cones_cp.psd}
     out_dict = dict(
@@ -262,6 +270,7 @@ def setup_probs(setup_cfg):
     data = dict(P=P_sparse, A=A_sparse, b=b_np, c=c_np)
     tol_abs = cfg.solve_acc_abs
     tol_rel = cfg.solve_acc_rel
-    solver = scs.SCS(data, cones, eps_abs=tol_abs, eps_rel=tol_rel)
+    max_iters = cfg.get('solve_max_iters', 10000)
+    solver = scs.SCS(data, cones, eps_abs=tol_abs, eps_rel=tol_rel, max_iters=max_iters)
 
     setup_script(q_mat, theta_mat_jax, solver, data, cones, output_filename, solve=cfg.solve)

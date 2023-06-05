@@ -195,6 +195,9 @@ def test_c_socp_robust_kalman_filter_relaxation():
     # make sure the residuals start high and end very low
     assert fp_res_hsde[0] > 10
     assert fp_res_hsde[-1] < .5 and fp_res_hsde[-1] > 1e-16
+
+    import pdb
+    pdb.set_trace()
     
 
 

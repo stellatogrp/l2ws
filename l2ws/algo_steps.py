@@ -25,7 +25,8 @@ def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous, s
     if supervised:
         diff = jnp.linalg.norm(z - z_star)
     else:
-        diff = jnp.linalg.norm(z_next - z)
+
+        diff = jnp.linalg.norm(z_next / z_next[-1] - z / z[-1])
     loss_vec = loss_vec.at[i].set(diff)
     return z_next, loss_vec
 
@@ -222,12 +223,14 @@ def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, scale_vec,
         q = q_r
         z_next, u, u_tilde, v = fixed_point(z, q, factor, proj, scale_vec, alpha, verbose=verbose)
 
-    diff = jnp.linalg.norm(z_next - z)
+    diff = jnp.linalg.norm(z_next / z_next[-1] - z / z[-1])
     loss_vec = loss_vec.at[i].set(diff)
 
     # primal and dual residuals
     if not lightweight:
         x, y, s = extract_sol(u, v, n, hsde)
+        # import pdb
+        # pdb.set_trace()
         pr = jnp.linalg.norm(A @ x + s - b)
         dr = jnp.linalg.norm(A.T @ y + P @ x + c)
         primal_residuals = primal_residuals.at[i].set(pr)
@@ -437,8 +440,10 @@ def k_steps_eval_scs(k, z0, q, factor, proj, P, A, supervised, z_star, jit, hsde
         z0 = z_next
     # c, b = q[:n], q[n:]
     M = create_M(P, A)
-    rhs = (M + jnp.eye(m + n)) @ q
+    rhs = (M + jnp.diag(scale_vec)) @ q
+    # get_scaled_factor(M, factor)
     c, b = rhs[:n], rhs[n:]
+    # print('b', b)
 
     fp_eval_partial = partial(fp_eval, q_r=q, factor=factor,
                               proj=proj, P=P, A=A, c=c, b=b, hsde=hsde,

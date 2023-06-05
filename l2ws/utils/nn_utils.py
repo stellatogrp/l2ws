@@ -18,6 +18,7 @@ def get_nearest_neighbors(train_inputs, test_inputs, z_stars_train):
 
 
 def random_layer_params(m, n, key, scale=1e-2):
+# def random_layer_params(m, n, key, scale=1e-1):
     w_key, b_key = random.split(key)
     return scale * random.normal(w_key, (n, m)), scale * random.normal(b_key, (n,))
 

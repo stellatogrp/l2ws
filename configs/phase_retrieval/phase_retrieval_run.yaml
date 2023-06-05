@@ -1,5 +1,5 @@
 nn_cfg:
-  lr: 1e-4
+  lr: 1e-3 #1e-2
   method: adam
   intermediate_layer_sizes: [500, 500]
   batch_size: 100
@@ -31,13 +31,13 @@ eval_every_x_epochs: 5
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
-N_train: 250  # adjust these for larger setups
-N_test: 25
+N_train: 1000  # adjust these for larger setups
+N_test: 100
 num_samples: 20
 prediction_variable: w
 angle_anchors: [0]
 supervised: False
-plot_iterates: [0, 10, 20]
+plot_iterates: [0, 10, 100]
 loss_method: 'fixed_k' #'fixed_k' #'constant_sum'
 share_all: False  # this is the shared solution approach
 num_clusters: 1000
@@ -45,9 +45,11 @@ pretrain_alpha: False
 normalize_inputs: True
 normalize_alpha: 'other'
 epochs_jit: 2
-accuracies: [.1, .01, .001, .0001]
+accuracies: [1, .1, .01, .001, .0001]
 
 rho_x: 1
 scale: 1
 alpha_relax: 1
 skip_startup: False  # can be used to skip the eval for no learn and NN 
+solve_c_num: 10
+save_weights_flag: True

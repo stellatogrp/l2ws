@@ -42,7 +42,10 @@ class Workspace:
         self.eval_unrolls = cfg.eval_unrolls
         self.eval_every_x_epochs = cfg.eval_every_x_epochs
         self.save_every_x_epochs = cfg.save_every_x_epochs
+
         self.num_samples = cfg.num_samples
+        self.eval_batch_size = cfg.get('eval_batch_size', self.num_samples)
+
         self.pretrain_cfg = cfg.pretrain
         self.key_count = 0
         self.save_weights_flag = cfg.get('save_weights_flag', False)
@@ -58,6 +61,7 @@ class Workspace:
 
         # custom visualization
         self.init_custom_visualization(cfg, custom_visualize_fn)
+        self.vis_num = 20
 
         # from the run cfg retrieve the following via the data cfg
         N_train, N_test = cfg.N_train, cfg.N_test
@@ -339,12 +343,13 @@ class Workspace:
             sample_plot(z_stars, 'z_stars', num_plot)
 
     def init_custom_visualization(self, cfg, custom_visualize_fn):
-        if custom_visualize_fn is None:
+        iterates_visualize = cfg.get('iterates_visualize', 0)
+        if custom_visualize_fn is None or iterates_visualize == 0:
             self.has_custom_visualization = False
         else:
             self.has_custom_visualization = True
             self.custom_visualize_fn = custom_visualize_fn
-            self.iterates_visualize = cfg.get('iterates_visualize')
+            self.iterates_visualize = iterates_visualize
 
     def _init_logging(self):
         self.logf = open('log.csv', 'a')
@@ -378,7 +383,7 @@ class Workspace:
         fixed_ws = col == 'nearest_neighbor' or col == 'prev_sol'
 
         # do the actual evaluation (most important step in thie method)
-        eval_out = self.evaluate_only(fixed_ws, num, train, col)
+        eval_out = self.evaluate_only(fixed_ws, num, train, col, self.eval_batch_size)
 
         # extract information from the evaluation
         loss_train, out_train, train_time = eval_out
@@ -428,22 +433,34 @@ class Workspace:
 
         # plot the warm-start predictions
         z_all = out_train[2]
+        
+        if isinstance(self.l2ws_model, SCSmodel):
+            u_all = out_train[6]
         # u_all = out_train[0][3]
         # z_all = out_train[0][0]
         # self.plot_warm_starts(u_all, z_all, train, col)
+        z_plot = z_all[:, :, :-1] / z_all[:, :, -1:]
+        # import pdb
+        # pdb.set_trace()
+        self.plot_warm_starts(None, z_plot, train, col)
 
         # plot the alpha coefficients
         # alpha = out_train[0][2]
         # self.plot_alphas(alpha, train, col)
 
         # custom visualize
-        # if self.has_custom_visualization:
-        #     if self.l2ws_model.hsde:
-        #         tau = u_all[:, :, -1:]
-        #         x_primals = u_all[:, :, :self.l2ws_model.n] / tau
-        #     else:
-        #         x_primals = u_all[:, :, :self.l2ws_model.n]
-        #     self.custom_visualize(x_primals, train, col)
+        if self.has_custom_visualization:
+            # if self.l2ws_model.hsde:
+            #     tau = u_all[:, :, -1:]
+            #     x_primals = u_all[:, :, :self.l2ws_model.n] / tau
+            # else:
+            #     x_primals = u_all[:, :, :self.l2ws_model.n]
+
+            x_primals = u_all[:, :, :self.l2ws_model.n] / u_all[:, :, -1:]
+            try:
+                self.custom_visualize(x_primals, train, col)
+            except:
+                print('Exception occurred during custom visualization')
 
         # solve with scs
         # z0_mat = z_all[:, 0, :]
@@ -629,22 +646,34 @@ class Workspace:
         if train:
             x_stars = self.l2ws_model.x_stars_train
             thetas = self.thetas_train
+            # import pdb
+            # pdb.set_trace()
+            if 'x_nn_train' in dir(self):
+                x_nn = self.x_nn_train
         else:
             x_stars = self.l2ws_model.x_stars_test
             thetas = self.thetas_test
+            if 'x_nn_test' in dir(self):
+                x_nn = self.x_nn_test
 
         if col == 'no_train':
             if train:
-                self.x_no_learn_train = x_primals[:5, :, :]
+                self.x_no_learn_train = x_primals[:self.vis_num, :, :]
             else:
-                self.x_no_learn_test = x_primals[:5, :, :]
+                self.x_no_learn_test = x_primals[:self.vis_num, :, :]
+        elif col == 'nearest_neighbor':
+            if train:
+                self.x_nn_train = x_primals[:self.vis_num, :, :]
+            else:
+                self.x_nn_test = x_primals[:self.vis_num, :, :]
         if train:
-            x_no_learn = self.x_no_learn_train[:5, :, :]
+            x_no_learn = self.x_no_learn_train[:self.vis_num, :, :]
         else:
-            x_no_learn = self.x_no_learn_test[:5, :, :]
+            x_no_learn = self.x_no_learn_test[:self.vis_num, :, :]
 
-        self.custom_visualize_fn(x_primals, x_stars, x_no_learn,
-                                 thetas, self.iterates_visualize, visual_path)
+        if col != 'nearest_neighbor' and col != 'no_train':
+            self.custom_visualize_fn(x_primals, x_stars, x_no_learn, x_nn,
+                                    thetas, self.iterates_visualize, visual_path)
 
         # save x_primals to csv (TODO)
         # x_primals_df = pd.DataFrame(x_primals[:5, :])
@@ -683,9 +712,10 @@ class Workspace:
         self.test_eval_write()
 
         # do all of the training
-        self.train()
+        test_zero = True if self.skip_startup else False
+        self.train(test_zero=test_zero)
 
-    def train(self):
+    def train(self, test_zero=False):
         """
         does all of the training
         jits together self.epochs_jit number of epochs together
@@ -699,7 +729,7 @@ class Workspace:
 
         for epoch_batch in range(num_epochs_jit):
             epoch = int(epoch_batch * self.epochs_jit)
-            if epoch % self.eval_every_x_epochs == 0 and epoch > 0:
+            if test_zero or epoch % self.eval_every_x_epochs == 0 and epoch > 0:
                 self.eval_iters_train_and_test(f"train_epoch_{epoch}", self.pretrain_on)
             # if epoch > self.l2ws_model.dont_decay_until:
             #     self.l2ws_model.decay_upon_plateau()
@@ -840,7 +870,7 @@ class Workspace:
             })
             self.logf.flush()
 
-    def evaluate_only(self, fixed_ws, num, train, col):
+    def evaluate_only(self, fixed_ws, num, train, col, batch_size):
         tag = 'train' if train else 'test'
         if self.l2ws_model.z_stars_train is None:
             z_stars = None
@@ -867,9 +897,51 @@ class Workspace:
         # eval_out = self.l2ws_model.evaluate(self.eval_unrolls, inputs, factors,
         #                                     M_tensor, q_mat, z_stars, fixed_ws, tag=tag)
 
-        eval_out = self.l2ws_model.evaluate(
-            self.eval_unrolls, inputs, q_mat, z_stars, fixed_ws, tag=tag)
-        return eval_out
+
+        # do the batching
+        num_batches = int(num / batch_size)
+        full_eval_out = []
+        if num_batches == 1:
+            eval_out = self.l2ws_model.evaluate(
+                self.eval_unrolls, inputs, q_mat, z_stars, fixed_ws, tag=tag)
+            return eval_out
+
+        for i in range(num_batches):
+            start = i * batch_size
+            end = (i + 1) * batch_size
+            curr_inputs = inputs[start: end]
+            curr_q_mat = q_mat[start: end]
+            if z_stars is not None:
+                curr_z_stars = z_stars[start: end]
+            else:
+                curr_z_stars = None
+            eval_out = self.l2ws_model.evaluate(
+                self.eval_unrolls, curr_inputs, curr_q_mat, curr_z_stars, fixed_ws, tag=tag)
+            full_eval_out.append(eval_out)
+        loss = np.array([curr_out[0] for curr_out in full_eval_out]).mean()
+        time_per_prob = np.array([curr_out[2] for curr_out in full_eval_out]).mean()
+        out = self.stack_tuples([curr_out[1] for curr_out in full_eval_out])
+
+        flattened_eval_out = (loss, out, time_per_prob)
+        return flattened_eval_out
+    
+    def stack_tuples(self, tuples_list):
+        result = []
+        num_tuples = len(tuples_list)
+        tuple_length = len(tuples_list[0])
+        
+        for i in range(tuple_length):
+            stacked_entry = []
+            for j in range(num_tuples):
+                stacked_entry.append(tuples_list[j][i])
+            # result.append(tuple(stacked_entry))
+            if tuples_list[j][i].ndim == 2:
+                result.append(jnp.vstack(stacked_entry))
+            elif tuples_list[j][i].ndim == 1:
+                result.append(jnp.hstack(stacked_entry))
+            elif tuples_list[j][i].ndim == 3 and i  == 0:
+                result.append(jnp.vstack(stacked_entry))
+        return result
 
     def get_inputs_for_eval(self, fixed_ws, num, train, col):
         if fixed_ws:
@@ -1357,51 +1429,51 @@ class Workspace:
             os.mkdir(ws_path)
         if not os.path.exists(f"{ws_path}/{col}"):
             os.mkdir(f"{ws_path}/{col}")
-        m, n = self.l2ws_model.m, self.l2ws_model.n
+        # m, n = self.l2ws_model.m, self.l2ws_model.n
         for i in range(5):
-            if self.l2ws_model.hsde:
-                x_hats, y_hats = u_all[i, :, :n], u_all[i, :, n:]
-            else:
-                x_hats, y_hats = u_all[i, :, :n], u_all[i, :, n:]
+            # if self.l2ws_model.hsde:
+            #     x_hats, y_hats = u_all[i, :, :n], u_all[i, :, n:]
+            # else:
+            #     x_hats, y_hats = u_all[i, :, :n], u_all[i, :, n:]
 
-            # plot for x
-            for j in self.plot_iterates:
-                plt.plot(u_all[i, j, :n], label=f"prediction_{j}")
-            if train:
-                plt.plot(self.x_stars_train[i, :], label='optimal')
-            else:
-                plt.plot(self.x_stars_test[i, :], label='optimal')
-            plt.legend()
-            plt.savefig(f"{ws_path}/{col}/prob_{i}_x_ws.pdf")
-            plt.clf()
+            # # plot for x
+            # for j in self.plot_iterates:
+            #     plt.plot(u_all[i, j, :n], label=f"prediction_{j}")
+            # if train:
+            #     plt.plot(self.x_stars_train[i, :], label='optimal')
+            # else:
+            #     plt.plot(self.x_stars_test[i, :], label='optimal')
+            # plt.legend()
+            # plt.savefig(f"{ws_path}/{col}/prob_{i}_x_ws.pdf")
+            # plt.clf()
 
-            for j in self.plot_iterates:
-                plt.plot(u_all[i, j, :n] -
-                         self.x_stars_train[i, :], label=f"prediction_{j}")
-            plt.legend()
-            plt.title('diffs to optimal')
-            plt.savefig(f"{ws_path}/{col}/prob_{i}_diffs_x.pdf")
-            plt.clf()
+            # for j in self.plot_iterates:
+            #     plt.plot(u_all[i, j, :n] -
+            #              self.x_stars_train[i, :], label=f"prediction_{j}")
+            # plt.legend()
+            # plt.title('diffs to optimal')
+            # plt.savefig(f"{ws_path}/{col}/prob_{i}_diffs_x.pdf")
+            # plt.clf()
 
-            # plot for y
+            # # plot for y
 
-            for j in self.plot_iterates:
-                plt.plot(u_all[i, j, n:n + m], label=f"prediction_{j}")
-            if train:
-                plt.plot(self.y_stars_train[i, :], label='optimal')
-            else:
-                plt.plot(self.y_stars_test[i, :], label='optimal')
-            plt.legend()
-            plt.savefig(f"{ws_path}/{col}/prob_{i}_y_ws.pdf")
-            plt.clf()
+            # for j in self.plot_iterates:
+            #     plt.plot(u_all[i, j, n:n + m], label=f"prediction_{j}")
+            # if train:
+            #     plt.plot(self.y_stars_train[i, :], label='optimal')
+            # else:
+            #     plt.plot(self.y_stars_test[i, :], label='optimal')
+            # plt.legend()
+            # plt.savefig(f"{ws_path}/{col}/prob_{i}_y_ws.pdf")
+            # plt.clf()
 
-            for j in self.plot_iterates:
-                plt.plot(u_all[i, j, n:m + n] -
-                         self.y_stars_train[i, :], label=f"prediction_{j}")
-            plt.legend()
-            plt.title('diffs to optimal')
-            plt.savefig(f"{ws_path}/{col}/prob_{i}_diffs_y.pdf")
-            plt.clf()
+            # for j in self.plot_iterates:
+            #     plt.plot(u_all[i, j, n:m + n] -
+            #              self.y_stars_train[i, :], label=f"prediction_{j}")
+            # plt.legend()
+            # plt.title('diffs to optimal')
+            # plt.savefig(f"{ws_path}/{col}/prob_{i}_diffs_y.pdf")
+            # plt.clf()
 
             # plot for z
             for j in self.plot_iterates:
