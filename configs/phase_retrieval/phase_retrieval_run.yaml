@@ -25,13 +25,8 @@ pretrain:
 data:
   datetime: ''
 
-<<<<<<< HEAD
-train_unrolls: 15  # this is the k that tells you how many FOM iterations
-eval_unrolls: 400
-=======
 train_unrolls: 30  # this is the k that tells you how many FOM iterations
 eval_unrolls: 500
->>>>>>> 43378fc83b7f3d72a024ac6dee06d05fc08dc612
 eval_every_x_epochs: 5
 save_every_x_epochs: 1
 test_every_x_epochs: 1
