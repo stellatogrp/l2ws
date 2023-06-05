@@ -25,14 +25,19 @@ pretrain:
 data:
   datetime: ''
 
+<<<<<<< HEAD
 train_unrolls: 15  # this is the k that tells you how many FOM iterations
 eval_unrolls: 400
+=======
+train_unrolls: 30  # this is the k that tells you how many FOM iterations
+eval_unrolls: 500
+>>>>>>> 43378fc83b7f3d72a024ac6dee06d05fc08dc612
 eval_every_x_epochs: 5
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
-N_train: 100  # adjust these for larger setups
-N_test: 20
+N_train: 1000  # adjust these for larger setups
+N_test: 100
 num_samples: 20
 prediction_variable: w
 angle_anchors: [0]
@@ -45,11 +50,11 @@ pretrain_alpha: False
 normalize_inputs: True
 normalize_alpha: 'other'
 epochs_jit: 2
-accuracies: [.1, .01, .001, .0001]
+accuracies: [1, .1, .01, .001, .0001]
 
 rho_x: 1
 scale: 1
 alpha_relax: 1
 skip_startup: False  # can be used to skip the eval for no learn and NN 
-solve_c_num: 5
+solve_c_num: 10
 save_weights_flag: True

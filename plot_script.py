@@ -91,7 +91,7 @@ def lasso_plot_eval_iters(cfg):
 @hydra.main(config_path='configs/mpc', config_name='mpc_plot.yaml')
 def mpc_plot_eval_iters(cfg):
     example = 'mpc'
-    # overlay_training_losses(example, cfg)
+    overlay_training_losses(example, cfg)
     # plot_eval_iters(example, cfg, train=False)
     create_journal_results(example, cfg, train=False)
     

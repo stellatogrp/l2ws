@@ -4,7 +4,7 @@ x_var: .1  # variance in the Gaussians for X
 x_mean: 0 #5
 ###### change the above for phase_retrieval
 
-solve_acc_abs: 1e-2
+solve_acc_abs: 1e-3
 solve_acc_rel: 0
 solve_max_iters: 1000
 N_train: 100
