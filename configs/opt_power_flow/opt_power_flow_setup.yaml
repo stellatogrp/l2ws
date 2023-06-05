@@ -1,0 +1,16 @@
+n_orig: 20
+d_mul: 10  # number of constraints will equal d_mul * n_orig
+x_var: 1  # variance in the Gaussians for X
+x_mean: 5
+###### change the above for OPF
+
+case: 14 # should be one of 14, 30, 57
+demand_vertices: [4, 5]
+demand_bounds: [.5, 1.5]
+
+solve_acc_abs: 1e-4
+solve_acc_rel: 0
+N_train: 100
+N_test: 10
+seed: 42
+solve: True

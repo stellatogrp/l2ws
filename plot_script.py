@@ -20,6 +20,12 @@ plt.rcParams.update({
 })
 
 
+@hydra.main(config_path='configs/opt_power_flow', config_name='opt_power_flow_plot.yaml')
+def opt_power_flow_plot_eval_iters(cfg):
+    example = 'opt_power_flow'
+    plot_eval_iters(example, cfg)
+
+
 @hydra.main(config_path='configs/osc_mass', config_name='osc_mass_plot.yaml')
 def osc_mass_plot_eval_iters(cfg):
     example = 'osc_mass'
@@ -487,6 +493,10 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'markowitz/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         markowitz_plot_eval_iters()
+    elif sys.argv[1] == 'opt_power_flow':
+        sys.argv[1] = base + 'opt_power_flow/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        opt_power_flow_plot_eval_iters()
     elif sys.argv[1] == 'osc_mass':
         sys.argv[1] = base + 'osc_mass/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]

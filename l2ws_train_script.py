@@ -1,5 +1,6 @@
 import sys
 import examples.markowitz as markowitz
+import examples.opt_power_flow as opt_power_flow
 import examples.osc_mass as osc_mass
 import examples.vehicle as vehicle
 import examples.robust_kalman as robust_kalman
@@ -24,6 +25,19 @@ def main_run_markowitz(cfg):
         cfg.data.datetime = agg_datetime
     copy_data_file(example, agg_datetime)
     markowitz.run(cfg)
+
+
+@hydra.main(config_path='configs/opt_power_flow', config_name='opt_power_flow_run.yaml')
+def main_run_opt_power_flow(cfg):
+    orig_cwd = hydra.utils.get_original_cwd()
+    example = 'opt_power_flow'
+    setup_datetime = cfg.data.datetime
+    if setup_datetime == '':
+        # get the most recent datetime and update datetimes
+        setup_datetime = recover_last_datetime(orig_cwd, example, 'data_setup')
+        cfg.data.datetime = setup_datetime
+    copy_data_file(example, setup_datetime)
+    opt_power_flow.run(cfg)
 
 
 @hydra.main(config_path='configs/osc_mass', config_name='osc_mass_run.yaml')
@@ -129,6 +143,10 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'markowitz/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_run_markowitz()
+    elif sys.argv[1] == 'opt_power_flow':
+        sys.argv[1] = base + 'opt_power_flow/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_run_opt_power_flow()
     elif sys.argv[1] == 'osc_mass':
         sys.argv[1] = base + 'osc_mass/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
