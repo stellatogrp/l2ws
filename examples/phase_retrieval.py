@@ -270,6 +270,7 @@ def setup_probs(setup_cfg):
     data = dict(P=P_sparse, A=A_sparse, b=b_np, c=c_np)
     tol_abs = cfg.solve_acc_abs
     tol_rel = cfg.solve_acc_rel
-    solver = scs.SCS(data, cones, eps_abs=tol_abs, eps_rel=tol_rel)
+    max_iters = cfg.get('solve_max_iters', 10000)
+    solver = scs.SCS(data, cones, eps_abs=tol_abs, eps_rel=tol_rel, max_iters=max_iters)
 
     setup_script(q_mat, theta_mat_jax, solver, data, cones, output_filename, solve=cfg.solve)
