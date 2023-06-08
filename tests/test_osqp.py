@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import scs
 import numpy as np
 from scipy.sparse import csc_matrix
-from l2ws.algo_steps import k_steps_eval_osqp, k_steps_train_osqp, create_projection_fn, lin_sys_solve, k_steps_train_osqp, k_steps_eval
+from l2ws.algo_steps import k_steps_eval_osqp, k_steps_train_osqp, create_projection_fn, lin_sys_solve, k_steps_train_osqp, k_steps_eval_scs
 import jax.scipy as jsp
 import pytest
 import matplotlib.pyplot as plt
@@ -91,7 +91,7 @@ def test_shifted_sol():
                                          Bd=None,
                                          seed=42,
                                          x_init_factor=x_init_factor)
-    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
+    factor, P, A, q_mat_train, theta_mat_train, x_min, x_max, Ad, Bd, rho_vec = mpc_setup
     # train_inputs, test_inputs = theta_mat[:N_train, :], theta_mat[N_train:, :]
     # z_stars_train, z_stars_test = None, None
     # q_mat_train, q_mat_test = q_mat[:N_train, :], q_mat[N_train:, :]
@@ -101,7 +101,7 @@ def test_shifted_sol():
     #     T, num_traj_train, x_bar, x_init_factor, Ad, P, A, q)
     noise_std_dev = 0
     theta_mat_test, z_stars_test, q_mat_test = solve_multiple_trajectories(
-        traj_length, num_traj, x_bar, x_init_factor, Ad, P, A, q, noise_std_dev)
+        traj_length, num_traj, x_min, x_max, x_init_factor, Ad, P, A, q, noise_std_dev)
 
     m, n = A.shape
 
@@ -152,7 +152,7 @@ def test_shift_train():
                                          Bd=None,
                                          seed=42,
                                          x_init_factor=x_init_factor)
-    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
+    factor, P, A, q_mat_train, theta_mat_train, x_min, x_max, Ad, Bd, rho_vec = mpc_setup
     # train_inputs, test_inputs = theta_mat[:N_train, :], theta_mat[N_train:, :]
     # z_stars_train, z_stars_test = None, None
     # q_mat_train, q_mat_test = q_mat[:N_train, :], q_mat[N_train:, :]
@@ -217,7 +217,7 @@ def test_mpc_prev_sol():
                                          Bd=None,
                                          seed=42,
                                          x_init_factor=x_init_factor)
-    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
+    factor, P, A, q_mat_train, theta_mat_train, x_min, x_max, Ad, Bd, rho_vec = mpc_setup
     m, n = A.shape
     q = q_mat_train[0, :]
 
@@ -225,7 +225,7 @@ def test_mpc_prev_sol():
     #     T, num_traj_train, x_bar, x_init_factor, Ad, P, A, q)
 
     theta_mat_test, z_stars_test, q_mat_test = solve_multiple_trajectories(
-        traj_length, num_traj, x_bar, x_init_factor, Ad, P, A, q, noise_std_dev)
+        traj_length, num_traj, x_min, x_max, x_init_factor, Ad, P, A, q, noise_std_dev)
 
     # create theta_mat and q_mat
     q_mat = jnp.vstack([q_mat_train, q_mat_test])
@@ -297,13 +297,13 @@ def test_mpc_prev_sol():
     final_test_losses = final_eval_out[1][1].mean(axis=0)
 
     # plotting
-    plt.plot(init_test_losses, label='cold start')
-    plt.plot(final_test_losses, label=f"learned warm-start k={train_unrolls}")
-    plt.plot(prev_sol_losses, label='prev sol')
-    plt.plot(nn_losses, label='nearest neighbor')
-    plt.yscale('log')
-    plt.legend()
-    plt.show()
+    # plt.plot(init_test_losses, label='cold start')
+    # plt.plot(final_test_losses, label=f"learned warm-start k={train_unrolls}")
+    # plt.plot(prev_sol_losses, label='prev sol')
+    # plt.plot(nn_losses, label='nearest neighbor')
+    # plt.yscale('log')
+    # plt.legend()
+    # plt.show()
     # import pdb
 
     # pdb.set_trace()
@@ -379,7 +379,7 @@ def test_osqp_exact():
     N_train = 500
     N_test = 50
     N = N_train + N_test
-    factor, P, A, q_mat, theta_mat, x_bar, Ad, Bd, rho_vec = multiple_random_mpc_osqp(N,
+    factor, P, A, q_mat, theta_mat, x_min, x_max, Ad, Bd, rho_vec = multiple_random_mpc_osqp(N,
                                                                                       T=10,
                                                                                       nx=10,
                                                                                       nu=5,
@@ -439,8 +439,7 @@ def test_osqp_exact():
     # these should match to machine precision
     assert jnp.linalg.norm(x_jax - results.x) < 1e-10
     assert jnp.linalg.norm(y_jax - results.y) < 1e-10
-    # import pdb
-    # pdb.set_trace()
+    
 
 
 @pytest.mark.skip(reason="temp")
