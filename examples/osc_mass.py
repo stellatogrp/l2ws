@@ -259,7 +259,8 @@ def setup_probs(setup_cfg):
     plt.savefig('thetas.pdf')
 
 
-def static_canon_osqp(T, nx, nu, state_box, control_box, Q_val, QT_val, R_val, Ad=None, Bd=None):
+# def static_canon_osqp(T, nx, nu, state_box, control_box, Q_val, QT_val, R_val, Ad=None, Bd=None, x_ref=None):
+def static_canon_osqp(T, nx, nu, x_min, x_max, u_min, u_max, Q_val, QT_val, R_val, x_ref, Ad=None, Bd=None):
     if np.isscalar(Q_val):
         Q = Q_val * np.eye(nx)
     else:
@@ -279,6 +280,9 @@ def static_canon_osqp(T, nx, nu, state_box, control_box, Q_val, QT_val, R_val, A
         Ad = .1 * np.random.normal(size=(nx, nx))
         Bd = .1 * np.random.normal(size=(nx, nu))
 
+    if x_ref is None:
+        x_ref = np.zeros(nx)
+
     # Quadratic objective
     P = sparse.block_diag(
         [sparse.kron(sparse.eye(T-1), Q), QT, sparse.kron(sparse.eye(T), R)],
@@ -286,7 +290,9 @@ def static_canon_osqp(T, nx, nu, state_box, control_box, Q_val, QT_val, R_val, A
     )
 
     # Linear objective
-    c = np.hstack([np.kron(np.ones(T-1), q), qT, np.zeros(T * nu)])
+    # c = np.hstack([np.kron(np.ones(T-1), q), qT, np.zeros(T * nu)])
+    # - linear objective
+    c = np.hstack([np.kron(np.ones(T - 1), -Q @ x_ref), -QT @ x_ref, np.zeros(T * nu)])
 
     # Linear dynamics
     Ax = sparse.kron(sparse.eye(T + 1), -sparse.eye(nx)) + sparse.kron(
@@ -312,21 +318,27 @@ def static_canon_osqp(T, nx, nu, state_box, control_box, Q_val, QT_val, R_val, A
     )
 
     # get b
-    if np.isscalar(state_box):
-        state_box_vec = state_box*np.ones(T * nx)
-    else:
-        # state_box_vec = np.repeat(state_box, T)
-        state_box_vec = np.tile(state_box, T)
-    if np.isscalar(control_box):
-        control_box_vec = control_box*np.ones(T * nu)
-    else:
-        # control_box_vec = np.repeat(control_box, T)
-        control_box_vec = np.tile(control_box, T)
+    # if np.isscalar(state_box):
+    #     state_box_vec = state_box*np.ones(T * nx)
+    # else:
+    #     state_box_vec = np.tile(state_box, T)
+    # if np.isscalar(control_box):
+    #     control_box_vec = control_box*np.ones(T * nu)
+    # else:
+    #     control_box_vec = np.tile(control_box, T)
+    x_max_vec = np.tile(x_max, T)
+    x_min_vec = np.tile(x_min, T)
+    u_max_vec = np.tile(u_max, T)
+    u_min_vec = np.tile(u_min, T)
 
+    # b_upper = np.hstack(
+    #     [state_box_vec, control_box_vec])
+    # b_lower = -np.hstack(
+    #     [state_box_vec, control_box_vec])
     b_upper = np.hstack(
-        [state_box_vec, control_box_vec])
-    b_lower = -np.hstack(
-        [state_box_vec, control_box_vec])
+        [x_max_vec, u_max_vec])
+    b_lower = np.hstack(
+        [x_min_vec, u_min_vec])
     beq = np.zeros(T * nx)
     l = np.hstack([beq, b_lower])
     u = np.hstack([beq, b_upper])
