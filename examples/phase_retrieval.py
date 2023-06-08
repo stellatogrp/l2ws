@@ -151,13 +151,19 @@ def generate_theta_mat_b_vals(N, A_tensor, x_mean, x_var, n_orig, d_mul):
     b_matrix = np.zeros((N, d))
     # n_orig_choose_2 = int(n_orig * (n_orig + 1) / 2)
     # theta_mat = np.zeros((N, n_orig_choose_2), dtype='complex_')
+    negate1 = np.random.binomial(n=1, p=0.5, size=(n_orig))
+    negate2 = np.random.binomial(n=1, p=0.5, size=(n_orig))
+    negate1[negate1 == 0] = -1
+    negate2[negate2 == 0] = -1
     for i in range(N):
         # this is where the parameterization comes in
         # could modify where the xi comes from
-        negate1 = np.random.binomial(n=1, p=0.5, size=(n_orig))
-        negate2 = np.random.binomial(n=1, p=0.5, size=(n_orig))
-        negate1[negate1 == 0] = -1
-        negate2[negate2 == 0] = -1
+        # negate1 = np.random.binomial(n=1, p=0.5, size=(n_orig))
+        # negate2 = np.random.binomial(n=1, p=0.5, size=(n_orig))
+        # negate1[negate1 == 0] = -1
+        # negate2[negate2 == 0] = -1
+        # negate1 = np.random.binomial(n=1, p=0.5, size=(n_orig))
+        # negate2 = np.random.binomial(n=1, p=0.5, size=(n_orig))
 
         xi = np.multiply(np.random.normal(size=(n_orig), loc=x_mean, scale=np.sqrt(x_var)), negate1) \
             + 1j * np.multiply(np.random.normal(size=(n_orig), loc=x_mean, scale=np.sqrt(x_var)), negate2)
