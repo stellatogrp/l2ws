@@ -1,4 +1,4 @@
-n_orig: 30
+n_orig: 25
 d_mul: 4  # number of constraints will equal d_mul * n_orig
 x_var: .1  # variance in the Gaussians for X
 x_mean: 0 #5
