@@ -6,15 +6,16 @@
 # eval_iters: 150
 # accuracies: [1e-1, 1e-2, 1e-3, 1e-4]
 output_datetimes:
+- 2023-06-05/18-35-40
 - 2023-05-07/08-48-02
 - 2023-05-07/08-47-39
 - 2023-05-07/01-21-42
 - 2023-05-07/00-16-54
 - 2023-05-07/00-18-34
 loss_overlay_titles: []
-naive_ws_datetime: 2023-05-07/08-48-02
+nearest_neighbor_datetime: 2023-05-07/08-48-02
 pretrain_datetime: ''
-no_learning_datetime: 2023-05-07/08-48-02
+cold_start_datetime: 2023-05-07/08-48-02
 eval_iters: 150
 accuracies:
 - 0.1

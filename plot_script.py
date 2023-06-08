@@ -80,6 +80,14 @@ def robust_ls_plot_eval_iters(cfg):
     create_journal_results(example, cfg, train=False)
 
 
+@hydra.main(config_path='configs/sparse_pca', config_name='sparse_pca_plot.yaml')
+def sparse_pca_plot_eval_iters(cfg):
+    example = 'sparse_pca'
+    overlay_training_losses(example, cfg)
+    # plot_eval_iters(example, cfg, train=False)
+    create_journal_results(example, cfg, train=False)
+
+
 @hydra.main(config_path='configs/lasso', config_name='lasso_plot.yaml')
 def lasso_plot_eval_iters(cfg):
     example = 'lasso'
@@ -217,7 +225,8 @@ def create_journal_results(example, cfg, train=False):
     metrics, timing_data, titles = get_all_data(example, cfg, train=train)
 
     # step 2
-    plot_all_metrics(metrics, titles, cfg.eval_iters)
+    plot_all_metrics(metrics, titles, cfg.eval_iters, vert_lines=True)
+    plot_all_metrics(metrics, titles, cfg.eval_iters, vert_lines=False)
 
     # step 3
     metrics_fp = metrics[0]
@@ -362,20 +371,24 @@ def load_data_per_title(example, title, datetime, train=False):
 
     # read the obj_diffs csv
     else:
-        obj_file = 'obj_vals_diff_train.csv' if train else 'obj_vals_diff_test.csv'
-        obj_df = read_csv(f"{path}/{obj_file}")
-        # obj = obj_df[title]
-        obj = get_eval_array(obj_df, title)
-        metric = [fp, obj]
+        # obj_file = 'obj_vals_diff_train.csv' if train else 'obj_vals_diff_test.csv'
+        # obj_df = read_csv(f"{path}/{obj_file}")
+        # # obj = obj_df[title]
+        # obj = get_eval_array(obj_df, title)
+        # metric = [fp, obj]
+        metric = [fp, fp]
     
     # do timings
-    if scs_or_osqp:
-        train_str = 'train' if train else 'test'
-        timings_file = f"solve_C/{train_str}_aggregate_solve_times.csv"
-        timings_df = read_csv(f"{path}/{timings_file}")
-        # timings = timings_df[title]
-        timings = get_eval_array(timings_df, title)
-    else:
+    try:
+        if scs_or_osqp:
+            train_str = 'train' if train else 'test'
+            timings_file = f"solve_C/{train_str}_aggregate_solve_times.csv"
+            timings_df = read_csv(f"{path}/{timings_file}")
+            # timings = timings_df[title]
+            timings = get_eval_array(timings_df, title)
+        else:
+            timings = None
+    except:
         timings = None
 
     return metric, timings
@@ -434,7 +447,7 @@ def create_fixed_point_residual_table(metrics_fp, titles, accs):
     df_acc_both.to_csv('accuracies_reduction_both.csv')
 
 
-def plot_all_metrics(metrics, titles, eval_iters):
+def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
     """
     metrics is a list of lists
 
@@ -485,6 +498,11 @@ def plot_all_metrics(metrics, titles, eval_iters):
             color = titles_2_colors[title]
             style = titles_2_styles[title]
             axes[i].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, color=color)
+            if vert_lines:
+                if title[0] == 'k':
+                    k = int(title[1:])
+                    # axes[i].vlines(k, 0, 1000, color=color)
+                    axes[i].axvline(k, color=color)
 
     # plot the gain
     for i in range(1):
@@ -502,7 +520,46 @@ def plot_all_metrics(metrics, titles, eval_iters):
             else:
                 cs = np.array(curr_metric[j])[start:eval_iters + start]
 
-    plt.savefig('all_metric_plots.pdf', bbox_inches='tight')
+            if vert_lines:
+                if title[0] == 'k':
+                    k = int(title[1:])
+                    # plt.vlines(k, 0, 1000, color=color)
+                    plt.axvline(k, color=color)
+
+    if vert_lines:
+        plt.savefig('all_metric_plots_vert.pdf', bbox_inches='tight')
+    else:
+        plt.savefig('all_metric_plots.pdf', bbox_inches='tight')
+    fig.tight_layout()
+    plt.clf()
+
+    # now plot the gain on a non-log plot
+    # plot the gain
+    for i in range(1):
+        curr_metric = metrics[i]
+        for j in range(len(curr_metric)):
+        # for j in range(1):
+            title = titles[j]
+            # title = 'gain to cold-start'
+            color = titles_2_colors[title]
+            style = titles_2_styles[title]
+
+            if j > 0:
+                gain = cs / np.array(curr_metric[j])[start:eval_iters + start]
+                plt.plot(gain, linestyle=style, color=color)
+            else:
+                cs = np.array(curr_metric[j])[start:eval_iters + start]
+            if vert_lines:
+                if title[0] == 'k':
+                    k = int(title[1:])
+                    # plt.vlines(k, 0, 1000, color=color)
+                    plt.axvline(k, color=color)
+    plt.ylabel('gain')
+    plt.xlabel('evaluation steps')
+    if vert_lines:
+        plt.savefig('test_gain_plots_vert.pdf', bbox_inches='tight')
+    else:
+        plt.savefig('test_gain_plots.pdf', bbox_inches='tight')
     fig.tight_layout()
 
 
@@ -616,6 +673,7 @@ def overlay_training_losses(example, cfg):
         # rel_test_loss = te_losses.iloc[-1] / orig_loss
         # rel_gap = rel_test_loss - rel_train_loss 
         k = get_k(orig_cwd, example, datetimes[i])
+        print('k_val', k)
         k_values.append(k)
         col = f"k = {k}"
 
@@ -891,6 +949,10 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'phase_retrieval/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         phase_retrieval_plot_eval_iters()
+    elif sys.argv[1] == 'sparse_pca':
+        sys.argv[1] = base + 'sparse_pca/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        sparse_pca_plot_eval_iters()
     elif sys.argv[1] == 'lasso':
         sys.argv[1] = base + 'lasso/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]

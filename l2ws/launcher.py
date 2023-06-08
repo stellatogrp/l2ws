@@ -439,7 +439,9 @@ class Workspace:
         # u_all = out_train[0][3]
         # z_all = out_train[0][0]
         # self.plot_warm_starts(u_all, z_all, train, col)
-        z_plot = z_all[:, :, :-1] / z_all[:, :, -1:]
+            z_plot = z_all[:, :, :-1] / z_all[:, :, -1:]
+        else:
+            z_plot = z_all
         # import pdb
         # pdb.set_trace()
         self.plot_warm_starts(None, z_plot, train, col)
