@@ -203,7 +203,7 @@ def generate_static_prob_data(nx, nu, seed):
 
 def generate_static_prob_data_quadcopter():
     # dynamics
-    Ad = sparse.csc_matrix([
+    Ad = np.array([
         [1.,      0.,     0., 0., 0., 0., 0.1,     0.,     0.,  0.,     0.,     0.    ],
         [0.,      1.,     0., 0., 0., 0., 0.,      0.1,    0.,  0.,     0.,     0.    ],
         [0.,      0.,     1., 0., 0., 0., 0.,      0.,     0.1, 0.,     0.,     0.    ],
@@ -217,7 +217,7 @@ def generate_static_prob_data_quadcopter():
         [0.,     -0.9734, 0., 0., 0., 0., 0.,     -0.0488, 0.,  0.,     0.9846, 0.    ],
         [0.,      0.,     0., 0., 0., 0., 0.,      0.,     0.,  0.,     0.,     0.9846]
     ])
-    Bd = sparse.csc_matrix([
+    Bd = np.array([
         [0.,      -0.0726,  0.,     0.0726],
         [-0.0726,  0.,      0.0726, 0.    ],
         [-0.0152,  0.0152, -0.0152, 0.0152],
@@ -234,9 +234,11 @@ def generate_static_prob_data_quadcopter():
     [nx, nu] = Bd.shape
 
     # Objective function
-    Q = sparse.diags([0., 0., 10., 10., 10., 10., 0., 0., 0., 5., 5., 5.])
+    # Q = np.array(sparse.diags([0., 0., 10., 10., 10., 10., 0., 0., 0., 5., 5., 5.]))
+    Q = np.diag([0., 0., 10., 10., 10., 10., 0., 0., 0., 5., 5., 5.])
+    # Q = np.diag([.1, .1, 10., 10., 10., 10., .1, .1, .1, 5., 5., 5.])
     QT = Q
-    R = 0.1 * sparse.eye(4)
+    R = 0.1 * np.eye(4)
 
     # - linear objective
     # q = np.hstack([np.kron(np.ones(N), -Q@xr), -QN@xr, np.zeros(N*nu)])
@@ -267,6 +269,10 @@ def multiple_random_mpc_osqp(N,
                              quadcopter=False):
     if quadcopter:
         Ad, Bd, Q, QT, R, x_ref, x_min, x_max, u_min, u_max = generate_static_prob_data_quadcopter()
+        nx, nu = Bd.shape
+        # x_init_mat = .1 * (2 * np.random.rand(N, nx) - 1)
+        x_init_mat = .4 * (2 * np.random.rand(N, nx) - 1)
+        x_init_mat[:, 3:] = 0
     else:
         Ad, Bd, Q, QT, R, x_ref, x_min, x_max, u_min, u_max = generate_static_prob_data(nx, nu, seed)
     # static_dict = static_canon_osqp(T, nx, nu, x_bar, u_bar, Q,
@@ -295,9 +301,12 @@ def multiple_random_mpc_osqp(N,
     # x_init is theta
     # x_init_mat = jnp.array(x_init_box * (2 * np.random.rand(N, nx) - 1))
     # x_init_mat = x_init_factor * jnp.array(x_bar * (2 * np.random.rand(N, nx) - 1))
-    x_diff = jnp.array(x_max - x_min)
-    x_center = x_min + x_diff / 2
-    x_init_mat = x_center + x_init_factor * (x_diff / 2) * (2 * np.random.rand(N, nx) - 1)
+    if not quadcopter:
+        x_diff = jnp.array(x_max - x_min)
+        x_center = x_min + x_diff / 2
+        x_init_mat = x_center + x_init_factor * (x_diff / 2) * (2 * np.random.rand(N, nx) - 1)
+    # import pdb
+    # pdb.set_trace()
 
     for i in range(N):
         # generate new rhs of first block constraint
@@ -308,8 +317,8 @@ def multiple_random_mpc_osqp(N,
         q_mat = q_mat.at[i, :].set(q_osqp)
     theta_mat = x_init_mat
     # return factor, P, A, q_mat, theta_mat
-    import pdb
-    pdb.set_trace()
+    # import pdb
+    # pdb.set_trace()
 
     return factor, P, A, q_mat, theta_mat, x_min, x_max, Ad, Bd, rho_vec
 
@@ -317,6 +326,11 @@ def solve_many_probs_cvxpy(P, A, q_mat):
     """
     solves many QPs where each problem has a different b vector
     """
+    # q_mat_finite = q_mat
+    q_mat = q_mat.at[q_mat == np.inf].set(10000)
+    q_mat = q_mat.at[q_mat == -np.inf].set(-10000)
+    # import pdb
+    # pdb.set_trace()
     P = cp.atoms.affine.wraps.psd_wrap(P)
     m, n = A.shape
     N = q_mat.shape[0]
@@ -357,9 +371,14 @@ def solve_multiple_trajectories(traj_length, num_traj, x_min, x_max, x_init_fact
     # first_x_inits = x_init_factor * jnp.array(x_bar * (2 * np.random.rand(num_traj, nx) - 1))
 
     # new
-    x_diff = jnp.array(x_max - x_min)
-    x_center = x_min + x_diff / 2
-    first_x_inits = x_center + x_init_factor * (x_diff / 2) * (2 * np.random.rand(num_traj, nx) - 1)
+    if nx != 12:
+        x_diff = jnp.array(x_max - x_min)
+        x_center = x_min + x_diff / 2
+        first_x_inits = x_center + x_init_factor * (x_diff / 2) * (2 * np.random.rand(num_traj, nx) - 1)
+    else:
+        # first_x_inits = 0.1 * (2 * np.random.rand(num_traj, nx) - 1)
+        first_x_inits = .4 * (2 * np.random.rand(num_traj, nx) - 1)
+        first_x_inits[:, 3:] = 0
 
     theta_mat_list = []
     z_stars_list = []
@@ -416,8 +435,14 @@ def solve_trajectory(first_x_init, P, A, q, traj_length, Ad, noise_std_dev):
         Ad_x_init = Ad @ x_init
         l = l.at[:nx].set(-Ad_x_init)
         u = u.at[:nx].set(-Ad_x_init)
-        l_param.value = np.array(l)
-        u_param.value = np.array(u)
+        l_np = np.array(l)
+        u_np = np.array(u)
+        l_np[l_np==-np.inf] = -10000
+        u_np[u_np==np.inf] = 10000
+        # import pdb
+        # pdb.set_trace()
+        l_param.value = l_np
+        u_param.value = u_np
         print('i', i)
         prob.solve(verbose=False)
 

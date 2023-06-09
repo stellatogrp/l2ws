@@ -71,18 +71,20 @@ def test_mnist():
     pdb.set_trace()
 
 
-@pytest.mark.skip(reason="temp")
+# @pytest.mark.skip(reason="temp")
 def test_quadcopter():
-    N_train = 10
-    N_test = 10
+    N_train = 1000
+    N_test = 100
     N = N_train + N_test
     T = 10
-    num_traj = 10
-    traj_length = 10
+    
+    traj_length = 20
+    num_traj = int(N_test / traj_length)
+    num_traj_train = int(N_train / traj_length)
     x_init_factor = .5
+    noise_std_dev = 0.05
+    nx, nu = 12, 4
 
-    nx = 12
-    nu = 4
     mpc_setup = multiple_random_mpc_osqp(N_train,
                                          T=T,
                                          nx=nx,
@@ -93,10 +95,97 @@ def test_quadcopter():
                                          x_init_factor=x_init_factor,
                                          quadcopter=True)
     factor, P, A, q_mat_train, theta_mat_train, x_min, x_max, Ad, Bd, rho_vec = mpc_setup
-    # train_inputs, test_inputs = theta_mat[:N_train, :], theta_mat[N_train:, :]
-    # z_stars_train, z_stars_test = None, None
-    # q_mat_train, q_mat_test = q_mat[:N_train, :], q_mat[N_train:, :]
+    m, n = A.shape
     q = q_mat_train[0, :]
+
+    theta_mat_train, z_stars_train, q_mat_train = solve_multiple_trajectories(
+        traj_length, num_traj_train, x_min, x_max, x_init_factor, Ad, P, A, q, noise_std_dev)
+
+    theta_mat_test, z_stars_test, q_mat_test = solve_multiple_trajectories(
+        traj_length, num_traj, x_min, x_max, x_init_factor, Ad, P, A, q, noise_std_dev)
+
+    # create theta_mat and q_mat
+    q_mat = jnp.vstack([q_mat_train, q_mat_test])
+    theta_mat = jnp.vstack([theta_mat_train, theta_mat_test])
+
+    # solve the QPs
+    z_stars, objvals = solve_many_probs_cvxpy(P, A, q_mat)
+    z_stars_train, z_stars_test = z_stars[:N_train, :], z_stars[N_train:, :]
+
+    # import pdb
+    # pdb.set_trace()
+    train_unrolls = 30
+    input_dict = dict(rho=rho_vec,
+                      q_mat_train=q_mat_train,
+                      q_mat_test=q_mat_test,
+                      P=P,
+                      A=A,
+                      factor=factor,
+                      train_inputs=theta_mat[:N_train, :],
+                      test_inputs=theta_mat[N_train:, :],
+                      train_unrolls=train_unrolls,
+                      nn_cfg={'intermediate_layer_sizes': [500]},
+                      jit=True)
+    osqp_model = OSQPmodel(input_dict)
+
+    train_inputs, test_inputs = theta_mat_train, theta_mat_test
+
+    # full evaluation on the test set with nearest neighbor
+    k = 300
+    nearest_neighbors_z = get_nearest_neighbors(train_inputs, test_inputs, z_stars_train)
+    nn_eval_out = osqp_model.evaluate(k, nearest_neighbors_z,
+                                      q_mat_test, z_stars=z_stars_test,
+                                      fixed_ws=True, tag='test')
+    nn_losses = nn_eval_out[1][1].mean(axis=0)
+
+    # full evaluation on the test set with prev solution
+    non_first_indices = jnp.mod(jnp.arange(N_test), num_traj) != 0
+    non_last_indices = jnp.mod(jnp.arange(N_test), num_traj) != num_traj - 1
+    q_mat_prev = q_mat_test[non_first_indices, :]
+
+    # batch_shifted_sol = vmap(shifted_sol_partial, in_axes=(0,), out_axes=(0,))
+    partial_shifted_sol_fn = partial(shifted_sol, T=T, nx=nx, nu=nu, m=m, n=n)
+    batch_shifted_sol_fn = vmap(partial_shifted_sol_fn, in_axes=(0), out_axes=(0))
+
+    prev_z = batch_shifted_sol_fn(z_stars_test[non_last_indices, :])
+    prev_sol_out = osqp_model.evaluate(k, prev_z,
+                                       q_mat_prev, z_stars=None,
+                                       fixed_ws=True, tag='test')
+    prev_sol_losses = prev_sol_out[1][1].mean(axis=0)
+
+    # full evaluation on the test set with cold-start
+    init_eval_out = osqp_model.evaluate(
+        k, test_inputs, q_mat_test, z_stars=z_stars_test, fixed_ws=False, tag='test')
+    init_test_losses = init_eval_out[1][1].mean(axis=0)
+        # train the osqp_model
+    # call train_batch without jitting
+    params, state = osqp_model.params, osqp_model.state
+    num_epochs = 500
+    train_losses = jnp.zeros(num_epochs)
+    for i in range(num_epochs):
+        train_result = osqp_model.train_full_batch(params, state)
+        loss, params, state = train_result
+        train_losses = train_losses.at[i].set(loss)
+
+    osqp_model.params, osqp_model.state = params, state
+
+    # full evaluation on the test set
+    final_eval_out = osqp_model.evaluate(
+        k, test_inputs, q_mat_test, z_stars=z_stars_test, fixed_ws=False, tag='test')
+    final_test_losses = final_eval_out[1][1].mean(axis=0)
+
+    # plotting
+    plt.plot(init_test_losses, label='cold start')
+    plt.plot(final_test_losses, label=f"learned warm-start k={train_unrolls}")
+    plt.plot(prev_sol_losses, label='prev sol')
+    plt.plot(nn_losses, label='nearest neighbor')
+    plt.yscale('log')
+    plt.legend()
+    plt.show()
+
+    import pdb
+    pdb.set_trace()
+
 
 
 
@@ -226,7 +315,7 @@ def test_shift_train():
     nn_losses = nn_eval_out[1][1].mean(axis=0)
 
 
-# @pytest.mark.skip(reason="temp")
+@pytest.mark.skip(reason="temp")
 def test_mpc_prev_sol():
     N_train = 1000
     N_test = 100
@@ -249,9 +338,6 @@ def test_mpc_prev_sol():
     factor, P, A, q_mat_train, theta_mat_train, x_min, x_max, Ad, Bd, rho_vec = mpc_setup
     m, n = A.shape
     q = q_mat_train[0, :]
-
-    # theta_mat_train, z_stars_train, q_mat_train = solve_multiple_trajectories(
-    #     T, num_traj_train, x_bar, x_init_factor, Ad, P, A, q)
 
     theta_mat_test, z_stars_test, q_mat_test = solve_multiple_trajectories(
         traj_length, num_traj, x_min, x_max, x_init_factor, Ad, P, A, q, noise_std_dev)
@@ -326,13 +412,13 @@ def test_mpc_prev_sol():
     final_test_losses = final_eval_out[1][1].mean(axis=0)
 
     # plotting
-    # plt.plot(init_test_losses, label='cold start')
-    # plt.plot(final_test_losses, label=f"learned warm-start k={train_unrolls}")
-    # plt.plot(prev_sol_losses, label='prev sol')
-    # plt.plot(nn_losses, label='nearest neighbor')
-    # plt.yscale('log')
-    # plt.legend()
-    # plt.show()
+    plt.plot(init_test_losses, label='cold start')
+    plt.plot(final_test_losses, label=f"learned warm-start k={train_unrolls}")
+    plt.plot(prev_sol_losses, label='prev sol')
+    plt.plot(nn_losses, label='nearest neighbor')
+    plt.yscale('log')
+    plt.legend()
+    plt.show()
     # import pdb
 
     # pdb.set_trace()
