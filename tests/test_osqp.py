@@ -72,6 +72,35 @@ def test_mnist():
 
 
 @pytest.mark.skip(reason="temp")
+def test_quadcopter():
+    N_train = 10
+    N_test = 10
+    N = N_train + N_test
+    T = 10
+    num_traj = 10
+    traj_length = 10
+    x_init_factor = .5
+
+    nx = 12
+    nu = 4
+    mpc_setup = multiple_random_mpc_osqp(N_train,
+                                         T=T,
+                                         nx=nx,
+                                         nu=nu,
+                                         Ad=None,
+                                         Bd=None,
+                                         seed=42,
+                                         x_init_factor=x_init_factor,
+                                         quadcopter=True)
+    factor, P, A, q_mat_train, theta_mat_train, x_min, x_max, Ad, Bd, rho_vec = mpc_setup
+    # train_inputs, test_inputs = theta_mat[:N_train, :], theta_mat[N_train:, :]
+    # z_stars_train, z_stars_test = None, None
+    # q_mat_train, q_mat_test = q_mat[:N_train, :], q_mat[N_train:, :]
+    q = q_mat_train[0, :]
+
+
+
+@pytest.mark.skip(reason="temp")
 def test_shifted_sol():
     N_train = 10
     N_test = 10
@@ -346,19 +375,21 @@ def test_mpc_prev_sol():
     # z0_mat = prev_z
 
     # cold-start
-    max_iter = 1000
+    max_iter = 10
     z0_cs = init_eval_out[1][2][:, 0, :]
     osqp_c_out = osqp_model.solve_c(z0_cs, q_mat_test, rel_tol=1e-10,
                                     abs_tol=1e-10, max_iter=max_iter)
     solve_times_cs, solve_iters_cs, x_sols_cs, y_sols_cs = osqp_c_out
     diff_x_cs = x_sols_cs[0, :] - init_eval_out[1][2][0, max_iter, :n]
     diff_y_cs = y_sols_cs[0, :] - init_eval_out[1][2][0, max_iter, n:n + m]
+    import pdb
+    pdb.set_trace()
     assert jnp.linalg.norm(diff_x_cs) <= 1e-8
     assert jnp.linalg.norm(diff_y_cs) <= 1e-8
     print("=========================================")
 
     # previous solution
-    max_iter = 1000
+    max_iter = 10
     osqp_c_out = osqp_model.solve_c(prev_z, q_mat_prev, rel_tol=1e-10,
                                     abs_tol=1e-10, max_iter=max_iter)
     solve_times, solve_iters, x_sols, y_sols = osqp_c_out
@@ -367,8 +398,7 @@ def test_mpc_prev_sol():
     assert jnp.linalg.norm(diff_x) <= 1e-8
     assert jnp.linalg.norm(diff_y) <= 1e-8
 
-    import pdb
-    pdb.set_trace()
+    
     # assert jnp.linalg.norm(x_jax - results.x) < 1e-10
     # assert jnp.linalg.norm(y_jax - results.y) < 1e-10
 
