@@ -106,7 +106,10 @@ def mpc_plot_eval_iters(cfg):
 @hydra.main(config_path='configs/phase_retrieval', config_name='phase_retrieval_plot.yaml')
 def phase_retrieval_plot_eval_iters(cfg):
     example = 'phase_retrieval'
-    plot_eval_iters(example, cfg, train=False)
+    # plot_eval_iters(example, cfg, train=False)
+    overlay_training_losses(example, cfg)
+    # plot_eval_iters(example, cfg, train=False)
+    create_journal_results(example, cfg, train=False)
 
 @hydra.main(config_path='configs/all', config_name='plot.yaml')
 def plot_l4dc(cfg):

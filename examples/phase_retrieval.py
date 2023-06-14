@@ -167,7 +167,7 @@ def generate_theta_mat_b_vals(N, A_tensor, x_mean, x_var, n_orig, d_mul):
 
         xi = np.multiply(np.random.normal(size=(n_orig), loc=x_mean, scale=np.sqrt(x_var)), negate1) \
             + 1j * np.multiply(np.random.normal(size=(n_orig), loc=x_mean, scale=np.sqrt(x_var)), negate2)
-        Xi = np.outer(xi, xi.conjugate())
+        Xi = np.outer(xi, xi.conjugate()) / 10
         # col_idx, row_idx = np.triu_indices(n_orig)
         # theta_mat[i, :] = Xi[(col_idx, row_idx)]
         # import pdb
