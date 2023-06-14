@@ -63,7 +63,7 @@ class L2WSmodel(object):
             self.z_stars_train, self.z_stars_test = None, None
 
     def create_end2end_loss_fn(self, bypass_nn, diff_required):
-        supervised = self.supervised #and diff_required
+        supervised = self.supervised and diff_required
         loss_method = self.loss_method
 
         def predict(params, input, q, iters, z_star):
