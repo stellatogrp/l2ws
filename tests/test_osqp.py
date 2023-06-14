@@ -73,7 +73,7 @@ def test_mnist():
 
 # @pytest.mark.skip(reason="temp")
 def test_quadcopter():
-    N_train = 200
+    N_train = 1000
     N_test = 100
     N = N_train + N_test
     T = 10
@@ -112,7 +112,7 @@ def test_quadcopter():
     # z_stars, objvals = solve_many_probs_cvxpy(P, A, q_mat)
     # z_stars_train, z_stars_test = z_stars[:N_train, :], z_stars[N_train:, :]
 
-    train_unrolls = 15
+    train_unrolls = 5
     input_dict = dict(rho=rho_vec,
                       q_mat_train=q_mat_train,
                       q_mat_test=q_mat_test,
@@ -122,17 +122,17 @@ def test_quadcopter():
                       train_inputs=theta_mat[:N_train, :],
                       test_inputs=theta_mat[N_train:, :],
                       train_unrolls=train_unrolls,
-                      nn_cfg={'intermediate_layer_sizes': [1000]},
-                      supervised=False,
+                      nn_cfg={'intermediate_layer_sizes': [100, 100]},
+                      supervised=True,
                       z_stars_train=z_stars_train,
                       z_stars_test=z_stars_test,
                       jit=True)
     osqp_model = OSQPmodel(input_dict)
 
     sim_len = 20
-    q_init = q_mat_train[0, :] #q_mat_test[0, :]
-    x_init = theta_mat_train[0, :] #theta_mat_test[0, :]
-    k_plot = train_unrolls
+    q_init = q_mat_test[0, :]
+    x_init = theta_mat_test[0, :]
+    k_plot = 30
     noise_vec_list = [noise_std_dev * jnp.array(np.random.normal(size=x_init.size)) for i in range(sim_len)]
 
     # simulate forward
@@ -181,7 +181,7 @@ def test_quadcopter():
         # train the osqp_model
     # call train_batch without jitting
     params, state = osqp_model.params, osqp_model.state
-    num_epochs = 1000
+    num_epochs = 2000
     train_losses = jnp.zeros(num_epochs)
     # import pdb
     # pdb.set_trace()

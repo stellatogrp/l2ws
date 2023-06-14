@@ -283,7 +283,7 @@ def multiple_random_mpc_osqp(N,
         x_init_mat = x_init_factor * (2 * np.random.rand(N, nx) - 1)
         # x_init_mat[:, 2] = 2 * (2 * np.random.rand(N) - 1)
         x_init_mat[:, 3:] = 0
-        x_init_mat[:, 1] = 0
+        # x_init_mat[:, 1] = 0
     else:
         Ad, Bd, Q, QT, R, x_ref, x_min, x_max, u_min, u_max = generate_static_prob_data(nx, nu, seed)
     # static_dict = static_canon_osqp(T, nx, nu, x_bar, u_bar, Q,
@@ -392,7 +392,7 @@ def solve_multiple_trajectories(traj_length, num_traj, x_min, x_max, x_init_fact
         first_x_inits = x_init_factor * (2 * np.random.rand(num_traj, nx) - 1)
         # first_x_inits[:, 2] = 2 * (2 * np.random.rand(num_traj) - 1)
         first_x_inits[:, 3:] = 0
-        first_x_inits[:, 1] = 0
+        # first_x_inits[:, 1] = 0
 
     theta_mat_list = []
     z_stars_list = []
