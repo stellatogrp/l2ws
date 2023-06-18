@@ -13,6 +13,9 @@ from functools import partial
 from jax import vmap
 from scipy import sparse
 
+QUADCOPTER_NX = 13
+QUADCOPTER_NU = 4
+
 
 def run(run_cfg):
     example = "mpc"
@@ -481,7 +484,7 @@ def solve_trajectory(first_x_init, P_orig, A, q, traj_length, Ad, noise_std_dev)
     return theta_mat, z_stars, q_mat
 
 
-def quadcopter_dynamics(state, thrusts):
+def quadcopter_dynamics(state, thrusts, t):
     """
     x = state
     u = thrusts
@@ -524,33 +527,35 @@ def quadcopter_dynamics(state, thrusts):
     velocity_dot = forces / mass
 
     # Quaternion derivative
-    quaternion_dot = 0.5 * quaternion_product(quaternion, jnp.concatenate([[0], angular_velocity]))
+    quaternion_dot = 0.5 * quaternion_product(quaternion, jnp.concatenate([jnp.array([0]), angular_velocity]))
 
     # Angular velocity derivative
     inertia_matrix_inv = inertia_matrix_inverse(quaternion)
     angular_velocity_dot = inertia_matrix_inv.dot(torques)
 
     # Concatenate the state derivatives
-    state_dot = jnp.concatenate([position_dot, velocity_dot, quaternion_dot[1:], angular_velocity_dot])
+    # state_dot = jnp.concatenate([position_dot, velocity_dot, quaternion_dot[1:], angular_velocity_dot])
+    state_dot = jnp.concatenate([position_dot, velocity_dot, quaternion_dot, angular_velocity_dot])
 
     return state_dot
 
 
 def quaternion_to_rotation_matrix(quaternion):
     w, x, y, z = quaternion
-    return np.array([
+    return jnp.array([
         [1 - 2 * (y ** 2 + z ** 2), 2 * (x * y - w * z), 2 * (x * z + w * y)],
         [2 * (x * y + w * z), 1 - 2 * (x ** 2 + z ** 2), 2 * (y * z - w * x)],
         [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x ** 2 + y ** 2)]
     ])
 
-def quaternion_product(quaternion1, quaternion2):
-    w1, x1, y1, z1 = quaternion1
-    w2, x2, y2, z2 = quaternion2
+def quaternion_product(q1, q2):
+    w1, x1, y1, z1 = q1
+    w2, x2, y2, z2 = q2
     w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
     x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
-    y = w1 * y
-    return np.array([w, x, y, z])
+    y = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
+    z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
+    return jnp.array([w, x, y, z])
 
 
 def inertia_matrix_inverse(quaternion):
@@ -561,7 +566,7 @@ def inertia_matrix_inverse(quaternion):
 
     qw, qx, qy, qz = quaternion
 
-    I_inv = np.array([
+    I_inv = jnp.array([
         [1 / Ixx, 0, 0],
         [0, 1 / Iyy, 0],
         [0, 0, 1 / Izz]
@@ -570,3 +575,47 @@ def inertia_matrix_inverse(quaternion):
     R = quaternion_to_rotation_matrix(quaternion)
 
     return R @ I_inv @ R.T
+
+
+def plot_traj_3d(state_traj_list, labels):
+    """
+    state_traj_list is a list of lists
+    """
+    fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')
+    for j in range(len(labels)):
+        curr_state_traj = state_traj_list[j]
+        x = np.array([curr_state_traj[i][0] for i in range(len(curr_state_traj))])
+        y = np.array([curr_state_traj[i][1] for i in range(len(curr_state_traj))])
+        z = np.array([curr_state_traj[i][2] for i in range(len(curr_state_traj))])
+        if labels[j] == 'optimal':
+            ax.scatter(x, y, z, label=labels[j], color='green')
+        else:
+            ax.plot(x, y, z, label=labels[j])
+    plt.legend()
+    plt.show()
+
+
+def makeWaypoints():
+    deg2rad = jnp.pi / 180.0
+    
+    v_average = 1.6
+
+    t_ini = 3
+    t = jnp.array([2, 0, 2, 0])
+    
+    wp_ini = jnp.array([0, 0, 0])
+    wp = jnp.array([[2, 2, 1],
+                   [-2, 3, -3],
+                   [-2, -1, -3],
+                   [3, -2, 1],
+                   wp_ini])
+
+    yaw_ini = 0    
+    yaw = jnp.array([20, -90, 120, 45])
+
+    t = jnp.hstack((t_ini, t)).astype(float)
+    wp = jnp.vstack((wp_ini, wp)).astype(float)
+    yaw = jnp.hstack((yaw_ini, yaw)).astype(float) * deg2rad
+
+    return t, wp, yaw, v_average

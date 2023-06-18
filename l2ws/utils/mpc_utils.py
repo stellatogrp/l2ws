@@ -28,10 +28,11 @@ def closed_loop_rollout(qp_solver, x_init_traj, dynamics, system_constants, traj
         s.t. x_{t+1} = f(x)
 
     arguments
-    qp_solver: input: A, B, x0, ref_traj, budget
+    qp_solver: input: A, B, x0, u0, ref_traj, budget
         output: qp solution - primal and dual solutions stacked together (i.e. the z vector that is used as the fixed point)
         important: the qp_solver must already be customized to work with the lower and upper bounds of x and u
             and the cost matrices Q, QT, and R must already be set
+        
     system_constants: dictionary that includes (T, nx, nu, x_min, x_max, u_min, u_max, dt)
         T: mpc horizon length
         nx: numger of states
@@ -50,6 +51,7 @@ def closed_loop_rollout(qp_solver, x_init_traj, dynamics, system_constants, traj
 
     the problem is parametric around (x0, u0, ref_traj)
         u0 is needed since (A, B) are linearized around the current control
+        so theta = (x0, u0, ref_traj)
     """
     T, dt = system_constants['T'], system_constants['dt']
     nx, nu = system_constants['nx'], system_constants['nu']
@@ -57,28 +59,36 @@ def closed_loop_rollout(qp_solver, x_init_traj, dynamics, system_constants, traj
     # u_min, u_max = system_constants['u_min'], system_constants['u_max']
     sim_len = len(traj_list)
 
+    # noise
+    if noise_list is None:
+        noise_list = [jnp.zeros(nx)] * sim_len
+
     # first state in the trajectory is given
     x0 = x_init_traj
     u0 = jnp.zeros(nu)
 
     sols = []
+    state_traj_list = [x0]
     for j in range(sim_len):
         # Compute the state matrix A
-        A = jax.jacobian(lambda x: dynamics(x, u0))(x0)
+        A = jax.jacobian(lambda x: dynamics(x, u0, j))(x0)
 
         # Compute the input matrix B
-        B = jax.jacobian(lambda u: dynamics(x0, u))(u0)
+        B = jax.jacobian(lambda u: dynamics(x0, u, j))(u0)
 
 		# solve the qp
-        sol = qp_solver(A, B, x0, traj_list[j], budget)
+        sol = qp_solver(A, B, x0, u0, traj_list[j], budget)
         sols.append(sol)
         
         # implement the first control
         u0 = extract_first_control(sol, T, nx, nu)
     
         # get the next state
-        x0 = integrators.euler(dynamics, dt) + noise_list[j]
-    return sols
+        integrator = integrators.euler(dynamics, dt=dt)
+
+        x0 = integrator(x0, u0, j) + noise_list[j]
+        state_traj_list.append(x0)
+    return sols, state_traj_list
 
 
 def simulate_fwd_l2ws(sim_len, l2ws_model, k, noise_vec_list, q_init, x_init, A, Ad, Bd, T, nx, nu, prev_sol=False):
