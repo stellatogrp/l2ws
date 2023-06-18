@@ -45,7 +45,8 @@ def run(run_cfg):
                                          x_init_factor=x_init_factor,
                                          quadcopter=quadcopter)
     # factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, rho_vec = mpc_setup
-    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
+    # factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
+    factor, P, A, q_mat_train, theta_mat_train, x_min, x_max, Ad, Bd, rho_vec = mpc_setup
     m, n = A.shape
 
     static_dict = dict(factor=factor, P=P, A=A, rho=rho_vec)
@@ -478,3 +479,5 @@ def solve_trajectory(first_x_init, P_orig, A, q, traj_length, Ad, noise_std_dev)
         x_init = x_star[:nx] + noise
         # print('x_init', x_init)
     return theta_mat, z_stars, q_mat
+
+

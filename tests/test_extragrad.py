@@ -55,7 +55,7 @@ def test_basic_extragrad():
 # @pytest.mark.skip(reason="temp")
 def test_train_extragrad():
     # ista setup
-    N_train = 100
+    N_train = 5000
     N_test = 20
     N = N_train + N_test
     m, n = 20, 20
@@ -63,7 +63,7 @@ def test_train_extragrad():
     Q = 1 * jnp.eye(n)
     R = 1 * jnp.eye(m)
     A0 = jnp.array(np.random.normal(size=(m, n)))
-    A_tensor = A0 + .1 * jnp.array(np.random.normal(size=(N, m, n))) #jnp.ones((N, m, n)) #
+    A_tensor = 0*A0 + 1 * jnp.array(np.random.normal(size=(N, m, n))) #jnp.ones((N, m, n)) #
     c_mat = jnp.array(np.random.normal(size=(N, n)))
     b_mat = jnp.array(np.random.normal(size=(N, m)))
     A_stacked = jnp.reshape(A_tensor, (N, m * n))
@@ -113,7 +113,7 @@ def test_train_extragrad():
     # nn_cfg = {}
     batch_size = 10
     nn_cfg = {'intermediate_layer_sizes': [100, 100], 'batch_size': batch_size, 'method': 'adam', 'lr': 1e-4}
-    train_unrolls = 15
+    train_unrolls = 1
     input_dict = dict(supervised=True,
                       train_unrolls=train_unrolls, 
                       jit=True,
@@ -154,7 +154,7 @@ def test_train_extragrad():
 
     # call train_batch without jitting
     params, state = l2ws_model.params, l2ws_model.state
-    num_epochs = 20000
+    num_epochs = 1000
     # losses = jnp.zeros(num_epochs)
     losses = []
     num_batches = int(N_train / batch_size)
