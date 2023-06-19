@@ -10,6 +10,8 @@ class GDmodel(L2WSmodel):
         super(GDmodel, self).__init__(input_dict)
 
     def initialize_algo(self, input_dict):
+        self.algo = 'gd'
+        self.factors_required = False
         self.q_mat_train, self.q_mat_test = input_dict['b_mat_train'], input_dict['b_mat_test']
         P = input_dict['P']
         gd_step = input_dict['gd_step']

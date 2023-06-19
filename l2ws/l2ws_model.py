@@ -18,6 +18,7 @@ import logging
 from functools import partial
 from l2ws.algo_steps import lin_sys_solve
 # from l2ws.scs_model import SCSmodel
+# from l2ws.scs_model import SCSmodel
 config.update("jax_enable_x64", True)
 
 
@@ -67,14 +68,17 @@ class L2WSmodel(object):
         loss_method = self.loss_method
 
         def predict(params, input, q, iters, z_star, factor):
-            if self.out_axes_length == 8:
+            if self.algo == 'scs':
+                # q = lin_sys_solve(self.factor, q)
+                q = lin_sys_solve(factor, q)
                 hsde = self.hsde
             else:
                 hsde = False
             z0, alpha = self.predict_warm_start(params, input, bypass_nn, hsde=hsde)
 
-            if self.out_axes_length == 8:
-                q = lin_sys_solve(self.factor, q)
+            # if self.out_axes_length == 8:
+            # if isinstance(self, SCSmodel):
+            #     q = lin_sys_solve(self.factor, q)
 
             if diff_required:
                 z_final, iter_losses = self.k_steps_train_fn(k=iters, 
