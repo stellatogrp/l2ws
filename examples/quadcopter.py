@@ -60,7 +60,7 @@ def run(run_cfg):
 
     partial_shifted_sol_fn = partial(shifted_sol, T=T, nx=nx, nu=nu, m=m, n=n)
     batch_shifted_sol_fn = vmap(partial_shifted_sol_fn, in_axes=(0), out_axes=(0))
-    workspace = Workspace(algo, run_cfg, static_flag, static_dict, example, 
+    workspace = Workspace(algo, run_cfg, static_flag, static_dict, example,
                           traj_length=traj_length, shifted_sol_fn=batch_shifted_sol_fn)
 
     # run the workspace
@@ -191,7 +191,7 @@ def generate_static_prob_data(nx, nu, seed):
     R = .1 * np.eye(nu)
 
     q_vec = np.random.rand(nx) * 10
-    p = 0.7 #1.0
+    p = 0.7  # 1.0
     q_vec_mask = np.random.choice([0, 1], size=(nx), p=[1-p, p], replace=True)
     q_vec = np.multiply(q_vec, q_vec_mask)
     Q = np.diag(q_vec)
@@ -209,31 +209,31 @@ def generate_static_prob_data(nx, nu, seed):
 def generate_static_prob_data_quadcopter():
     # dynamics
     Ad = np.array([
-        [1.,      0.,     0., 0., 0., 0., 0.1,     0.,     0.,  0.,     0.,     0.    ],
-        [0.,      1.,     0., 0., 0., 0., 0.,      0.1,    0.,  0.,     0.,     0.    ],
-        [0.,      0.,     1., 0., 0., 0., 0.,      0.,     0.1, 0.,     0.,     0.    ],
-        [0.0488,  0.,     0., 1., 0., 0., 0.0016,  0.,     0.,  0.0992, 0.,     0.    ],
-        [0.,     -0.0488, 0., 0., 1., 0., 0.,     -0.0016, 0.,  0.,     0.0992, 0.    ],
+        [1.,      0.,     0., 0., 0., 0., 0.1,     0.,     0.,  0.,     0.,     0.],
+        [0.,      1.,     0., 0., 0., 0., 0.,      0.1,    0.,  0.,     0.,     0.],
+        [0.,      0.,     1., 0., 0., 0., 0.,      0.,     0.1, 0.,     0.,     0.],
+        [0.0488,  0.,     0., 1., 0., 0., 0.0016,  0.,     0.,  0.0992, 0.,     0.],
+        [0.,     -0.0488, 0., 0., 1., 0., 0.,     -0.0016, 0.,  0.,     0.0992, 0.],
         [0.,      0.,     0., 0., 0., 1., 0.,      0.,     0.,  0.,     0.,     0.0992],
-        [0.,      0.,     0., 0., 0., 0., 1.,      0.,     0.,  0.,     0.,     0.    ],
-        [0.,      0.,     0., 0., 0., 0., 0.,      1.,     0.,  0.,     0.,     0.    ],
-        [0.,      0.,     0., 0., 0., 0., 0.,      0.,     1.,  0.,     0.,     0.    ],
-        [0.9734,  0.,     0., 0., 0., 0., 0.0488,  0.,     0.,  0.9846, 0.,     0.    ],
-        [0.,     -0.9734, 0., 0., 0., 0., 0.,     -0.0488, 0.,  0.,     0.9846, 0.    ],
+        [0.,      0.,     0., 0., 0., 0., 1.,      0.,     0.,  0.,     0.,     0.],
+        [0.,      0.,     0., 0., 0., 0., 0.,      1.,     0.,  0.,     0.,     0.],
+        [0.,      0.,     0., 0., 0., 0., 0.,      0.,     1.,  0.,     0.,     0.],
+        [0.9734,  0.,     0., 0., 0., 0., 0.0488,  0.,     0.,  0.9846, 0.,     0.],
+        [0.,     -0.9734, 0., 0., 0., 0., 0.,     -0.0488, 0.,  0.,     0.9846, 0.],
         [0.,      0.,     0., 0., 0., 0., 0.,      0.,     0.,  0.,     0.,     0.9846]
     ])
     Bd = np.array([
         [0.,      -0.0726,  0.,     0.0726],
-        [-0.0726,  0.,      0.0726, 0.    ],
+        [-0.0726,  0.,      0.0726, 0.],
         [-0.0152,  0.0152, -0.0152, 0.0152],
         [-0.,     -0.0006, -0.,     0.0006],
         [0.0006,   0.,     -0.0006, 0.0000],
         [0.0106,   0.0106,  0.0106, 0.0106],
         [0,       -1.4512,  0.,     1.4512],
-        [-1.4512,  0.,      1.4512, 0.    ],
+        [-1.4512,  0.,      1.4512, 0.],
         [-0.3049,  0.3049, -0.3049, 0.3049],
         [-0.,     -0.0236,  0.,     0.0236],
-        [0.0236,   0.,     -0.0236, 0.    ],
+        [0.0236,   0.,     -0.0236, 0.],
         [0.2107,   0.2107,  0.2107, 0.2107]
     ])
     [nx, nu] = Bd.shape
@@ -245,21 +245,21 @@ def generate_static_prob_data_quadcopter():
     Q = np.diag([10., 10., 10., 10., 10., 10., 10., 10., 10., 5., 5., 5.]) / 10
     # Q = np.diag([.1, .1, 10., 10., 10., 10., .1, .1, .1, 5., 5., 5.])
     QT = Q
-    R = .1 * np.eye(4)  #0.1 * np.eye(4)
+    R = .1 * np.eye(4)  # 0.1 * np.eye(4)
 
     # - linear objective
     # q = np.hstack([np.kron(np.ones(N), -Q@xr), -QN@xr, np.zeros(N*nu)])
-    x_ref = np.array([.5,.5,1.,0.,0.,0.,0.,0.,0.,0.,0.,0.])
+    x_ref = np.array([.5, .5, 1., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
 
     # Constraints
     u0 = 10.5916
     u_min = np.array([9.6, 9.6, 9.6, 9.6]) - u0
     u_max = np.array([13., 13., 13., 13.]) - u0
     x_bds = 100
-    x_min = np.array([-x_bds,-x_bds,-np.inf,-np.inf,-np.inf,-1.,
-                    -np.inf,-np.inf,-np.inf,-np.inf,-np.inf,-np.inf])
-    x_max = np.array([ x_bds, x_bds, np.inf, np.inf, np.inf, np.inf,
-                    np.inf, np.inf, np.inf, np.inf, np.inf, np.inf])
+    x_min = np.array([-x_bds, -x_bds, -np.inf, -np.inf, -np.inf, -1.,
+                      -np.inf, -np.inf, -np.inf, -np.inf, -np.inf, -np.inf])
+    x_max = np.array([x_bds, x_bds, np.inf, np.inf, np.inf, np.inf,
+                      np.inf, np.inf, np.inf, np.inf, np.inf, np.inf])
     # x_min = np.array([-np.pi/6,-np.pi/6,-np.inf,-np.inf,-np.inf,-1.,
     #                 -np.inf,-np.inf,-np.inf,-np.inf,-np.inf,-np.inf])
     # x_max = np.array([ np.pi/6, np.pi/6, np.inf, np.inf, np.inf, np.inf,
@@ -268,12 +268,12 @@ def generate_static_prob_data_quadcopter():
     return Ad, Bd, Q, QT, R, x_ref, x_min, x_max, u_min, u_max
 
 
-def multiple_random_mpc_osqp(N, 
-                             T=10, 
-                             x_init_factor=.3, 
-                             nx=20, 
+def multiple_random_mpc_osqp(N,
+                             T=10,
+                             x_init_factor=.3,
+                             nx=20,
                              nu=10,
-                             sigma=1, 
+                             sigma=1,
                              rho=1,
                              Ad=None,
                              Bd=None,
@@ -289,7 +289,8 @@ def multiple_random_mpc_osqp(N,
         x_init_mat[:, 3:] = 0
         # x_init_mat[:, 1] = 0
     else:
-        Ad, Bd, Q, QT, R, x_ref, x_min, x_max, u_min, u_max = generate_static_prob_data(nx, nu, seed)
+        Ad, Bd, Q, QT, R, x_ref, x_min, x_max, u_min, u_max = generate_static_prob_data(
+            nx, nu, seed)
     # static_dict = static_canon_osqp(T, nx, nu, x_bar, u_bar, Q,
     #                                 QT, R, Ad=Ad, Bd=Bd)
     static_dict = static_canon_osqp(T, nx, nu, x_min, x_max, u_min, u_max, Q,
@@ -299,8 +300,6 @@ def multiple_random_mpc_osqp(N,
     m, n = A.shape
     Ad = static_dict['A_dynamics']
     cones = static_dict['cones']
-
-    
 
     q_mat = jnp.zeros((N, n + 2 * m))
     q_mat = q_mat.at[:, :n].set(c)
@@ -336,6 +335,7 @@ def multiple_random_mpc_osqp(N,
     # pdb.set_trace()
 
     return factor, P, A, q_mat, theta_mat, x_min, x_max, Ad, Bd, rho_vec
+
 
 def solve_many_probs_cvxpy(P, A, q_mat):
     """
@@ -389,7 +389,8 @@ def solve_multiple_trajectories(traj_length, num_traj, x_min, x_max, x_init_fact
     if nx != 12:
         x_diff = jnp.array(x_max - x_min)
         x_center = x_min + x_diff / 2
-        first_x_inits = x_center + x_init_factor * (x_diff / 2) * (2 * np.random.rand(num_traj, nx) - 1)
+        first_x_inits = x_center + x_init_factor * \
+            (x_diff / 2) * (2 * np.random.rand(num_traj, nx) - 1)
     else:
         # first_x_inits = 0.1 * (2 * np.random.rand(num_traj, nx) - 1)
         # first_x_inits = .4 * (2 * np.random.rand(num_traj, nx) - 1)
@@ -403,7 +404,7 @@ def solve_multiple_trajectories(traj_length, num_traj, x_min, x_max, x_init_fact
     q_mat_list = []
     for i in range(num_traj):
         first_x_init = first_x_inits[i, :]
-        theta_mat_curr, z_stars_curr, q_mat_curr = solve_trajectory(first_x_init, P, A, q, 
+        theta_mat_curr, z_stars_curr, q_mat_curr = solve_trajectory(first_x_init, P, A, q,
                                                                     traj_length, Ad, noise_std_dev)
         theta_mat_list.append(theta_mat_curr)
         z_stars_list.append(z_stars_curr)
@@ -456,8 +457,8 @@ def solve_trajectory(first_x_init, P_orig, A, q, traj_length, Ad, noise_std_dev)
         u = u.at[:nx].set(-Ad_x_init)
         l_np = np.array(l)
         u_np = np.array(u)
-        l_np[l_np==-np.inf] = -10000
-        u_np[u_np==np.inf] = 10000
+        l_np[l_np == -np.inf] = -10000
+        u_np[u_np == np.inf] = 10000
         # import pdb
         # pdb.set_trace()
         l_param.value = l_np
@@ -468,7 +469,7 @@ def solve_trajectory(first_x_init, P_orig, A, q, traj_length, Ad, noise_std_dev)
         x_star = jnp.array(x.value)
         y_star = jnp.array(constraints[0].dual_value)
         w_star = jnp.array(w.value)
-        
+
         z_star = jnp.concatenate([x_star, y_star, w_star])
         # print('z_star', z_star[:20])
         z_stars = z_stars.at[i, :].set(z_star)
@@ -478,7 +479,7 @@ def solve_trajectory(first_x_init, P_orig, A, q, traj_length, Ad, noise_std_dev)
 
         # set the next x_init
         # x_init = x_star[nx:2 * nx]
-        noise = noise_std_dev * jnp.array(np.random.normal(size=(nx,))) #* x_bar
+        noise = noise_std_dev * jnp.array(np.random.normal(size=(nx,)))  # * x_bar
         x_init = x_star[:nx] + noise
         # print('x_init', x_init)
     return theta_mat, z_stars, q_mat
@@ -527,7 +528,8 @@ def quadcopter_dynamics(state, thrusts, t):
     velocity_dot = forces / mass
 
     # Quaternion derivative
-    quaternion_dot = 0.5 * quaternion_product(quaternion, jnp.concatenate([jnp.array([0]), angular_velocity]))
+    quaternion_dot = 0.5 * quaternion_product(quaternion,
+                                              jnp.concatenate([jnp.array([0]), angular_velocity]))
 
     # Angular velocity derivative
     inertia_matrix_inv = inertia_matrix_inverse(quaternion)
@@ -547,6 +549,7 @@ def quaternion_to_rotation_matrix(quaternion):
         [2 * (x * y + w * z), 1 - 2 * (x ** 2 + z ** 2), 2 * (y * z - w * x)],
         [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x ** 2 + y ** 2)]
     ])
+
 
 def quaternion_product(q1, q2):
     w1, x1, y1, z1 = q1
@@ -598,12 +601,12 @@ def plot_traj_3d(state_traj_list, labels):
 
 def makeWaypoints():
     deg2rad = jnp.pi / 180.0
-    
+
     v_average = 1.6
 
     t_ini = 3
     t = jnp.array([2, 0, 2, 0])
-    
+
     wp_ini = jnp.array([0, 0, 0])
     wp = jnp.array([[2, 2, 1],
                    [-2, 3, -3],
@@ -611,7 +614,7 @@ def makeWaypoints():
                    [3, -2, 1],
                    wp_ini])
 
-    yaw_ini = 0    
+    yaw_ini = 0
     yaw = jnp.array([20, -90, 120, 45])
 
     t = jnp.hstack((t_ini, t)).astype(float)
@@ -619,3 +622,21 @@ def makeWaypoints():
     yaw = jnp.hstack((yaw_ini, yaw)).astype(float) * deg2rad
 
     return t, wp, yaw, v_average
+
+
+def make_obstacle_course():
+    goals = jnp.array([[2, 2, 1],
+                       [-2, 3, -3],
+                       [-2, -1, -3],
+                       [3, -2, 1],
+                       [0, 0, 0]])
+    nx = QUADCOPTER_NX
+    traj_list = []
+    for i in range(5):
+        ref = jnp.zeros(nx)
+        # import pdb
+        # pdb.set_trace()
+        ref = ref.at[:3].set(goals[i, :])
+        traj_list.append(ref)
+
+    return traj_list

@@ -19,18 +19,48 @@ from scipy.spatial import distance_matrix
 from l2ws.utils.nn_utils import get_nearest_neighbors
 import osqp
 from l2ws.utils.mpc_utils import closed_loop_rollout
-from examples.quadcopter import quadcopter_dynamics, QUADCOPTER_NX, QUADCOPTER_NU, plot_traj_3d
+from examples.quadcopter import quadcopter_dynamics, QUADCOPTER_NX, QUADCOPTER_NU, plot_traj_3d, make_obstacle_course
 
 
-def test_plot():
-    pass
+# @pytest.mark.skip(reason="temp")
+def test_optimal_control_obstacle_rollout():
+    """
+    runs the optimal controller for a large number of steps to get from point A to point B
+    point A: origin
+    point B: pos = (2, 2, 1), velocity = (0, 0, 0)
+    """
+    sim_len = 40
+    budget = 5
+    dynamics = quadcopter_dynamics
+    T = 10
+    nx, nu = QUADCOPTER_NX, QUADCOPTER_NU
+    system_constants = dict(T=T, nx=nx, nu=nu, dt=.01)
+    x_init_traj = jnp.zeros(nx)
+
+    # create the actual qp solver
+    n = T * nx
+    m = T * nx
+    def qp_solver(A, B, x0, u0, ref_traj, budget):
+        return jnp.zeros(n + 2 * m)
+    
+    # reference trajectory dict
+    traj_list = make_obstacle_course()
+    Q = jnp.diag(jnp.array([1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0]))
+    ref_traj_dict = dict(case='obstacle_course', traj_list=traj_list, Q=Q, tol=.01)
+
+    # do the closed loop rollout
+    sols, state_traj_list = closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_constants, ref_traj_dict, budget, noise_list=None)
+    assert jnp.linalg.norm(state_traj_list[20][:2]) == 0
+    assert state_traj_list[20][2] < -.1
 
 
-def test_basic_rollout():
+@pytest.mark.skip(reason="temp")
+def test_zero_control_rollout():
     """
     tests a basic rollout with zero control
+
+    the quadcopter should just drop vertically
     """
-    
     
     sim_len = 40
     budget = 5
@@ -46,11 +76,19 @@ def test_basic_rollout():
     m = T * nx
     def qp_solver(A, B, x0, u0, ref_traj, budget):
         return jnp.zeros(n + 2 * m)
-    sols, state_traj_list = closed_loop_rollout(qp_solver, x_init_traj, dynamics, system_constants, traj_list, budget, noise_list=None)
-    import pdb
-    pdb.set_trace()
-    # state_traj_list = 
-    plot_traj_3d([state_traj_list], labels=['blank'])
+    
+    # reference trajectory dict
+    ref_traj_dict = dict(case='fixed_path', traj_list=traj_list)
+
+    # do the closed loop rollout
+    sols, state_traj_list = closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_constants, ref_traj_dict, budget, noise_list=None)
+
+    # assert that the position moves down vertically
+    assert jnp.linalg.norm(state_traj_list[20][:2]) == 0
+    assert state_traj_list[20][2] < -.1
+
+    # plot should show vertical drop that accelerates
+    # plot_traj_3d([state_traj_list], labels=['blank'])
 
 
 @pytest.mark.skip(reason="temp")

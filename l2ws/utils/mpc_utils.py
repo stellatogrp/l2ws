@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 
 
 # def closed_loop_rollout(qp_solver, x_init_traj, nx, nu, ode, T, x_min, x_max, u_min, u_max, traj_list, budget):
-def closed_loop_rollout(qp_solver, x_init_traj, dynamics, system_constants, traj_list, budget, noise_list):
+def closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_constants, ref_traj_dict, budget, noise_list):
     """
     Runs a closed loop rollout for a control problem where we solve an mpc problem at each iteration
         and run the first control input
@@ -57,7 +57,7 @@ def closed_loop_rollout(qp_solver, x_init_traj, dynamics, system_constants, traj
     nx, nu = system_constants['nx'], system_constants['nu']
     # x_min, x_max = system_constants['x_min'], system_constants['x_max']
     # u_min, u_max = system_constants['u_min'], system_constants['u_max']
-    sim_len = len(traj_list)
+    # sim_len = len(traj_list)
 
     # noise
     if noise_list is None:
@@ -69,6 +69,7 @@ def closed_loop_rollout(qp_solver, x_init_traj, dynamics, system_constants, traj
 
     sols = []
     state_traj_list = [x0]
+    obstacle_num = 0
     for j in range(sim_len):
         # Compute the state matrix A
         A = jax.jacobian(lambda x: dynamics(x, u0, j))(x0)
@@ -77,7 +78,8 @@ def closed_loop_rollout(qp_solver, x_init_traj, dynamics, system_constants, traj
         B = jax.jacobian(lambda u: dynamics(x0, u, j))(u0)
 
 		# solve the qp
-        sol = qp_solver(A, B, x0, u0, traj_list[j], budget)
+        ref_traj = get_curr_ref_traj(ref_traj_dict, j, obstacle_num)
+        sol = qp_solver(A, B, x0, u0, ref_traj, budget)
         sols.append(sol)
         
         # implement the first control
@@ -85,10 +87,34 @@ def closed_loop_rollout(qp_solver, x_init_traj, dynamics, system_constants, traj
     
         # get the next state
         integrator = integrators.euler(dynamics, dt=dt)
-
         x0 = integrator(x0, u0, j) + noise_list[j]
+
+        # check if the obstacle number should be updated
+        obstacle_num = update_obstacle_num(x0, ref_traj_dict, j, obstacle_num)
+        
         state_traj_list.append(x0)
     return sols, state_traj_list
+
+
+def update_obstacle_num(x, ref_traj_dict, j, obstacle_num):
+    """
+    checks to see if we are close enough to the current obstacle
+    """
+    if ref_traj_dict['case'] == 'obstacle_course':
+        # check if (x - x_ref)^T Q (x - x_ref) is small -- if it is, we move onto the next obstacle
+        tol = ref_traj_dict['tol']
+        Q = ref_traj_dict['Q']
+        curr_ref = ref_traj_dict['traj_list'][obstacle_num]
+        if (x - curr_ref).T @ Q @ (x - curr_ref) <= tol:
+            obstacle_num += 1
+    return obstacle_num
+
+
+def get_curr_ref_traj(ref_traj_dict, t, obstacle_num):
+    if ref_traj_dict['case'] == 'fixed_path':
+        return ref_traj_dict['traj_list'][t]
+    elif ref_traj_dict['case'] == 'obstacle_course':
+        return ref_traj_dict['traj_list'][obstacle_num]
 
 
 def simulate_fwd_l2ws(sim_len, l2ws_model, k, noise_vec_list, q_init, x_init, A, Ad, Bd, T, nx, nu, prev_sol=False):
