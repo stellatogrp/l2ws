@@ -15,20 +15,34 @@ class OSQPmodel(L2WSmodel):
 
 
     def initialize_algo(self, input_dict):
-        self.A = input_dict['A']
-        self.P = input_dict.get('P', None)
-        factor = input_dict['factor']
-        self.m, self.n = self.A.shape
+        # self.m, self.n = self.A.shape
+        self.m, self.n = input_dict['m'], input_dict['n']
         self.q_mat_train, self.q_mat_test = input_dict['q_mat_train'], input_dict['q_mat_test']
-        # rho = input_dict.get('rho', 1)
+
         rho = input_dict['rho']
-
         sigma = input_dict.get('sigma', 1)
-
         self.output_size = self.n + self.m
 
-        self.k_steps_train_fn = partial(k_steps_train_osqp, factor=factor, A=self.A, rho=rho, sigma=sigma, jit=self.jit)
-        self.k_steps_eval_fn = partial(k_steps_eval_osqp, factor=factor, P=self.P, A=self.A, rho=rho, sigma=sigma, jit=self.jit)
+        """
+        break into the 2 cases
+        1. factors are the same for each problem (i.e. matrices A and P don't change)
+        2. factors change for each problem
+        """
+        self.factors_required = True
+        self.factor_static_bool = input_dict.get('factor_static_bool', True)
+        if self.factor_static_bool:
+            self.A = input_dict['A']
+            self.P = input_dict.get('P', None)
+            self.factor_static = input_dict['factor']
+            self.k_steps_train_fn = partial(k_steps_train_osqp, A=self.A, rho=rho, sigma=sigma, jit=self.jit)
+            self.k_steps_eval_fn = partial(k_steps_eval_osqp, P=self.P, A=self.A, rho=rho, sigma=sigma, jit=self.jit)
+        else:
+            # q_mat_train and q_mat_test hold (c, b, vecsymm(P), vec(A))
+            self.k_steps_train_fn = partial(k_steps_train_osqp, rho=rho, sigma=sigma, jit=self.jit)
+            self.k_steps_eval_fn = partial(k_steps_eval_osqp, rho=rho, sigma=sigma, jit=self.jit)
+
+        # self.k_steps_train_fn = partial(k_steps_train_osqp, factor=factor, A=self.A, rho=rho, sigma=sigma, jit=self.jit)
+        # self.k_steps_eval_fn = partial(k_steps_eval_osqp, factor=factor, P=self.P, A=self.A, rho=rho, sigma=sigma, jit=self.jit)
         self.out_axes_length = 6
 
 

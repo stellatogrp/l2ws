@@ -66,7 +66,7 @@ class L2WSmodel(object):
         supervised = self.supervised and diff_required
         loss_method = self.loss_method
 
-        def predict(params, input, q, iters, z_star):
+        def predict(params, input, q, iters, z_star, factor):
             if self.out_axes_length == 8:
                 hsde = self.hsde
             else:
@@ -77,9 +77,19 @@ class L2WSmodel(object):
                 q = lin_sys_solve(self.factor, q)
 
             if diff_required:
-                z_final, iter_losses = self.k_steps_train_fn(k=iters, z0=z0, q=q, supervised=supervised, z_star=z_star)
+                z_final, iter_losses = self.k_steps_train_fn(k=iters, 
+                                                             z0=z0, 
+                                                             q=q,
+                                                             supervised=supervised, 
+                                                             z_star=z_star,
+                                                             factor=factor)
             else:
-                eval_out = self.k_steps_eval_fn(k=iters, z0=z0, q=q, supervised=supervised, z_star=z_star)
+                eval_out = self.k_steps_eval_fn(k=iters, 
+                                                z0=z0, 
+                                                q=q, 
+                                                factor=factor, 
+                                                supervised=supervised, 
+                                                z_star=z_star)
                 z_final, iter_losses, z_all_plus_1 = eval_out[0], eval_out[1], eval_out[2]
 
                 # compute angle(z^{k+1} - z^k, z^k - z^{k-1})
@@ -94,7 +104,6 @@ class L2WSmodel(object):
                 return_out = (loss, iter_losses, z_all_plus_1, angles) + eval_out[3:]
                 return return_out
         # loss_fn = predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
-        # loss_fn = self.predict_2_loss_ista(predict, diff_required)
         loss_fn = self.predict_2_loss(predict, diff_required)
         return loss_fn
 
@@ -102,12 +111,27 @@ class L2WSmodel(object):
         batch_inputs = self.train_inputs[batch_indices, :]
         batch_q_data = self.q_mat_train[batch_indices, :]
         batch_z_stars = self.z_stars_train[batch_indices, :] if self.supervised else None
-        results = self.optimizer.update(params=params,
-                                        state=state,
-                                        inputs=batch_inputs,
-                                        b=batch_q_data,
-                                        iters=self.train_unrolls,
-                                        z_stars=batch_z_stars)
+
+        if self.factors_required and not self.factor_static_bool:
+            # for only the case where the factors are needed
+            batch_factors = self.factors[batch_indices, :, :]
+            results = self.optimizer.update(params=params,
+                                            state=state,
+                                            inputs=batch_inputs,
+                                            b=batch_q_data,
+                                            iters=self.train_unrolls,
+                                            z_stars=batch_z_stars,
+                                            factors=batch_factors)
+        else:
+            # for either of the following cases
+            #   1. factors needed, but are the same for all problems
+            #   2. no factors are needed
+            results = self.optimizer.update(params=params,
+                                            state=state,
+                                            inputs=batch_inputs,
+                                            b=batch_q_data,
+                                            iters=self.train_unrolls,
+                                            z_stars=batch_z_stars)
         params, state = results
         return state.value, params, state
 
@@ -220,8 +244,6 @@ class L2WSmodel(object):
 
         e2e_loss_fn = self.create_end2end_loss_fn
 
-        
-
         # end-to-end loss fn for training
         self.loss_fn_train = e2e_loss_fn(bypass_nn=False, diff_required=True)
 
@@ -239,190 +261,6 @@ class L2WSmodel(object):
         self.tr_losses_batch = []
         self.te_losses = []
 
-    def cluster_z(self):
-        N_train = self.x_stars_train.shape[0]
-        sample_indices = np.random.choice(N_train, self.num_clusters, replace=False)
-        # Z_shared = self.z_stars_train[sample_indices, :].T
-        Z_shared = jnp.array(np.random.normal(size=(self.m + self.n, self.num_clusters)))
-
-        # compute distance matrix
-        def get_indices(input, flag):
-            distances = distance_matrix(np.array(input), np.array(Z_shared.T))
-            print('distances psd', distances)
-            indices = np.argmin(distances, axis=1)
-            print('indices psd', indices)
-            best_val = np.min(distances, axis=1)
-            print('best val', best_val)
-            plt.plot(indices)
-            plt.savefig(f"{flag}_indices_psd_plot.pdf", bbox_inches='tight')
-            plt.clf()
-            return indices
-        train_cluster_indices = get_indices(self.z_stars_train, 'train')
-        test_cluster_indices = get_indices(self.z_stars_test, 'test')
-        return Z_shared, train_cluster_indices, test_cluster_indices
-
-    def cluster_init_XY_list(self):
-        # put into matrix form -- use vec_symm
-        X_list, Y_list = [], []
-
-        N_train = self.x_stars_train.shape[0]
-        sample_indices = np.random.choice(N_train, self.num_clusters, replace=False)
-        for i in range(self.num_clusters):
-            index = sample_indices[i]
-            x_psd = self.x_stars_train[index, self.x_psd_indices]
-            y_psd = self.y_stars_train[index, self.y_psd_indices]
-            X, Y = unvec_symm(x_psd, self.psd_size), unvec_symm(y_psd, self.psd_size)
-            X_list.append(X)
-            Y_list.append(Y)
-
-        # do clustering -- for now just take first self.num_clusters
-        # clusters = self.u_stars_train[:self.num_clusters, :]
-        clusters = self.u_stars_train[sample_indices, :]
-
-        # compute distance matrix
-        def get_indices(input, flag):
-            distances = distance_matrix(np.array(input), np.array(clusters))
-            print('distances psd', distances)
-            indices = np.argmin(distances, axis=1)
-            print('indices psd', indices)
-            best_val = np.min(distances, axis=1)
-            print('best val', best_val)
-            plt.plot(indices)
-            plt.savefig(f"{flag}_indices_psd_plot.pdf", bbox_inches='tight')
-            plt.clf()
-            return indices
-        train_cluster_indices = get_indices(self.u_stars_train, 'train')
-        test_cluster_indices = get_indices(self.u_stars_test, 'test')
-        return X_list, Y_list, train_cluster_indices, test_cluster_indices
-
-    def pretrain_alphas(self, num_iters, n_xy_low, share_all=False, stepsize=.001, method='adam',
-                        batches=10):
-        def pretrain_loss(params, inputs, targets):
-            # nn_output = self.batched_predict_y(params, inputs)
-            nn_output = batched_predict_y(params, inputs)
-            if share_all:
-                alpha_hat = nn_output
-            else:
-                alpha_hat = nn_output[:, n_xy_low:]
-            pretrain_loss = jnp.mean(jnp.sum((alpha_hat - targets)**2, axis=1))
-            return pretrain_loss
-
-        maxiters = int(num_iters / batches)
-
-        if method == 'adam':
-            optimizer_pretrain = OptaxSolver(
-                opt=optax.adam(stepsize), fun=pretrain_loss, jit=False, maxiter=maxiters)
-        elif method == 'sgd':
-            optimizer_pretrain = OptaxSolver(
-                opt=optax.sgd(stepsize), fun=pretrain_loss, jit=True, maxiter=maxiters)
-        state = optimizer_pretrain.init_state(self.params)
-        params = self.params
-        pretrain_losses = np.zeros(batches + 1)
-        pretrain_test_losses = np.zeros(batches + 1)
-
-        # do a 1-hot encoding - assume given vector of indices
-        # if share_all:
-        train_targets = jax.nn.one_hot(self.train_cluster_indices, self.num_clusters)
-        test_targets = jax.nn.one_hot(self.test_cluster_indices, self.num_clusters)
-        # else:
-        #     train_targets_x = jax.nn.one_hot(self.train_cluster_indices, self.tx)
-        #     train_targets_y = jax.nn.one_hot(self.train_cluster_indices, self.ty)
-        #     test_targets_x = jax.nn.one_hot(self.test_cluster_indices, self.tx)
-        #     test_targets_y = jax.nn.one_hot(self.test_cluster_indices, self.ty)
-        #     train_targets = jnp.hstack([train_targets_x, train_targets_y])
-        #     test_targets = jnp.hstack([test_targets_x, test_targets_y])
-
-        curr_pretrain_loss = pretrain_loss(
-            params, self.train_inputs, train_targets)
-        curr_pretrain_test_loss = pretrain_loss(
-            params, self.test_inputs, test_targets)
-        pretrain_losses[0] = curr_pretrain_loss
-        pretrain_test_losses[0] = curr_pretrain_test_loss
-
-        for i in range(batches):
-            out = optimizer_pretrain.run(init_params=params,
-                                         inputs=self.train_inputs,
-                                         targets=train_targets)
-            params = out.params
-            state = out.state
-            curr_pretrain_test_loss = pretrain_loss(
-                params, self.test_inputs, test_targets)
-            pretrain_losses[i + 1] = state.value
-            pretrain_test_losses[i + 1] = curr_pretrain_test_loss
-            data = np.vstack([pretrain_losses, pretrain_test_losses])
-            data = data.T
-            df_pretrain = pd.DataFrame(
-                data, columns=['pretrain losses', 'pretrain_test_losses'])
-            df_pretrain.to_csv('pretrain_alpha_results.csv')
-
-        self.params = params
-        self.state = state
-        return pretrain_losses, pretrain_test_losses
-
-    def pretrain(self, num_iters, stepsize=.001, method='adam', df_pretrain=None, batches=1):
-        def pretrain_loss(params, inputs, targets):
-            if self.tx is None or self.ty is None:
-                # nn_output = self.batched_predict_y(params, inputs)
-                nn_output = batched_predict_y(params, inputs)
-                uu = nn_output
-            else:
-                num_nn_params = len(self.params)
-
-                def predict(params_, inputs_):
-                    nn_params = params_[:num_nn_params]
-                    nn_output = predict_y(nn_params, inputs_)
-                    X_list = params_[num_nn_params:num_nn_params + self.tx]
-                    Y_list = params_[num_nn_params + self.tx:]
-                    uu = self.low_2_high_dim(nn_output, X_list, Y_list)
-                    return uu
-                batch_predict = vmap(predict, in_axes=(None, 0), out_axes=(0))
-                uu = batch_predict(params, inputs)
-
-            pretrain_loss = jnp.mean(jnp.sum((uu - targets)**2, axis=1))
-            return pretrain_loss
-
-        maxiters = int(num_iters / batches)
-
-        if method == 'adam':
-            optimizer_pretrain = OptaxSolver(
-                opt=optax.adam(stepsize), fun=pretrain_loss, jit=True, maxiter=maxiters)
-        elif method == 'sgd':
-            optimizer_pretrain = OptaxSolver(
-                opt=optax.sgd(stepsize), fun=pretrain_loss, jit=True, maxiter=maxiters)
-        state = optimizer_pretrain.init_state(self.params)
-        params = self.params
-        pretrain_losses = np.zeros(batches + 1)
-        pretrain_test_losses = np.zeros(batches + 1)
-
-        train_targets = self.z_stars_train
-        test_targets = self.z_stars_test
-
-        curr_pretrain_loss = pretrain_loss(
-            params, self.train_inputs, train_targets)
-        curr_pretrain_test_loss = pretrain_loss(
-            params, self.test_inputs, test_targets)
-        pretrain_losses[0] = curr_pretrain_loss
-        pretrain_test_losses[0] = curr_pretrain_test_loss
-
-        for i in range(batches):
-            out = optimizer_pretrain.run(init_params=params,
-                                         inputs=self.train_inputs,
-                                         targets=train_targets)
-            params = out.params
-            state = out.state
-            curr_pretrain_test_loss = pretrain_loss(
-                params, self.test_inputs, test_targets)
-            pretrain_losses[i + 1] = state.value
-            pretrain_test_losses[i + 1] = curr_pretrain_test_loss
-            data = np.vstack([pretrain_losses, pretrain_test_losses])
-            data = data.T
-            df_pretrain = pd.DataFrame(
-                data, columns=['pretrain losses', 'pretrain_test_losses'])
-            df_pretrain.to_csv('pretrain_results.csv')
-
-        self.params = params
-        self.state = state
-        return pretrain_losses, pretrain_test_losses
 
     def decay_upon_plateau(self):
         """
@@ -535,23 +373,6 @@ class L2WSmodel(object):
             elif loss_method == 'first_2_last':
                 loss = jnp.linalg.norm(z_last - z0)
         return loss
-
-
-    def normalize_alpha_fn(self, alpha, normalize_alpha):
-        """
-        normalizes the alpha vector according to the method prescribed
-            in the normalize_alpha input
-        """
-        if normalize_alpha == 'conic':
-            alpha = jnp.maximum(0, alpha)
-        elif normalize_alpha == 'sum':
-            alpha = alpha / alpha.sum()
-        elif normalize_alpha == 'convex':
-            alpha = jnp.maximum(0, alpha)
-            alpha = alpha / alpha.sum()
-        elif normalize_alpha == 'softmax':
-            alpha = jax.nn.softmax(alpha)
-        return alpha
     
     def get_out_axes_shape(self, diff_required):
         if diff_required:
@@ -566,27 +387,49 @@ class L2WSmodel(object):
                 out_axes = (0,) * 4
             else:
                 out_axes = (0,) * self.out_axes_length
-            # import pdb
-            # pdb.set_trace()
         return out_axes
     
     def predict_2_loss(self, predict, diff_required):
         out_axes = self.get_out_axes_shape(diff_required)
-        batch_predict = vmap(predict,
-                             in_axes=(None, 0, 0, None, 0),
-                             out_axes=out_axes)
 
-        @partial(jit, static_argnums=(3,))
-        def loss_fn(params, inputs, b, iters, z_stars):
-            if diff_required:
-                losses = batch_predict(params, inputs, b, iters, z_stars)
-                return losses.mean()
-            else:
-                predict_out = batch_predict(
-                    params, inputs, b, iters, z_stars)
-                # return predict_out
-                losses = predict_out[0]
-                # loss_out = losses, iter_losses, angles, z_all
-                return losses.mean(), predict_out
+        # just for reference, the arguments for predict are
+        #   predict(params, input, q, iters, z_star, factor)
+
+        if self.factors_required and not self.factor_static_bool:
+            # for the case where the factors change for each problem
+            batch_predict = vmap(predict,
+                                in_axes=(None, 0, 0, 0, None, 0),
+                                out_axes=out_axes)
+            @partial(jit, static_argnums=(3,))
+            def loss_fn(params, inputs, b, iters, z_stars, factors):
+                if diff_required:
+                    losses = batch_predict(params, inputs, b, iters, z_stars, factors)
+                    return losses.mean()
+                else:
+                    predict_out = batch_predict(
+                        params, inputs, b, iters, z_stars, factors)
+                    losses = predict_out[0]
+                    # loss_out = losses, iter_losses, angles, z_all
+                    return losses.mean(), predict_out
+        else:
+            # for either of the following cases
+            #   1. no factors are needed (pass in None as a static argument)
+            #   2. factor is constant for all problems (pass in the same factor as a static argument)
+            predict_partial = partial(predict, factor=self.factor_static)
+            batch_predict = vmap(predict_partial,
+                                in_axes=(None, 0, 0, None, 0),
+                                out_axes=out_axes)
+            @partial(jit, static_argnums=(3,))
+            def loss_fn(params, inputs, b, iters, z_stars):
+                if diff_required:
+                    losses = batch_predict(params, inputs, b, iters, z_stars)
+                    return losses.mean()
+                else:
+                    predict_out = batch_predict(
+                        params, inputs, b, iters, z_stars)
+                    losses = predict_out[0]
+                    # loss_out = losses, iter_losses, angles, z_all
+                    return losses.mean(), predict_out
+
         return loss_fn
     
