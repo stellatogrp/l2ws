@@ -508,7 +508,7 @@ def quadcopter_dynamics(state, thrusts, t):
     mass = 1
     k_drag = 0
     k_thrust = 10
-    k_torque = 1
+    k_torque = 1000
     k = 1
     b = 1
     L = 1
@@ -518,20 +518,20 @@ def quadcopter_dynamics(state, thrusts, t):
 
     # calculate forces and torques
     drag_force = -k_drag * velocity
-    # thrust_force = k_thrust * R @ jnp.array([0, 0, k * jnp.sum(thrusts[:4])])
-    thrust_force = k_thrust * R @ jnp.array([thrusts[4], thrusts[5], k * jnp.sum(thrusts[:4])])
+    thrust_force = k_thrust * R @ jnp.array([0, 0, k * jnp.sum(thrusts[:4])])
+    # thrust_force = k_thrust * R @ jnp.array([thrusts[4], thrusts[5], k * jnp.sum(thrusts[:4])])
     print('thrust_force', thrust_force)
     
     # horizontal_force = jnp.array([thrusts[4], thrusts[5], 0])
-    torques = k_torque * jnp.array([L * k * (thrusts[0] - thrusts[2]), 
-                         L * k * (thrusts[1] - thrusts[3]),
+    torques = k_torque * jnp.array([L * k * (thrusts[0] - thrusts[2])+thrusts[4], 
+                         L * k * (thrusts[1] - thrusts[3])+thrusts[5],
                          b * (thrusts[0] - thrusts[1] + thrusts[2] - thrusts[3])])
     print('torque', torques)
 
     position_dot = velocity
     theta_dot = omega_2_thetadot(theta, omega)
     velocity_dot = gravity + (thrust_force + drag_force) / mass
-    omega_dot = I_inv @ (torques) #I_inv @ (torques - jnp.cross(omega, I @ omega))
+    omega_dot = I_inv @ (torques - jnp.cross(omega, I @ omega))
     state_dot = jnp.concatenate([position_dot, velocity_dot, theta_dot, omega_dot])
 
     return state_dot

@@ -31,16 +31,16 @@ def test_optimal_control_obstacle_rollout():
     point B: pos = (2, 2, 1), velocity = (0, 0, 0)
     """
     # get the dynamics and set other basic parameters
-    sim_len = 200
+    sim_len = 500
     budget = 5
     dynamics = quadcopter_dynamics
-    T = 10
+    T = 20
     nx, nu = QUADCOPTER_NX, QUADCOPTER_NU
-    dt = .01
+    dt = .025
     system_constants = dict(T=T, nx=nx, nu=nu, dt=dt)
     x_init_traj = jnp.zeros(nx)
 
-    # x_init_traj = x_init_traj.at[6:9].set(jnp.pi / 4)
+    x_init_traj = x_init_traj.at[8].set(jnp.pi / 4)
     # quaternion = YPRToQuat(jnp.zeros(3))
     # x_init_traj = x_init_traj.at[6:10].set(quaternion)
 
@@ -55,11 +55,12 @@ def test_optimal_control_obstacle_rollout():
     noise_std_dev = .00
 
     # set (x_min, x_max, u_min, u_max)
-    x_bds = 2
+    x_bds = .35
     angle_bds = .5
-    x_min = np.array([-x_bds,-x_bds,-x_bds,-np.inf,-np.inf,-np.inf,
+    vel_bds = 1
+    x_min = np.array([-x_bds,-x_bds,-x_bds,-vel_bds,-vel_bds,-vel_bds,
                     -angle_bds,-angle_bds,-np.inf,-np.inf,-np.inf,-np.inf])
-    x_max = np.array([ x_bds, x_bds, np.inf, np.inf, np.inf, np.inf,
+    x_max = np.array([ x_bds, x_bds, x_bds, vel_bds, vel_bds, vel_bds,
                     angle_bds, angle_bds, np.inf, np.inf, np.inf, np.inf])
     # u0 = 10.5916
     # u_min = np.array([9.6, 9.6, 9.6, 9.6]) - u0
@@ -117,7 +118,7 @@ def test_optimal_control_obstacle_rollout():
         return sol, P, A, factor, q
     
     # do the closed loop rollout
-    opt_budget = 1000
+    opt_budget = 10
     rollout_results = closed_loop_rollout(opt_qp_solver, sim_len, x_init_traj, dynamics, 
                                           system_constants, ref_traj_dict, opt_budget, noise_list=None)
     state_traj_list = rollout_results[0]
