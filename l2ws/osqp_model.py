@@ -1,7 +1,7 @@
 from l2ws.l2ws_model import L2WSmodel
 import time
 import jax.numpy as jnp
-from l2ws.algo_steps import k_steps_eval_osqp, k_steps_train_osqp
+from l2ws.algo_steps import k_steps_eval_osqp, k_steps_train_osqp, vec_symm, unvec_symm
 from functools import partial
 from jax import vmap, jit
 import osqp
@@ -62,9 +62,9 @@ class OSQPmodel(L2WSmodel):
 
         def k_steps_train_osqp_dynamic(k, z0, q_bar, factor, supervised, z_star):
             nc2 = int(n * (n + 1) / 2)
-            q = q_bar[:m + n]
-            P = q_bar[m + n: m + n + nc2]
-            A = q_bar[m + n + nc2:]
+            q = q_bar[:2 * m + n]
+            P = unvec_symm(q_bar[2 * m + n: m + n + nc2], n)
+            A = jnp.reshape(q_bar[2 * m + n + nc2:], (m, n))
             return k_steps_train_osqp(k=k, z0=z0, q=q,
                                       factor=factor, A=A, rho=self.rho, sigma=self.sigma,
                                       supervised=supervised, z_star=z_star, jit=self.jit)
@@ -82,8 +82,8 @@ class OSQPmodel(L2WSmodel):
         def k_steps_eval_osqp_dynamic(k, z0, q_bar, factor, supervised, z_star):
             nc2 = int(n * (n + 1) / 2)
             q = q_bar[:m + n]
-            P = q_bar[m + n: m + n + nc2]
-            A = q_bar[m + n + nc2:]
+            P = unvec_symm(q_bar[m + n: m + n + nc2], n)
+            A = jnp.reshape(q_bar[m + n + nc2:], (m, n))
             return k_steps_eval_osqp(k=k, z0=z0, q=q,
                                      factor=factor, P=P, A=A, rho=self.rho, sigma=self.sigma,
                                      supervised=supervised, z_star=z_star, jit=self.jit)

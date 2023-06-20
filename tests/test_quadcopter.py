@@ -18,8 +18,9 @@ from scipy.spatial import distance_matrix
 # from examples.ista import sol_2_obj_diff, solve_many_probs_cvxpy
 from l2ws.utils.nn_utils import get_nearest_neighbors
 import osqp
-from l2ws.utils.mpc_utils import closed_loop_rollout
-from examples.quadcopter import quadcopter_dynamics, QUADCOPTER_NX, QUADCOPTER_NU, plot_traj_3d, make_obstacle_course
+from l2ws.utils.mpc_utils import closed_loop_rollout, static_canon_mpc_osqp
+from examples.quadcopter import quadcopter_dynamics, QUADCOPTER_NX, QUADCOPTER_NU, plot_traj_3d, make_obstacle_course, YPRToQuat
+
 
 
 # @pytest.mark.skip(reason="temp")
@@ -29,29 +30,158 @@ def test_optimal_control_obstacle_rollout():
     point A: origin
     point B: pos = (2, 2, 1), velocity = (0, 0, 0)
     """
-    sim_len = 40
+    # get the dynamics and set other basic parameters
+    sim_len = 200
     budget = 5
     dynamics = quadcopter_dynamics
     T = 10
     nx, nu = QUADCOPTER_NX, QUADCOPTER_NU
-    system_constants = dict(T=T, nx=nx, nu=nu, dt=.01)
+    dt = .01
+    system_constants = dict(T=T, nx=nx, nu=nu, dt=dt)
     x_init_traj = jnp.zeros(nx)
 
-    # create the actual qp solver
-    n = T * nx
-    m = T * nx
-    def qp_solver(A, B, x0, u0, ref_traj, budget):
-        return jnp.zeros(n + 2 * m)
-    
+    # x_init_traj = x_init_traj.at[6:9].set(jnp.pi / 4)
+    # quaternion = YPRToQuat(jnp.zeros(3))
+    # x_init_traj = x_init_traj.at[6:10].set(quaternion)
+
+    # create the parametric problems
+    N_train = 100
+    N_test = 100
+    N = N_train + N_test
+
+    num_traj = int(N_test / sim_len)
+    num_traj_train = int(N_train / sim_len)
+    x_init_factor = 10
+    noise_std_dev = .00
+
+    # set (x_min, x_max, u_min, u_max)
+    x_bds = 2
+    angle_bds = .5
+    x_min = np.array([-x_bds,-x_bds,-x_bds,-np.inf,-np.inf,-np.inf,
+                    -angle_bds,-angle_bds,-np.inf,-np.inf,-np.inf,-np.inf])
+    x_max = np.array([ x_bds, x_bds, np.inf, np.inf, np.inf, np.inf,
+                    angle_bds, angle_bds, np.inf, np.inf, np.inf, np.inf])
+    # u0 = 10.5916
+    # u_min = np.array([9.6, 9.6, 9.6, 9.6]) - u0
+    # u_max = np.array([13., 13., 13., 13.]) - u0
+    # u_min = np.zeros(nu)
+    # u_min[4:] = -10
+    u_max = 10 * np.ones(nu) #np.array([np.inf, np.inf, np.inf, np.inf])
+    u_min = -u_max
+    # u_min = -u_max
+
+    # set (Q_t, Q_T, R)
+    Q = 1 * jnp.diag(jnp.array([1, 1, 1, .0, .0, 0, 0, 0, 0, 0, 0, 0]))
+    QT = 1 * Q
+    R = 0.0 * jnp.eye(nu)
+
     # reference trajectory dict
     traj_list = make_obstacle_course()
-    Q = jnp.diag(jnp.array([1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0]))
-    ref_traj_dict = dict(case='obstacle_course', traj_list=traj_list, Q=Q, tol=.01)
+    ref_traj_dict = dict(case='obstacle_course', traj_list=traj_list, Q=QT, tol=.01)
 
+    # run the optimal controller to get everything using closed_loop_rollout
+    #   1. (P, A, factor) for each problem
+    #   2. (c, b) for each problem
+    #   3. theta = (x0, u0, ref_traj)
+    cd = jnp.zeros(nx)
+    cd = cd.at[5].set(-9.8 * dt)
+    static_canon_mpc_osqp_partial = partial(static_canon_mpc_osqp, cd=cd, T=T, nx=nx, nu=nu, 
+                                            x_min=x_min, x_max=x_max, u_min=u_min, 
+                                            u_max=u_max, Q=Q, QT=QT, R=R)
+
+    # create the opt_qp_solver
+    def opt_qp_solver(Ad, Bd, x0, u0, ref_traj, budget):
+        # no need to use u0 for the non-learned case
+
+        # get (P, A, c, l, u)
+        out_dict = static_canon_mpc_osqp_partial(ref_traj, x0, Ad, Bd)
+        P, A, c, l, u = out_dict['P'], out_dict['A'], out_dict['c'], out_dict['l'], out_dict['u']
+        m, n = A.shape
+        q = jnp.concatenate([c, l, u])
+
+        # get factor
+        rho_vec, sigma = jnp.ones(m), 1
+        rho_vec = rho_vec.at[l == u].set(1000)
+        M = P + sigma * jnp.eye(n) + A.T @ jnp.diag(rho_vec) @ A
+        factor = jsp.linalg.lu_factor(M)
+
+        # solve
+        z0 = jnp.zeros(m + n)
+        out = k_steps_eval_osqp(budget, z0, q, factor, P, A, rho=rho_vec, 
+                                sigma=sigma, supervised=False, z_star=None, jit=True)
+        sol = out[0]
+        # import pdb
+        # pdb.set_trace()
+        print('loss', out[1][-1])
+        
+        return sol, P, A, factor, q
+    
     # do the closed loop rollout
-    sols, state_traj_list = closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_constants, ref_traj_dict, budget, noise_list=None)
-    assert jnp.linalg.norm(state_traj_list[20][:2]) == 0
-    assert state_traj_list[20][2] < -.1
+    opt_budget = 1000
+    rollout_results = closed_loop_rollout(opt_qp_solver, sim_len, x_init_traj, dynamics, 
+                                          system_constants, ref_traj_dict, opt_budget, noise_list=None)
+    state_traj_list = rollout_results[0]
+    print('state_traj_list', state_traj_list)
+    plot_traj_3d([state_traj_list], labels=['blank'])
+
+    # assert jnp.linalg.norm(state_traj_list[20][:2]) == 0
+    # assert state_traj_list[20][2] < -.1
+
+    # mpc_setup = multiple_random_mpc_osqp(N_train,
+    #                                      T=T,
+    #                                      nx=nx,
+    #                                      nu=nu,
+    #                                      Ad=None,
+    #                                      Bd=None,
+    #                                      seed=42,
+    #                                      x_init_factor=x_init_factor,
+    #                                      quadcopter=True)
+    # factor, P, A, q_mat_train, theta_mat_train, x_min, x_max, Ad, Bd, rho_vec = mpc_setup
+    # m, n = A.shape
+    # q = q_mat_train[0, :]
+
+    # theta_mat_train, z_stars_train, q_mat_train = solve_multiple_trajectories(
+    #     sim_len, num_traj_train, x_min, x_max, x_init_factor, Ad, P, A, q, noise_std_dev)
+
+    # theta_mat_test, z_stars_test, q_mat_test = solve_multiple_trajectories(
+    #     sim_len, num_traj, x_min, x_max, x_init_factor, Ad, P, A, q, noise_std_dev)
+
+    # # create theta_mat and q_mat
+    # q_mat = jnp.vstack([q_mat_train, q_mat_test])
+    # theta_mat = jnp.vstack([theta_mat_train, theta_mat_test])
+    # train_unrolls = 5
+    # input_dict = dict(rho=rho_vec,
+    #                 #   q_mat_train=q_mat_train,
+    #                 #   q_mat_test=q_mat_test,
+    #                   m=m,
+    #                   n=n,
+    #                 #   P=P,
+    #                 #   A=A,
+    #                 #   factor=factor,
+    #                   train_inputs=theta_mat[:N_train, :],
+    #                   test_inputs=theta_mat[N_train:, :],
+    #                   train_unrolls=train_unrolls,
+    #                   nn_cfg={'intermediate_layer_sizes': [100, 100]},
+    #                   supervised=True,
+    #                   z_stars_train=z_stars_train,
+    #                   z_stars_test=z_stars_test,
+    #                   jit=True)
+    # # osqp_model = OSQPmodel(input_dict)
+
+    # # create the qp_solver from the OSQPmodel
+    # def qp_solver(Ad, Bd, x0, u0, ref_traj, budget):
+    #     # get (P, A, c, l, u)
+
+    #     # get factor
+
+    #     # osqp_model.evaluate
+    #     sol = osqp_model.eval(budget)
+    #     return sol, P, A, factor, q
+
+    # # do the closed loop rollout
+    # sols, state_traj_list = closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_constants, ref_traj_dict, budget, noise_list=None)
+    # assert jnp.linalg.norm(state_traj_list[20][:2]) == 0
+    # assert state_traj_list[20][2] < -.1
 
 
 @pytest.mark.skip(reason="temp")
@@ -74,14 +204,20 @@ def test_zero_control_rollout():
     # placeholder qp solver 
     n = T * nx
     m = T * nx
-    def qp_solver(A, B, x0, u0, ref_traj, budget):
-        return jnp.zeros(n + 2 * m)
+    def qp_solver(Ad, Bd, x0, u0, ref_traj, budget):
+        sol = jnp.zeros(n + 2 * m)
+        P = jnp.zeros((n, n))
+        A = jnp.zeros((m, n))
+        factor = None
+        q = jnp.zeros(n + 2 * m)
+        return sol, P, A, factor, q
     
     # reference trajectory dict
     ref_traj_dict = dict(case='fixed_path', traj_list=traj_list)
 
     # do the closed loop rollout
-    sols, state_traj_list = closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_constants, ref_traj_dict, budget, noise_list=None)
+    rollout_results = closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_constants, ref_traj_dict, budget, noise_list=None)
+    state_traj_list = rollout_results[0]
 
     # assert that the position moves down vertically
     assert jnp.linalg.norm(state_traj_list[20][:2]) == 0

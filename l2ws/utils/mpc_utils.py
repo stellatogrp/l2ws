@@ -69,31 +69,54 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_consta
 
     sols = []
     state_traj_list = [x0]
+    P_list, A_list, factor_list, q_list = [], [], [], []
     obstacle_num = 0
+    integrator = integrators.euler(dynamics, dt=dt)
     for j in range(sim_len):
-        # Compute the state matrix A
-        A = jax.jacobian(lambda x: dynamics(x, u0, j))(x0)
+        # Compute the state matrix Ad
+        Ad = jnp.eye(nx) + jax.jacobian(lambda x: dynamics(x, u0, j))(x0) * dt
 
         # Compute the input matrix B
-        B = jax.jacobian(lambda u: dynamics(x0, u, j))(u0)
+        Bd = jax.jacobian(lambda u: dynamics(x0, u, j))(u0) * dt
+        # print('Ad', Ad)
+        # print('Bd', Bd)
+        print(j)
 
 		# solve the qp
         ref_traj = get_curr_ref_traj(ref_traj_dict, j, obstacle_num)
-        sol = qp_solver(A, B, x0, u0, ref_traj, budget)
+
+        # import pdb
+        # pdb.set_trace()
+        print('ref_traj', ref_traj)
+        sol, P, A, factor, q = qp_solver(Ad, Bd, x0, u0, ref_traj, budget)
         sols.append(sol)
-        
+        P_list.append(P)
+        A_list.append(A)
+        factor_list.append(factor)
+        q_list.append(q)
+
         # implement the first control
         u0 = extract_first_control(sol, T, nx, nu)
+        print('u0', u0)
+
+        state_dot = dynamics(x0, u0, j)
+        print('state_dot', state_dot)
     
         # get the next state
-        integrator = integrators.euler(dynamics, dt=dt)
         x0 = integrator(x0, u0, j) + noise_list[j]
+        print('x0', x0)
+        print('expected x0', sol[nx: 2*nx])
+        print('final expected state', sol[(T-1)*nx:T*nx])
 
         # check if the obstacle number should be updated
         obstacle_num = update_obstacle_num(x0, ref_traj_dict, j, obstacle_num)
+        print('obstacle_num', obstacle_num)
+        
         
         state_traj_list.append(x0)
-    return sols, state_traj_list
+        if obstacle_num == -1:
+            break
+    return state_traj_list, sols, P_list, A_list, factor_list, q_list
 
 
 def update_obstacle_num(x, ref_traj_dict, j, obstacle_num):
@@ -106,7 +129,11 @@ def update_obstacle_num(x, ref_traj_dict, j, obstacle_num):
         Q = ref_traj_dict['Q']
         curr_ref = ref_traj_dict['traj_list'][obstacle_num]
         if (x - curr_ref).T @ Q @ (x - curr_ref) <= tol:
-            obstacle_num += 1
+            # check if obstacle course finished
+            if obstacle_num == len(ref_traj_dict['traj_list']) - 1:
+                obstacle_num = -1
+            else:
+                obstacle_num += 1
     return obstacle_num
 
 
@@ -178,160 +205,97 @@ def extract_first_control(sol, T, nx, nu):
     return sol[T * nx: T * nx + nu]
 
 
-def static_canon(T, nx, nu, state_box, control_box,
-                 Q_val,
-                 QT_val,
-                 R_val,
-                 Ad=None,
-                 Bd=None,
-                 delta_control_box=None):
-    '''
-    take in (nx, nu, )
+def static_canon_mpc_osqp(x_ref, x0, Ad, Bd, cd, T, nx, nu, x_min, x_max, u_min, u_max, Q, QT, R):
+    """
+    given the mpc problem
+    min (x_t - x_t^{ref})^T Q_T (x_t - x_t^{ref}) + sum_{i=1}^{T-1} (x_t - x_t^{ref})^T Q (x_t - x_t^{ref}) + u_t^T R u_t
+        s.t. x_{t+1} = Ad x_t + Bd u_t
+             x_min <= x_t <= x_max
+             u_min <= u_t <= u_max
 
-    Q, R, q, QT, qT, xmin, xmax, umin, umax, T
+    returns (P, A, c, l, u) in the canonical osqp form
 
-    return (P, c, A, b) ... but b will change so not meaningful
+    It is possible that (x_ref, x0, Ad, Bd) change from problem to problem
 
-    x0 is always the only thing that changes!
-    (P, c, A) will be the same
-    (b) will change in the location where x_init is!
-    '''
-
-    # keep the following data the same for all
-    if isinstance(Q_val, int) or isinstance(Q_val, float):
-        Q = Q_val * np.eye(nx)
+    (T, nx, nu, x_min, x_max, u_min, u_max, Q_val, QT_val, R_val) should all be the same
+    """
+    if np.isscalar(Q):
+        Q = Q * np.eye(nx)
     else:
-        Q = np.diag(Q_val)
-    if isinstance(QT_val, int) or isinstance(QT_val, float):
-        QT = QT_val * np.eye(nx)
+        Q = Q
+    if np.isscalar(Q):
+        QT = QT * np.eye(nx)
     else:
-        QT = np.diag(QT_val)
-    if isinstance(R_val, int) or isinstance(R_val, float):
-        R = R_val * np.eye(nu)
+        QT = QT
+    if np.isscalar(R):
+        R = R * np.eye(nu)
     else:
-        R = np.diag(R_val)
+        R = R
 
-    q = np.zeros(nx)
-    qT = np.zeros(nx)
-    if Ad is None and Bd is None:
-        Ad = .1 * np.random.normal(size=(nx, nx))
-        Bd = .1 * np.random.normal(size=(nx, nu))
+    if x_ref is None:
+        x_ref = np.zeros(nx)
 
     # Quadratic objective
-    P_sparse = sparse.block_diag(
+    P = sparse.block_diag(
         [sparse.kron(sparse.eye(T-1), Q), QT, sparse.kron(sparse.eye(T), R)],
         format="csc",
     )
 
     # Linear objective
-    c = np.hstack([np.kron(np.ones(T-1), q), qT, np.zeros(T * nu)])
+    c = np.hstack([np.kron(np.ones(T - 1), -Q @ x_ref), -QT @ x_ref, np.zeros(T * nu)])
 
     # Linear dynamics
     Ax = sparse.kron(sparse.eye(T + 1), -sparse.eye(nx)) + sparse.kron(
         sparse.eye(T + 1, k=-1), Ad
     )
     Ax = Ax[nx:, nx:]
-
     Bu = sparse.kron(
         sparse.eye(T), Bd
     )
     Aeq = sparse.hstack([Ax, Bu])
 
-    beq = np.zeros(T * nx)
+    A_ineq = sparse.vstack(
+        [sparse.eye(T * nx + T * nu)]
+    )
 
-    '''
-    top block for (x, u) <= (xmax, umax)
-    bottom block for (x, u) >= (xmin, umin)
-    i.e. (-x, -u) <= (-xmin, -umin)
-    '''
-    if state_box == np.inf:
-        zero_states = csc_matrix((T * nu, T * nx))
-        block1 = sparse.hstack([zero_states, sparse.eye(T * nu)])
-        block2 = sparse.hstack([zero_states, -sparse.eye(T * nu)])
-        A_ineq = sparse.vstack(
-            [block1,
-             block2]
-        )
-    else:
-        A_ineq = sparse.vstack(
-            [sparse.eye(T * nx + T * nu),
-             -sparse.eye(T * nx + T * nu)]
-        )
-    if delta_control_box is not None:
-        A_delta_u = sparse.kron(sparse.eye(T), -sparse.eye(nu)) + sparse.kron(
-            sparse.eye(T, k=-1), sparse.eye(nu)
-        )
-        zero_states = csc_matrix((T * nu, T * nx))
-        block1 = sparse.hstack([zero_states, A_delta_u])
-        block2 = sparse.hstack([zero_states, -A_delta_u])
-        A_ineq = sparse.vstack([A_ineq, block1, block2])
-
-    # stack A
-    A_sparse = sparse.vstack(
+    A = sparse.vstack(
         [
             Aeq,
             A_ineq
         ]
     )
 
-    if isinstance(control_box, int) or isinstance(control_box, float):
-        control_lim = control_box * np.ones(T * nu)
-    else:
-        control_lim = control_box
+    # get l, u
+    x_max_vec = np.tile(x_max, T)
+    x_min_vec = np.tile(x_min, T)
+    u_max_vec = np.tile(u_max, T)
+    u_min_vec = np.tile(u_min, T)
 
-    # get b
-    if state_box == np.inf:
-        # b_control_box = np.kron(control_lim, np.ones(T))
-        b_control_box = np.kron(np.ones(T), control_lim)
-        b_upper = np.hstack(
-            [b_control_box])
-        b_lower = np.hstack(
-            [b_control_box])
-    else:
-        b_upper = np.hstack(
-            [state_box*np.ones(T * nx), control_lim])
-        b_lower = np.hstack(
-            [state_box*np.ones(T * nx), control_lim])
-    if delta_control_box is None:
-        b = np.hstack([beq, b_upper, b_lower])
-    else:
-        if isinstance(delta_control_box, int) or isinstance(delta_control_box, float):
-            delta_control_box_vec = delta_control_box * np.ones(nu)
-        else:
-            delta_control_box_vec = delta_control_box
-        b_delta_u = np.kron(delta_control_box_vec, np.ones(T))
-        b = np.hstack([beq, b_upper, b_lower, b_delta_u, b_delta_u])
+    b_upper = np.hstack(
+        [x_max_vec, u_max_vec])
+    b_lower = np.hstack(
+        [x_min_vec, u_min_vec])
+    
+    # set beq
+    beq = np.zeros(T * nx)
 
-    # cones = dict(z=T * nx, l=2 * (T * nx + T * nu))
-    num_ineq = b.size - T * nx
-    cones = dict(z=T * nx, l=num_ineq)
-    cones_array = jnp.array([cones['z'], cones['l']])
+    # use the initial state x0
+    beq[:nx] = -Ad @ x0
 
-    # create the matrix M
-    m, n = A_sparse.shape
-    M = jnp.zeros((n + m, n + m))
-    P = P_sparse.todense()
-    A = A_sparse.todense()
-    P_jax = jnp.array(P)
-    A_jax = jnp.array(A)
-    M = M.at[:n, :n].set(P_jax)
-    M = M.at[:n, n:].set(A_jax.T)
-    M = M.at[n:, :n].set(-A_jax)
+    # add in cd
+    cd_tiled = np.tile(cd, T)
+    beq = beq - cd_tiled
 
-    # factor for DR splitting
-    algo_factor = jsp.linalg.lu_factor(M + jnp.eye(n+m))
+    l = np.hstack([beq, b_lower])
+    u = np.hstack([beq, b_upper])
 
-    A_sparse = csc_matrix(A)
-    P_sparse = csc_matrix(P)
+    cones = dict(z=T * nx, l=2 * (T * nx + T * nu))
 
-    out_dict = dict(M=M,
-                    algo_factor=algo_factor,
-                    cones_array=cones_array,
-                    cones_dict=cones,
-                    A_sparse=A_sparse,
-                    P_sparse=P_sparse,
-                    b=b,
-                    c=c,
-                    A_dynamics=Ad)
-
+    out_dict = dict(cones=cones,
+                    A=jnp.array(A.todense()),
+                    P=jnp.array(P.todense()),
+                    l=jnp.array(l),
+                    u=jnp.array(u),
+                    c=jnp.array(c),
+                    A_dynamics=jnp.array(Ad))
     return out_dict
