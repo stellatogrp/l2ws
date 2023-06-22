@@ -55,8 +55,8 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_consta
     """
     T, dt = system_constants['T'], system_constants['dt']
     nx, nu = system_constants['nx'], system_constants['nu']
-    # x_min, x_max = system_constants['x_min'], system_constants['x_max']
-    # u_min, u_max = system_constants['u_min'], system_constants['u_max']
+    x_min, x_max = system_constants['x_min'], system_constants['x_max']
+    u_min, u_max = system_constants['u_min'], system_constants['u_max']
     # sim_len = len(traj_list)
 
     # noise
@@ -72,8 +72,13 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_consta
     P_list, A_list, factor_list, q_list = [], [], [], []
     obstacle_num = 0
     integrator = integrators.euler(dynamics, dt=dt)
+    n = T * (nx + nu)
+    m = T * (2 * nx + nu)
+    prev_sol = jnp.zeros(m + n)
     for j in range(sim_len):
         # Compute the state matrix Ad
+        # dd = dynamics(x0, u0, j)
+        
         Ad = jnp.eye(nx) + jax.jacobian(lambda x: dynamics(x, u0, j))(x0) * dt
 
         # Compute the input matrix B
@@ -81,29 +86,34 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_consta
         # print('Ad', Ad)
         # print('Bd', Bd)
         print(j)
-
+        # import pdb
+        # pdb.set_trace()
 		# solve the qp
         ref_traj = get_curr_ref_traj(ref_traj_dict, j, obstacle_num)
 
         # import pdb
         # pdb.set_trace()
         print('ref_traj', ref_traj)
-        sol, P, A, factor, q = qp_solver(Ad, Bd, x0, u0, ref_traj, budget)
+        sol, P, A, factor, q = qp_solver(Ad, Bd, x0, u0, ref_traj, budget, prev_sol)
         sols.append(sol)
         P_list.append(P)
         A_list.append(A)
         factor_list.append(factor)
         q_list.append(q)
+        prev_sol = sol[:m + n]
 
         # implement the first control
         u0 = extract_first_control(sol, T, nx, nu)
         print('u0', u0)
 
-        state_dot = dynamics(x0, u0, j)
+        clipped_u0 = jnp.clip(u0, a_min=u_min, a_max=u_max)
+        print('u0', clipped_u0)
+
+        state_dot = dynamics(x0, clipped_u0, j)
         print('state_dot', state_dot)
     
         # get the next state
-        x0 = integrator(x0, u0, j) + noise_list[j]
+        x0 = integrator(x0, clipped_u0, j) + noise_list[j]
         print('x0', x0)
         print('expected x0', sol[nx: 2*nx])
         print('final expected state', sol[(T-1)*nx:T*nx])

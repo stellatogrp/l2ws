@@ -81,19 +81,33 @@ class L2WSmodel(object):
             #     q = lin_sys_solve(self.factor, q)
 
             if diff_required:
-                z_final, iter_losses = self.k_steps_train_fn(k=iters, 
-                                                             z0=z0, 
-                                                             q=q,
-                                                             supervised=supervised, 
-                                                             z_star=z_star,
-                                                             factor=factor)
+                if self.factors_required:
+                    z_final, iter_losses = self.k_steps_train_fn(k=iters, 
+                                                                z0=z0, 
+                                                                q=q,
+                                                                supervised=supervised, 
+                                                                z_star=z_star,
+                                                                factor=factor)
+                else:
+                    z_final, iter_losses = self.k_steps_train_fn(k=iters, 
+                                                                z0=z0, 
+                                                                q=q,
+                                                                supervised=supervised, 
+                                                                z_star=z_star)
             else:
-                eval_out = self.k_steps_eval_fn(k=iters, 
-                                                z0=z0, 
-                                                q=q, 
-                                                factor=factor, 
-                                                supervised=supervised, 
-                                                z_star=z_star)
+                if self.factors_required:
+                    eval_out = self.k_steps_eval_fn(k=iters, 
+                                                    z0=z0, 
+                                                    q=q, 
+                                                    factor=factor, 
+                                                    supervised=supervised, 
+                                                    z_star=z_star)
+                else:
+                    eval_out = self.k_steps_eval_fn(k=iters, 
+                                                    z0=z0, 
+                                                    q=q, 
+                                                    supervised=supervised, 
+                                                    z_star=z_star)
                 z_final, iter_losses, z_all_plus_1 = eval_out[0], eval_out[1], eval_out[2]
 
                 # compute angle(z^{k+1} - z^k, z^k - z^{k-1})

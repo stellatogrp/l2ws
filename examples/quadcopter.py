@@ -493,7 +493,7 @@ def quadcopter_dynamics(state, thrusts, t):
     omega = state[9:]  # Angular velocity of the body frame [w_x, w_y, w_z]
 
     # constants
-    Ixx, Iyy, Izz = .1, .1, .1
+    Ixx, Iyy, Izz = 1, 1, 1
     I = jnp.array([
         [Ixx, 0, 0],
         [0, Iyy, 0],
@@ -506,9 +506,9 @@ def quadcopter_dynamics(state, thrusts, t):
     ])
     gravity = jnp.array([0, 0, -9.8])
     mass = 1
-    k_drag = 0
+    k_drag = 1
     k_thrust = 10
-    k_torque = 1000
+    k_torque = 100 #1
     k = 1
     b = 1
     L = 1
@@ -518,14 +518,21 @@ def quadcopter_dynamics(state, thrusts, t):
 
     # calculate forces and torques
     drag_force = -k_drag * velocity
-    thrust_force = k_thrust * R @ jnp.array([0, 0, k * jnp.sum(thrusts[:4])])
-    # thrust_force = k_thrust * R @ jnp.array([thrusts[4], thrusts[5], k * jnp.sum(thrusts[:4])])
-    print('thrust_force', thrust_force)
+    # thrust_force = k_thrust * R @ jnp.array([thrusts[3] + thrusts[1] - thrusts[2] - thrusts[0], 
+    #                                          thrusts[0] + thrusts[1] - thrusts[2] - thrusts[3], 
+    #                                          k * jnp.sum(thrusts[:4])])
+    # thrust_x = thrusts[1] + thrusts[3] - thrusts[0] - thrusts[2]  # Thrust difference between right and left propellers
+    # thrust_y = thrusts[0] + thrusts[1] - thrusts[2] - thrusts[3]
+    # thrust_force = k_thrust * R @ jnp.array([ 0, 
+    #                                           0, 
+    #                                          k * jnp.sum(thrusts[:4])])
+    thrust_force = k_thrust * R @ jnp.array([0*thrusts[4], 0*thrusts[5], k * jnp.sum(thrusts[:4])])
+    # print('thrust_force', thrust_force)
     
     # horizontal_force = jnp.array([thrusts[4], thrusts[5], 0])
-    torques = k_torque * jnp.array([L * k * (thrusts[0] - thrusts[2])+thrusts[4], 
-                         L * k * (thrusts[1] - thrusts[3])+thrusts[5],
-                         b * (thrusts[0] - thrusts[1] + thrusts[2] - thrusts[3])])
+    torques = k_torque * jnp.array([L * k * (thrusts[0] - thrusts[2]), 
+                         L * k * (thrusts[1] - thrusts[3]),
+                         b * (thrusts[0] - thrusts[1] + thrusts[2] - thrusts[3]) ])
     print('torque', torques)
 
     position_dot = velocity
@@ -548,8 +555,8 @@ def get_rotation_matrix(theta):
     R = jnp.array([[c_roll * c_yaw - c_pitch * s_roll * s_yaw, -c_yaw * s_roll - c_roll * c_pitch * s_yaw, s_pitch * s_yaw],
                      [c_pitch * c_yaw * s_yaw + c_roll * s_yaw, c_roll * c_pitch * c_yaw - s_roll * s_yaw, -c_yaw * s_pitch],
                      [s_pitch * s_roll, c_roll * s_pitch, c_pitch]])
-    print('theta', theta)
-    print('R', R)
+    # print('theta', theta)
+    # print('R', R)
     return R
 
 
@@ -759,14 +766,14 @@ def inertia_matrix_inverse(quaternion):
     return R @ I_inv @ R.T
 
 
-def plot_traj_3d(state_traj_list, labels):
+def plot_traj_3d(state_traj_list, goals, labels):
     """
     state_traj_list is a list of lists
     """
     # Quadcopter dimensions
-    body_length = .1
-    body_width = .1
-    body_height = .1
+    body_length = .01
+    body_width = .01
+    body_height = .01
 
     # Body coordinates
     body_coords = np.array([
@@ -825,6 +832,13 @@ def plot_traj_3d(state_traj_list, labels):
         #     ax.scatter(x, y, z, label=labels[j], color='green')
         # else:
         #     ax.scatter(x, y, z, label=labels[j])
+
+        # plot the goals
+        weights = np.arange(1, len(goals) + 1) / (len(goals) + 1)
+        for i in range(len(goals)):
+            x, y, z = goals[i][0], goals[i][1], goals[i][2]
+            # ax.scatter(x, y, z, cmap='Reds_r', c=weights[i], label=f"goal {i}")
+            ax.scatter(x, y, z, label=f"goal {i}")
     plt.legend()
     plt.show()
 
@@ -855,16 +869,30 @@ def plot_traj_3d(state_traj_list, labels):
 
 
 def make_obstacle_course():
+    deg2rad = jnp.pi / 180.0
     goals = jnp.array([[2, 2, 1],
                        [-2, 3, -3],
                        [-2, -1, -3],
                        [3, -2, 1],
-                       [0, 0, 0]]) / 10
-    rpys = 0 * jnp.array([[.2, .2, 0],
-                       [.2, .2, 0],
-                       [.2, .2, 0],
-                       [.2, .2, 0],
-                       [0, 0, 0]])
+                       [0, 0, 0]]) / 30
+    # goals = jnp.array([[1, 1, 1],
+    #                    [-2, 3, -3],
+    #                    [-2, -1, -3],
+    #                    [3, -2, 1],
+    #                    [0, 0, 0]]) / 10
+    # goals_np = .1 * np.random.rand(5, 3) #.2 * np.random.rand(5, 3) - .1
+    # goals = jnp.array(goals_np)
+    rpys = 0 #* jnp.array([[.2, .2, 0],
+                    #    [.2, .2, 0],
+                    #    [.2, .2, 0],
+                    #    [.2, .2, 0],
+                    #    [0, 0, 0]])
+    yaw_ini = 0    
+    yaw = np.array([20, -90, 120, 45])
+
+    # t = np.hstack((t_ini, t)).astype(float)
+    # wp = np.vstack((wp_ini, wp)).astype(float)
+    yaw = np.hstack((yaw, yaw_ini)).astype(float)*deg2rad
     nx = QUADCOPTER_NX
     traj_list = []
     for i in range(5):
@@ -872,7 +900,8 @@ def make_obstacle_course():
         # import pdb
         # pdb.set_trace()
         ref = ref.at[:3].set(goals[i, :])
-        ref = ref.at[6:9].set(rpys[i, :])
+        # ref = ref.at[6:9].set(rpys[i, :])
+        ref = ref.at[8].set(yaw[i])
         traj_list.append(ref)
 
     return traj_list
