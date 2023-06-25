@@ -65,7 +65,8 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_consta
 
     # first state in the trajectory is given
     x0 = x_init_traj
-    u0 = jnp.array([9.8, 0, 0, 0])
+    # u0 = jnp.array([9.8, 0, 0, 0])
+    u0 = jnp.array([9.8, 9.8, 9.8, 9.8]) / 4
 
     sols = []
     state_traj_list = [x0]
@@ -73,7 +74,7 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_consta
     obstacle_num = 0
     integrator = integrators.rk4(dynamics, dt=dt)
     n = T * (nx + nu)
-    m = T * (2 * nx + nu)
+    m = T * (2 * nx + 2 * nu)
     prev_sol = jnp.zeros(m + n)
 
     u00 = jnp.array([9.8, 0, 0, 0])

@@ -31,16 +31,16 @@ def test_optimal_control_obstacle_rollout():
     point B: pos = (2, 2, 1), velocity = (0, 0, 0)
     """
     # get the dynamics and set other basic parameters
-    sim_len = 200
+    sim_len = 500
     budget = 5
     dynamics = quadcopter_dynamics
     T = 20
     nx, nu = QUADCOPTER_NX, QUADCOPTER_NU
-    dt = .1
+    dt = .05
     
     x_init_traj = jnp.zeros(nx)
 
-    x_init_traj = x_init_traj.at[6].set(1)
+    # x_init_traj = x_init_traj.at[6].set(1)
     # quaternion = YPRToQuat(jnp.zeros(3))
     # x_init_traj = x_init_traj.at[6:10].set(quaternion)
 
@@ -59,14 +59,14 @@ def test_optimal_control_obstacle_rollout():
     angle_bds = .5
     vel_bds = np.inf
     omega_bds = 1
-    # x_min = np.array([-x_bds,-x_bds,-x_bds,-vel_bds,-vel_bds,-vel_bds,
-    #                 -angle_bds,-angle_bds,-np.inf,-omega_bds,-omega_bds,-omega_bds])
-    # x_max = np.array([ x_bds, x_bds, x_bds, vel_bds, vel_bds, vel_bds,
-    #                 angle_bds, angle_bds, np.inf, omega_bds, omega_bds, omega_bds])
     x_min = np.array([-x_bds,-x_bds,-x_bds,-vel_bds,-vel_bds,-vel_bds,
-                    -np.inf, -np.inf, -np.inf, -np.inf])
-    x_max = np.array([x_bds, x_bds, x_bds, vel_bds, vel_bds, vel_bds,
-                    np.inf, np.inf, np.inf, np.inf])
+                    -angle_bds,-angle_bds,-np.inf,-omega_bds,-omega_bds,-omega_bds])
+    x_max = np.array([ x_bds, x_bds, x_bds, vel_bds, vel_bds, vel_bds,
+                    angle_bds, angle_bds, np.inf, omega_bds, omega_bds, omega_bds])
+    # x_min = np.array([-x_bds,-x_bds,-x_bds,-vel_bds,-vel_bds,-vel_bds,
+    #                 -np.inf, -np.inf, -np.inf, -np.inf])
+    # x_max = np.array([x_bds, x_bds, x_bds, vel_bds, vel_bds, vel_bds,
+    #                 np.inf, np.inf, np.inf, np.inf])
     # x_min = np.array([-x_bds,-x_bds,-x_bds,-vel_bds,-vel_bds,-vel_bds,
     #                 -angle_bds,-angle_bds,-np.inf,-omega_bds,-omega_bds,-omega_bds])
     # x_max = np.array([ x_bds, x_bds, x_bds, vel_bds, vel_bds, vel_bds,
@@ -84,8 +84,10 @@ def test_optimal_control_obstacle_rollout():
     yaw_max = 6.0
     thrust_min = 2.0
     thrust_max = 20.0
-    u_max = np.array([thrust_max, roll_max, pitch_max, yaw_max])
-    u_min = np.array([thrust_min, -roll_max, -pitch_max, -yaw_max])
+    # u_max = np.array([thrust_max, roll_max, pitch_max, yaw_max])
+    # u_min = np.array([thrust_min, -roll_max, -pitch_max, -yaw_max])
+    u_max = np.array([10, 10, 10, 10])
+    u_min = -u_max
 
     delta_u = np.array([20, 6, 6, 6])
     # u_min = -u_max
@@ -94,17 +96,23 @@ def test_optimal_control_obstacle_rollout():
                             x_min=x_min, x_max=x_max)
 
     # set (Q_t, Q_T, R)
+    # Q = jnp.diag(jnp.array([100, 100, 100, 
+    #                         100, 100, 100, 
+    #                         0, 0, 0, 0])) 
     Q = jnp.diag(jnp.array([100, 100, 100, 
                             100, 100, 100, 
-                            0, 0, 0, 0])) 
+                            0, 0, 0, 0, 0, 0])) 
     QT = 10 * Q #jnp.diag(jnp.array([1, 1, 1, .0, .0, 0, 0, 0, 0, 0]))
-    R = 0.01 * jnp.eye(nu)
+    R = 0.1 * jnp.eye(nu)
 
     # reference trajectory dict
     traj_list = make_obstacle_course()
+    # Q_ref = jnp.diag(jnp.array([1, 1, 1, 
+    #                         0, 0, 0, 
+    #                         0, 0, 0, 0]))
     Q_ref = jnp.diag(jnp.array([1, 1, 1, 
                             0, 0, 0, 
-                            0, 0, 0, 0]))
+                            0, 0, 0, 0, 0, 0]))
     ref_traj_dict = dict(case='obstacle_course', traj_list=traj_list, Q=Q_ref, tol=.05)
 
     # run the optimal controller to get everything using closed_loop_rollout
@@ -153,7 +161,7 @@ def test_optimal_control_obstacle_rollout():
         # import pdb
         # pdb.set_trace()
         z0 = prev_sol #jnp.zeros(m + n)
-        z0 = jnp.zeros(m + n)
+        # z0 = jnp.zeros(m + n)
         out = k_steps_eval_osqp(budget, z0, q, factor, P, A, rho=rho_vec, 
                                 sigma=sigma, supervised=False, z_star=None, jit=True)
         sol = out[0]
@@ -163,10 +171,10 @@ def test_optimal_control_obstacle_rollout():
         # plt.show()
         # plt.clf()
         
-        z0 = sol[:nx]
-        w0 = sol[T*nx:T*nx + nu]
-        z1 = sol[nx:2*nx]
-        w1 = sol[T*nx + nu:T*nx + 2*nu]
+        # z0 = sol[:nx]
+        # w0 = sol[T*nx:T*nx + nu]
+        # z1 = sol[nx:2*nx]
+        # w1 = sol[T*nx + nu:T*nx + 2*nu]
         # import pdb
         # pdb.set_trace()
         

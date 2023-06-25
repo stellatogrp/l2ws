@@ -13,7 +13,7 @@ from functools import partial
 from jax import vmap
 from scipy import sparse
 
-QUADCOPTER_NX = 10
+QUADCOPTER_NX = 12
 QUADCOPTER_NU = 4
 
 
@@ -485,94 +485,94 @@ def solve_trajectory(first_x_init, P_orig, A, q, traj_length, Ad, noise_std_dev)
     return theta_mat, z_stars, q_mat
 
 
-def quadcopter_dynamics(state, inputs, t):
-    # State variables
-    position = state[:3]  # Position [x, y, z]
-    velocity = state[3:6]  # Velocity [vx, vy, vz]
-    quaternion = state[6:]  # Angular velocity of the body frame [q_w, q_x, q_y, q_z]
-    qw, qx, qy, qz = quaternion[0], quaternion[1], quaternion[2], quaternion[3]
-
-    # inputs is u = [thrust, wx, wy, wz]
-
-    # 0.5 * ( -wx*qx - wy*qy - wz*qz ),
-    # 0.5 * (  wx*qw + wz*qy - wy*qz ),
-    # 0.5 * (  wy*qw - wz*qx + wx*qz ),
-    # 0.5 * (  wz*qw + wy*qx - wx*qy ),
-    # 2 * (qw*qy + qx*qz) * thrust,
-    # 2 * (qy*qz - qw*qx) * thrust,
-    # (qw*qw - qx*qx - qy*qy + qz*qz) * thrust - self._gz
-    # (1 - 2*qx*qx - 2*qy*qy) * thrust - self._gz
-
-    position_dot = velocity
-    quaternion_dot = quaternion_product(inputs[1:], quaternion)
-
-    thrust = inputs[0]
-
-    velocity_dot = jnp.array([2 * (qw*qy + qx*qz) * thrust,
-                                2 * (qy*qz - qw*qx) * thrust,
-                                (qw*qw - qx*qx - qy*qy + qz*qz) * thrust - 9.8])
-    state_dot = jnp.concatenate([position_dot, velocity_dot, quaternion_dot])
-
-    return state_dot
-
-
-# def quadcopter_dynamics(state, thrusts, t):
+# def quadcopter_dynamics(state, inputs, t):
 #     # State variables
 #     position = state[:3]  # Position [x, y, z]
 #     velocity = state[3:6]  # Velocity [vx, vy, vz]
-#     theta = state[6:9]  # Angles of the inertial frame (roll, pitch, yaw) [r, p, y]
-#     omega = state[9:]  # Angular velocity of the body frame [w_x, w_y, w_z]
+#     quaternion = state[6:]  # Angular velocity of the body frame [q_w, q_x, q_y, q_z]
+#     qw, qx, qy, qz = quaternion[0], quaternion[1], quaternion[2], quaternion[3]
 
-#     # constants
-#     Ixx, Iyy, Izz = 1, 1, 1
-#     I = jnp.array([
-#         [Ixx, 0, 0],
-#         [0, Iyy, 0],
-#         [0, 0, Izz]
-#     ])
-#     I_inv = jnp.array([
-#         [1 / Ixx, 0, 0],
-#         [0, 1 / Iyy, 0],
-#         [0, 0, 1 / Izz]
-#     ])
-#     gravity = jnp.array([0, 0, -9.8])
-#     mass = 1
-#     k_drag = 1
-#     k_thrust = 10
-#     k_torque = 100  # 1
-#     k = 1
-#     b = 1
-#     L = 1
+#     # inputs is u = [thrust, wx, wy, wz]
 
-#     # rotation matrix
-#     R = get_rotation_matrix(theta)
-
-#     # calculate forces and torques
-#     drag_force = -k_drag * velocity
-#     # thrust_force = k_thrust * R @ jnp.array([thrusts[3] + thrusts[1] - thrusts[2] - thrusts[0],
-#     #                                          thrusts[0] + thrusts[1] - thrusts[2] - thrusts[3],
-#     #                                          k * jnp.sum(thrusts[:4])])
-#     # thrust_x = thrusts[1] + thrusts[3] - thrusts[0] - thrusts[2]  # Thrust difference between right and left propellers
-#     # thrust_y = thrusts[0] + thrusts[1] - thrusts[2] - thrusts[3]
-#     # thrust_force = k_thrust * R @ jnp.array([ 0,
-#     #                                           0,
-#     #                                          k * jnp.sum(thrusts[:4])])
-#     thrust_force = k_thrust * R @ jnp.array([0*thrusts[4], 0*thrusts[5], k * jnp.sum(thrusts[:4])])
-#     # print('thrust_force', thrust_force)
-
-#     # horizontal_force = jnp.array([thrusts[4], thrusts[5], 0])
-#     torques = k_torque * jnp.array([L * k * (thrusts[0] - thrusts[2]),
-#                                     L * k * (thrusts[1] - thrusts[3]),
-#                                     b * (thrusts[0] - thrusts[1] + thrusts[2] - thrusts[3])])
-#     print('torque', torques)
+#     # 0.5 * ( -wx*qx - wy*qy - wz*qz ),
+#     # 0.5 * (  wx*qw + wz*qy - wy*qz ),
+#     # 0.5 * (  wy*qw - wz*qx + wx*qz ),
+#     # 0.5 * (  wz*qw + wy*qx - wx*qy ),
+#     # 2 * (qw*qy + qx*qz) * thrust,
+#     # 2 * (qy*qz - qw*qx) * thrust,
+#     # (qw*qw - qx*qx - qy*qy + qz*qz) * thrust - self._gz
+#     # (1 - 2*qx*qx - 2*qy*qy) * thrust - self._gz
 
 #     position_dot = velocity
-#     theta_dot = omega_2_thetadot(theta, omega)
-#     velocity_dot = gravity + (thrust_force + drag_force) / mass
-#     omega_dot = I_inv @ (torques - jnp.cross(omega, I @ omega))
-#     state_dot = jnp.concatenate([position_dot, velocity_dot, theta_dot, omega_dot])
+#     quaternion_dot = quaternion_product(inputs[1:], quaternion)
+
+#     thrust = inputs[0]
+
+#     velocity_dot = jnp.array([2 * (qw*qy + qx*qz) * thrust,
+#                                 2 * (qy*qz - qw*qx) * thrust,
+#                                 (qw*qw - qx*qx - qy*qy + qz*qz) * thrust - 9.8])
+#     state_dot = jnp.concatenate([position_dot, velocity_dot, quaternion_dot])
 
 #     return state_dot
+
+
+def quadcopter_dynamics(state, thrusts, t):
+    # State variables
+    position = state[:3]  # Position [x, y, z]
+    velocity = state[3:6]  # Velocity [vx, vy, vz]
+    theta = state[6:9]  # Angles of the inertial frame (roll, pitch, yaw) [r, p, y]
+    omega = state[9:]  # Angular velocity of the body frame [w_x, w_y, w_z]
+
+    # constants
+    Ixx, Iyy, Izz = 1, 1, 1
+    I = jnp.array([
+        [Ixx, 0, 0],
+        [0, Iyy, 0],
+        [0, 0, Izz]
+    ])
+    I_inv = jnp.array([
+        [1 / Ixx, 0, 0],
+        [0, 1 / Iyy, 0],
+        [0, 0, 1 / Izz]
+    ])
+    gravity = jnp.array([0, 0, -9.8])
+    mass = 1
+    k_drag = 1
+    k_thrust = 10
+    k_torque = 100  # 1
+    k = 1
+    b = 1
+    L = 1
+
+    # rotation matrix
+    R = get_rotation_matrix(theta)
+
+    # calculate forces and torques
+    drag_force = -k_drag * velocity
+    # thrust_force = k_thrust * R @ jnp.array([thrusts[3] + thrusts[1] - thrusts[2] - thrusts[0],
+    #                                          thrusts[0] + thrusts[1] - thrusts[2] - thrusts[3],
+    #                                          k * jnp.sum(thrusts[:4])])
+    # thrust_x = thrusts[1] + thrusts[3] - thrusts[0] - thrusts[2]  # Thrust difference between right and left propellers
+    # thrust_y = thrusts[0] + thrusts[1] - thrusts[2] - thrusts[3]
+    # thrust_force = k_thrust * R @ jnp.array([ 0,
+    #                                           0,
+    #                                          k * jnp.sum(thrusts[:4])])
+    thrust_force = k_thrust * R @ jnp.array([0, 0, k * jnp.sum(thrusts[:4])])
+    # print('thrust_force', thrust_force)
+
+    # horizontal_force = jnp.array([thrusts[4], thrusts[5], 0])
+    torques = k_torque * jnp.array([L * k * (thrusts[0] - thrusts[2]),
+                                    L * k * (thrusts[1] - thrusts[3]),
+                                    b * (thrusts[0] - thrusts[1] + thrusts[2] - thrusts[3])])
+    # print('torque', torques)
+
+    position_dot = velocity
+    theta_dot = omega_2_thetadot(theta, omega)
+    velocity_dot = gravity + (thrust_force + drag_force) / mass
+    omega_dot = I_inv @ (torques - jnp.cross(omega, I @ omega))
+    state_dot = jnp.concatenate([position_dot, velocity_dot, theta_dot, omega_dot])
+
+    return state_dot
 
 
 def get_rotation_matrix(theta):
@@ -798,8 +798,8 @@ def plot_traj_3d(state_traj_list, goals, labels):
     state_traj_list is a list of lists
     """
     # Quadcopter dimensions
-    body_length = .01
-    body_width = .01
+    body_length = .1
+    body_width = .1
     body_height = .01
 
     # Body coordinates
@@ -849,12 +849,58 @@ def plot_traj_3d(state_traj_list, goals, labels):
             # pdb.set_trace()
 
             # Plot body
-            ax.plot3D(xs[i] + body_coords_rotated[0], ys[i] +
-                      body_coords_rotated[1], zs[i] + body_coords_rotated[2], 'b')
+            # ax.plot3D(xs[i] + body_coords_rotated[0], ys[i] +
+            #           body_coords_rotated[1], zs[i] + body_coords_rotated[2], 'b')
+            
+            # import pdb
+            # pdb.set_trace()
 
             # Plot propellers
             # for k in range(4):
-            #     ax.plot3D(xs[i] + prop_coords_rotated[0, k], ys[i] + prop_coords_rotated[1, k], zs[i] + prop_coords_rotated[2, k], 'r')
+            #     ax.scatter(xs[i] + prop_coords_rotated[0, k], ys[i] + prop_coords_rotated[1, k], zs[i] + prop_coords_rotated[2, k], c='r')
+            # propeller_positions = 
+            propeller_positions = prop_coords_rotated.T + np.array([xs[i], ys[i], zs[i]])
+
+            # propellers 0 and 1 (to center) are red
+
+            # Plot the cross-shaped body of the quadcopter
+            # body_x = xs[i] + np.array([propeller_positions[0, 0], propeller_positions[2, 0]])
+            # body_y = ys[i] + np.array([propeller_positions[0, 1], propeller_positions[2, 1]])
+            # body_z = zs[i] + np.array([propeller_positions[0, 2], propeller_positions[2, 2]])
+            # ax.plot(body_x, body_y, body_z, 'b')
+
+            # propeller 0 to center
+            body_x = np.array([propeller_positions[0, 0], xs[i]])
+            body_y = np.array([propeller_positions[0, 1], ys[i]])
+            body_z = np.array([propeller_positions[0, 2], zs[i]])
+            ax.plot(body_x, body_y, body_z, 'b')
+
+            # propeller 1 to center
+            body_x = np.array([propeller_positions[1, 0], xs[i]])
+            body_y = np.array([propeller_positions[1, 1], ys[i]])
+            body_z = np.array([propeller_positions[1, 2], zs[i]])
+            ax.plot(body_x, body_y, body_z, 'b')
+
+            # propeller 2 to center
+            body_x = np.array([propeller_positions[2, 0], xs[i]])
+            body_y = np.array([propeller_positions[2, 1], ys[i]])
+            body_z = np.array([propeller_positions[2, 2], zs[i]])
+            ax.plot(body_x, body_y, body_z, 'r')
+
+            # propeller 3 to center
+            body_x = np.array([propeller_positions[3, 0], xs[i]])
+            body_y = np.array([propeller_positions[3, 1], ys[i]])
+            body_z = np.array([propeller_positions[3, 2], zs[i]])
+            ax.plot(body_x, body_y, body_z, 'r')
+
+            # body_x = xs[i] + np.array([propeller_positions[1, 0], propeller_positions[3, 0]])
+            # body_y = ys[i] + np.array([propeller_positions[1, 1], propeller_positions[3, 1]])
+            # body_z = zs[i] + np.array([propeller_positions[1, 2], propeller_positions[3, 2]])
+            # ax.plot(body_x, body_y, body_z, 'b')
+            # body_x = np.array([propeller_positions[1, 0], propeller_positions[3, 0]])
+            # body_y = np.array([propeller_positions[1, 1], propeller_positions[3, 1]])
+            # body_z = np.array([propeller_positions[1, 2], propeller_positions[3, 2]])
+            # ax.plot(body_x, body_y, body_z, 'b')
 
         # if labels[j] == 'optimal':
         #     ax.scatter(x, y, z, label=labels[j], color='green')
