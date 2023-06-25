@@ -13,8 +13,8 @@ from functools import partial
 from jax import vmap
 from scipy import sparse
 
-QUADCOPTER_NX = 12
-QUADCOPTER_NU = 6
+QUADCOPTER_NX = 10
+QUADCOPTER_NU = 4
 
 
 def run(run_cfg):
@@ -485,63 +485,94 @@ def solve_trajectory(first_x_init, P_orig, A, q, traj_length, Ad, noise_std_dev)
     return theta_mat, z_stars, q_mat
 
 
-def quadcopter_dynamics(state, thrusts, t):
+def quadcopter_dynamics(state, inputs, t):
     # State variables
     position = state[:3]  # Position [x, y, z]
     velocity = state[3:6]  # Velocity [vx, vy, vz]
-    theta = state[6:9]  # Angles of the inertial frame (roll, pitch, yaw) [r, p, y]
-    omega = state[9:]  # Angular velocity of the body frame [w_x, w_y, w_z]
+    quaternion = state[6:]  # Angular velocity of the body frame [q_w, q_x, q_y, q_z]
+    qw, qx, qy, qz = quaternion[0], quaternion[1], quaternion[2], quaternion[3]
 
-    # constants
-    Ixx, Iyy, Izz = 1, 1, 1
-    I = jnp.array([
-        [Ixx, 0, 0],
-        [0, Iyy, 0],
-        [0, 0, Izz]
-    ])
-    I_inv = jnp.array([
-        [1 / Ixx, 0, 0],
-        [0, 1 / Iyy, 0],
-        [0, 0, 1 / Izz]
-    ])
-    gravity = jnp.array([0, 0, -9.8])
-    mass = 1
-    k_drag = 1
-    k_thrust = 10
-    k_torque = 100 #1
-    k = 1
-    b = 1
-    L = 1
+    # inputs is u = [thrust, wx, wy, wz]
 
-    # rotation matrix
-    R = get_rotation_matrix(theta)
-
-    # calculate forces and torques
-    drag_force = -k_drag * velocity
-    # thrust_force = k_thrust * R @ jnp.array([thrusts[3] + thrusts[1] - thrusts[2] - thrusts[0], 
-    #                                          thrusts[0] + thrusts[1] - thrusts[2] - thrusts[3], 
-    #                                          k * jnp.sum(thrusts[:4])])
-    # thrust_x = thrusts[1] + thrusts[3] - thrusts[0] - thrusts[2]  # Thrust difference between right and left propellers
-    # thrust_y = thrusts[0] + thrusts[1] - thrusts[2] - thrusts[3]
-    # thrust_force = k_thrust * R @ jnp.array([ 0, 
-    #                                           0, 
-    #                                          k * jnp.sum(thrusts[:4])])
-    thrust_force = k_thrust * R @ jnp.array([0*thrusts[4], 0*thrusts[5], k * jnp.sum(thrusts[:4])])
-    # print('thrust_force', thrust_force)
-    
-    # horizontal_force = jnp.array([thrusts[4], thrusts[5], 0])
-    torques = k_torque * jnp.array([L * k * (thrusts[0] - thrusts[2]), 
-                         L * k * (thrusts[1] - thrusts[3]),
-                         b * (thrusts[0] - thrusts[1] + thrusts[2] - thrusts[3]) ])
-    print('torque', torques)
+    # 0.5 * ( -wx*qx - wy*qy - wz*qz ),
+    # 0.5 * (  wx*qw + wz*qy - wy*qz ),
+    # 0.5 * (  wy*qw - wz*qx + wx*qz ),
+    # 0.5 * (  wz*qw + wy*qx - wx*qy ),
+    # 2 * (qw*qy + qx*qz) * thrust,
+    # 2 * (qy*qz - qw*qx) * thrust,
+    # (qw*qw - qx*qx - qy*qy + qz*qz) * thrust - self._gz
+    # (1 - 2*qx*qx - 2*qy*qy) * thrust - self._gz
 
     position_dot = velocity
-    theta_dot = omega_2_thetadot(theta, omega)
-    velocity_dot = gravity + (thrust_force + drag_force) / mass
-    omega_dot = I_inv @ (torques - jnp.cross(omega, I @ omega))
-    state_dot = jnp.concatenate([position_dot, velocity_dot, theta_dot, omega_dot])
+    quaternion_dot = quaternion_product(inputs[1:], quaternion)
+
+    thrust = inputs[0]
+
+    velocity_dot = jnp.array([2 * (qw*qy + qx*qz) * thrust,
+                                2 * (qy*qz - qw*qx) * thrust,
+                                (qw*qw - qx*qx - qy*qy + qz*qz) * thrust - 9.8])
+    state_dot = jnp.concatenate([position_dot, velocity_dot, quaternion_dot])
 
     return state_dot
+
+
+# def quadcopter_dynamics(state, thrusts, t):
+#     # State variables
+#     position = state[:3]  # Position [x, y, z]
+#     velocity = state[3:6]  # Velocity [vx, vy, vz]
+#     theta = state[6:9]  # Angles of the inertial frame (roll, pitch, yaw) [r, p, y]
+#     omega = state[9:]  # Angular velocity of the body frame [w_x, w_y, w_z]
+
+#     # constants
+#     Ixx, Iyy, Izz = 1, 1, 1
+#     I = jnp.array([
+#         [Ixx, 0, 0],
+#         [0, Iyy, 0],
+#         [0, 0, Izz]
+#     ])
+#     I_inv = jnp.array([
+#         [1 / Ixx, 0, 0],
+#         [0, 1 / Iyy, 0],
+#         [0, 0, 1 / Izz]
+#     ])
+#     gravity = jnp.array([0, 0, -9.8])
+#     mass = 1
+#     k_drag = 1
+#     k_thrust = 10
+#     k_torque = 100  # 1
+#     k = 1
+#     b = 1
+#     L = 1
+
+#     # rotation matrix
+#     R = get_rotation_matrix(theta)
+
+#     # calculate forces and torques
+#     drag_force = -k_drag * velocity
+#     # thrust_force = k_thrust * R @ jnp.array([thrusts[3] + thrusts[1] - thrusts[2] - thrusts[0],
+#     #                                          thrusts[0] + thrusts[1] - thrusts[2] - thrusts[3],
+#     #                                          k * jnp.sum(thrusts[:4])])
+#     # thrust_x = thrusts[1] + thrusts[3] - thrusts[0] - thrusts[2]  # Thrust difference between right and left propellers
+#     # thrust_y = thrusts[0] + thrusts[1] - thrusts[2] - thrusts[3]
+#     # thrust_force = k_thrust * R @ jnp.array([ 0,
+#     #                                           0,
+#     #                                          k * jnp.sum(thrusts[:4])])
+#     thrust_force = k_thrust * R @ jnp.array([0*thrusts[4], 0*thrusts[5], k * jnp.sum(thrusts[:4])])
+#     # print('thrust_force', thrust_force)
+
+#     # horizontal_force = jnp.array([thrusts[4], thrusts[5], 0])
+#     torques = k_torque * jnp.array([L * k * (thrusts[0] - thrusts[2]),
+#                                     L * k * (thrusts[1] - thrusts[3]),
+#                                     b * (thrusts[0] - thrusts[1] + thrusts[2] - thrusts[3])])
+#     print('torque', torques)
+
+#     position_dot = velocity
+#     theta_dot = omega_2_thetadot(theta, omega)
+#     velocity_dot = gravity + (thrust_force + drag_force) / mass
+#     omega_dot = I_inv @ (torques - jnp.cross(omega, I @ omega))
+#     state_dot = jnp.concatenate([position_dot, velocity_dot, theta_dot, omega_dot])
+
+#     return state_dot
 
 
 def get_rotation_matrix(theta):
@@ -553,8 +584,9 @@ def get_rotation_matrix(theta):
     s_yaw = jnp.sin(yaw)
     c_yaw = jnp.cos(yaw)
     R = jnp.array([[c_roll * c_yaw - c_pitch * s_roll * s_yaw, -c_yaw * s_roll - c_roll * c_pitch * s_yaw, s_pitch * s_yaw],
-                     [c_pitch * c_yaw * s_yaw + c_roll * s_yaw, c_roll * c_pitch * c_yaw - s_roll * s_yaw, -c_yaw * s_pitch],
-                     [s_pitch * s_roll, c_roll * s_pitch, c_pitch]])
+                   [c_pitch * c_yaw * s_yaw + c_roll * s_yaw, c_roll *
+                       c_pitch * c_yaw - s_roll * s_yaw, -c_yaw * s_pitch],
+                   [s_pitch * s_roll, c_roll * s_pitch, c_pitch]])
     # print('theta', theta)
     # print('R', R)
     return R
@@ -574,8 +606,8 @@ def omega_2_thetadot(theta, omega):
     s_pitch = jnp.sin(pitch)
     c_pitch = jnp.cos(pitch)
     A = jnp.array([[1, 0, -s_pitch],
-                     [0, c_roll, c_pitch * s_roll],
-                     [0, -s_roll , c_pitch * c_roll]])
+                   [0, c_roll, c_pitch * s_roll],
+                   [0, -s_roll, c_pitch * c_roll]])
     theta_dot = jnp.linalg.inv(A) @ omega
     return theta_dot
 
@@ -594,8 +626,8 @@ def thetadot_2_omega(theta, theta_dot):
     s_pitch = jnp.sin(pitch)
     c_pitch = jnp.cos(pitch)
     A = jnp.array([[1, 0, -s_pitch],
-                     [0, c_roll, c_pitch * s_roll],
-                     [0,-s_roll , c_pitch * s_roll]])
+                   [0, c_roll, c_pitch * s_roll],
+                   [0, -s_roll, c_pitch * s_roll]])
     omega = A @ theta_dot
     return omega
 
@@ -676,7 +708,7 @@ def thetadot_2_omega(theta, theta_dot):
 
 #     angular_velocity_dot = I_inv @ (torques - jnp.cross(angular_velocity, I @ angular_velocity))
 #     # inertia_matrix_inv.dot(torques) - jnp.cross(angular_velocity, angular_velocity)
-#     # angular_velocity_dot = 
+#     # angular_velocity_dot =
 
 #     # Concatenate the state derivatives
 #     # state_dot = jnp.concatenate([position_dot, velocity_dot, quaternion_dot[1:], angular_velocity_dot])
@@ -691,7 +723,7 @@ def YPRToQuat(rpy):
     # theta = RPY[1] = r2
     # phi   = RPY[2] = r3
     r1, r2, r3 = rpy[0], rpy[1], rpy[2]
-    
+
     cr1 = jnp.cos(0.5*r1)
     cr2 = jnp.cos(0.5*r2)
     cr3 = jnp.cos(0.5*r3)
@@ -707,9 +739,9 @@ def YPRToQuat(rpy):
     # e0,e1,e2,e3 = qw,qx,qy,qz
     q = jnp.array([q0, q1, q2, q3])
     # q = q*np.sign(e0)
-    
+
     q = q / jnp.linalg.norm(q)
-    
+
     return q
 
 
@@ -735,11 +767,6 @@ def quaternion_to_rotation_matrix(quaternion):
 def quaternion_product(p, q):
     p0, p1, p2 = p
     q0, q1, q2, q3 = q
-    # w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
-    # x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
-    # y = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
-    # z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
-    # return jnp.array([w, x, y, z])
     w = -0.5*p0*q1 - 0.5*p1*q2 - 0.5*q3*p2
     x = 0.5*p0*q0 - 0.5*p1*q3 + 0.5*q2*p2
     y = 0.5*p0*q3 + 0.5*p1*q0 - 0.5*q1*p2
@@ -749,9 +776,9 @@ def quaternion_product(p, q):
 
 def inertia_matrix_inverse(quaternion):
     # Assuming diagonal inertia matrix
-    Ixx = .01 #1.0
-    Iyy = .01 ##1.0
-    Izz = .02 #1.0
+    Ixx = .01  # 1.0
+    Iyy = .01  # 1.0
+    Izz = .02  # 1.0
 
     qw, qx, qy, qz = quaternion
 
@@ -807,14 +834,14 @@ def plot_traj_3d(state_traj_list, goals, labels):
 
             # Rotate body coordinates
             R_roll = np.array([[1, 0, 0],
-                            [0, np.cos(roll), -np.sin(roll)],
-                            [0, np.sin(roll), np.cos(roll)]])
+                               [0, np.cos(roll), -np.sin(roll)],
+                               [0, np.sin(roll), np.cos(roll)]])
             R_pitch = np.array([[np.cos(pitch), 0, np.sin(pitch)],
                                 [0, 1, 0],
                                 [-np.sin(pitch), 0, np.cos(pitch)]])
             R_yaw = np.array([[np.cos(yaw), -np.sin(yaw), 0],
-                            [np.sin(yaw), np.cos(yaw), 0],
-                            [0, 0, 1]])
+                              [np.sin(yaw), np.cos(yaw), 0],
+                              [0, 0, 1]])
 
             body_coords_rotated = R_yaw @ R_pitch @ R_roll @ body_coords
             prop_coords_rotated = R_yaw @ R_pitch @ R_roll @ prop_coords
@@ -822,7 +849,8 @@ def plot_traj_3d(state_traj_list, goals, labels):
             # pdb.set_trace()
 
             # Plot body
-            ax.plot3D(xs[i] + body_coords_rotated[0], ys[i] + body_coords_rotated[1], zs[i] + body_coords_rotated[2], 'b')
+            ax.plot3D(xs[i] + body_coords_rotated[0], ys[i] +
+                      body_coords_rotated[1], zs[i] + body_coords_rotated[2], 'b')
 
             # Plot propellers
             # for k in range(4):
@@ -874,7 +902,7 @@ def make_obstacle_course():
                        [-2, 3, -3],
                        [-2, -1, -3],
                        [3, -2, 1],
-                       [0, 0, 0]]) / 30
+                       [0, 0, 0]]) # / 10
     # goals = jnp.array([[1, 1, 1],
     #                    [-2, 3, -3],
     #                    [-2, -1, -3],
@@ -882,12 +910,12 @@ def make_obstacle_course():
     #                    [0, 0, 0]]) / 10
     # goals_np = .1 * np.random.rand(5, 3) #.2 * np.random.rand(5, 3) - .1
     # goals = jnp.array(goals_np)
-    rpys = 0 #* jnp.array([[.2, .2, 0],
-                    #    [.2, .2, 0],
-                    #    [.2, .2, 0],
-                    #    [.2, .2, 0],
-                    #    [0, 0, 0]])
-    yaw_ini = 0    
+    rpys = 0  # * jnp.array([[.2, .2, 0],
+    #    [.2, .2, 0],
+    #    [.2, .2, 0],
+    #    [.2, .2, 0],
+    #    [0, 0, 0]])
+    yaw_ini = 0
     yaw = np.array([20, -90, 120, 45])
 
     # t = np.hstack((t_ini, t)).astype(float)
@@ -901,7 +929,7 @@ def make_obstacle_course():
         # pdb.set_trace()
         ref = ref.at[:3].set(goals[i, :])
         # ref = ref.at[6:9].set(rpys[i, :])
-        ref = ref.at[8].set(yaw[i])
+        # ref = ref.at[8].set(yaw[i])
         traj_list.append(ref)
 
     return traj_list

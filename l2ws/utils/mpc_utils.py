@@ -65,26 +65,29 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_consta
 
     # first state in the trajectory is given
     x0 = x_init_traj
-    u0 = jnp.zeros(nu)
+    u0 = jnp.array([9.8, 0, 0, 0])
 
     sols = []
     state_traj_list = [x0]
     P_list, A_list, factor_list, q_list = [], [], [], []
     obstacle_num = 0
-    integrator = integrators.euler(dynamics, dt=dt)
+    integrator = integrators.rk4(dynamics, dt=dt)
     n = T * (nx + nu)
     m = T * (2 * nx + nu)
     prev_sol = jnp.zeros(m + n)
+
+    u00 = jnp.array([9.8, 0, 0, 0])
     for j in range(sim_len):
         # Compute the state matrix Ad
-        # dd = dynamics(x0, u0, j)
-        
-        Ad = jnp.eye(nx) + jax.jacobian(lambda x: dynamics(x, u0, j))(x0) * dt
+        Ac = jax.jacobian(lambda x: dynamics(x, u0, j))(x0)
+        # Ad = jnp.eye(nx) + jax.jacobian(lambda x: dynamics(x, u0, j))(x0) * dt
 
         # Compute the input matrix B
-        Bd = jax.jacobian(lambda u: dynamics(x0, u, j))(u0) * dt
-        # print('Ad', Ad)
-        # print('Bd', Bd)
+        Bc = jax.jacobian(lambda u: dynamics(x0, u, j))(u0)
+        # Bd = jax.jacobian(lambda u: dynamics(x0, u, j))(u0) * dt
+
+        print('Ac', Ac)
+        print('Bc', Bc)
         print(j)
         # import pdb
         # pdb.set_trace()
@@ -94,7 +97,9 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_consta
         # import pdb
         # pdb.set_trace()
         print('ref_traj', ref_traj)
-        sol, P, A, factor, q = qp_solver(Ad, Bd, x0, u0, ref_traj, budget, prev_sol)
+        x_dot = dynamics(x0, u0, j)
+        sol, P, A, factor, q = qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol)
+        # sol, P, A, factor, q = qp_solver(Ad, Bd, x0, u0, ref_traj, budget, prev_sol)
         sols.append(sol)
         P_list.append(P)
         A_list.append(A)
@@ -103,8 +108,18 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_consta
         prev_sol = sol[:m + n]
 
         # implement the first control
-        u0 = extract_first_control(sol, T, nx, nu)
-        print('u0', u0)
+        # u0 = extract_first_control(sol, T, nx, nu)
+        # u1 = extract_first_control(sol, T, nx, nu, control_num=1)
+        # u2 = extract_first_control(sol, T, nx, nu, control_num=2)
+        # print('u0', u0)
+        # print('u1', u1)
+        # print('u2', u2)
+        u0 = extract_first_control(sol, T, nx, nu, control_num=0)
+        for i in range(T):
+            print('u', i, extract_first_control(sol, T, nx, nu, control_num=i))
+
+        # import pdb
+        # pdb.set_trace()
 
         clipped_u0 = jnp.clip(u0, a_min=u_min, a_max=u_max)
         print('u0', clipped_u0)
@@ -115,8 +130,14 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_consta
         # get the next state
         x0 = integrator(x0, clipped_u0, j) + noise_list[j]
         print('x0', x0)
-        print('expected x0', sol[nx: 2*nx])
+        # print('expected x0', sol[nx: 2*nx])
+        print('expected x0', sol[:nx])
+        print('expected x1', sol[nx:2*nx])
         print('final expected state', sol[(T-1)*nx:T*nx])
+        print('final expected control', sol[(T-1)*nu + T*nx: T*nu + T*nx])
+
+        # import pdb
+        # pdb.set_trace()
 
         # check if the obstacle number should be updated
         obstacle_num = update_obstacle_num(x0, ref_traj_dict, j, obstacle_num)
@@ -138,7 +159,9 @@ def update_obstacle_num(x, ref_traj_dict, j, obstacle_num):
         tol = ref_traj_dict['tol']
         Q = ref_traj_dict['Q']
         curr_ref = ref_traj_dict['traj_list'][obstacle_num]
-        if (x - curr_ref).T @ Q @ (x - curr_ref) <= tol:
+        dist = jnp.sqrt((x - curr_ref).T @ Q @ (x - curr_ref))
+        print('dist', dist)
+        if dist <= tol:
             # check if obstacle course finished
             if obstacle_num == len(ref_traj_dict['traj_list']) - 1:
                 obstacle_num = -1
@@ -211,17 +234,19 @@ def simulate_fwd_l2ws(sim_len, l2ws_model, k, noise_vec_list, q_init, x_init, A,
     return opt_sols, state_traj
 
 
-def extract_first_control(sol, T, nx, nu):
-    return sol[T * nx: T * nx + nu]
+def extract_first_control(sol, T, nx, nu, control_num=0):
+    return sol[T * nx + control_num * nu: T * nx + (control_num + 1) * nu]
 
 
-def static_canon_mpc_osqp(x_ref, x0, Ad, Bd, cd, T, nx, nu, x_min, x_max, u_min, u_max, Q, QT, R):
+def static_canon_mpc_osqp(x_ref, x0, Ad, Bd, cd, T, nx, nu, x_min, x_max, u_min, u_max, Q, QT, R, 
+                          delta_u=None, u_prev=None):
     """
     given the mpc problem
     min (x_t - x_t^{ref})^T Q_T (x_t - x_t^{ref}) + sum_{i=1}^{T-1} (x_t - x_t^{ref})^T Q (x_t - x_t^{ref}) + u_t^T R u_t
         s.t. x_{t+1} = Ad x_t + Bd u_t
              x_min <= x_t <= x_max
              u_min <= u_t <= u_max
+             -delta_u <= u_{t+1} - u_t <= delta_u (if delta_u is not None)
 
     returns (P, A, c, l, u) in the canonical osqp form
 
@@ -263,10 +288,40 @@ def static_canon_mpc_osqp(x_ref, x0, Ad, Bd, cd, T, nx, nu, x_min, x_max, u_min,
         sparse.eye(T), Bd
     )
     Aeq = sparse.hstack([Ax, Bu])
+    # import pdb
+    # pdb.set_trace()
 
-    A_ineq = sparse.vstack(
-        [sparse.eye(T * nx + T * nu)]
-    )
+    if delta_u is None:
+        A_ineq = sparse.vstack(
+            [sparse.eye(T * nx + T * nu)]
+        )
+    else:
+        A_minmax = sparse.vstack(
+            [sparse.eye(T * nx + T * nu)]
+        )
+        # A_deltau = np.eye(T * nu)
+        # np.fill_diagonal(A_deltau[1:, :], -1)
+        A_deltau = sparse.eye(T * nu) - sparse.kron(
+            sparse.eye(T, k=-1), sparse.eye(nu)
+        )
+        
+
+        zeros_sparse = sparse.coo_matrix(np.zeros((T * nu, T * nx)))
+        # A_deltau_sparse = sparse.coo_matrix(A_deltau)
+
+        # import pdb
+        # pdb.set_trace()
+
+        A_deltau_full = sparse.hstack([zeros_sparse, A_deltau])
+        # import pdb
+        # pdb.set_trace()
+
+        A_ineq = sparse.vstack(
+            [A_minmax,
+            A_deltau_full]
+        )
+        
+
 
     A = sparse.vstack(
         [
@@ -281,10 +336,22 @@ def static_canon_mpc_osqp(x_ref, x0, Ad, Bd, cd, T, nx, nu, x_min, x_max, u_min,
     u_max_vec = np.tile(u_max, T)
     u_min_vec = np.tile(u_min, T)
 
-    b_upper = np.hstack(
-        [x_max_vec, u_max_vec])
-    b_lower = np.hstack(
-        [x_min_vec, u_min_vec])
+    if delta_u is None:
+        b_upper = np.hstack(
+            [x_max_vec, u_max_vec])
+        b_lower = np.hstack(
+            [x_min_vec, u_min_vec])
+    else:
+        delta_u_tiled = np.tile(delta_u, T)
+
+        b_upper = np.hstack(
+            [x_max_vec, u_max_vec, delta_u_tiled])
+        b_lower = np.hstack(
+            [x_min_vec, u_min_vec, -delta_u_tiled])
+
+        b_upper[T * (nx + nu): T * (nx + nu) + nu] += u_prev
+        b_lower[T * (nx + nu): T * (nx + nu) + nu] += u_prev
+        
     
     # set beq
     beq = np.zeros(T * nx)
