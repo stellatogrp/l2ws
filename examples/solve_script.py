@@ -7,6 +7,7 @@ import jax.numpy as jnp
 from l2ws.scs_problem import SCSinstance
 import pdb
 import cvxpy as cp
+from scipy.sparse import csc_matrix, save_npz, load_npz
 
 
 plt.rcParams.update(
@@ -18,6 +19,58 @@ plt.rcParams.update(
 )
 log = logging.getLogger(__name__)
 
+
+def save_results_dynamic(output_filename, theta_mat, z_stars, q_mat, factors):
+    """
+    saves the results from the setup phase
+    saves q_mat in csc_matrix form to save space
+    everything else is saved as a npz file
+    also plots z_stars, q, thetas
+    """
+
+    # save theta_mat, z_stars, factors
+    #   needs to save factors[0] and factors[1] separately
+    jnp.savez(
+        output_filename,
+        thetas=jnp.array(theta_mat),
+        z_stars=z_stars,
+        factors0=factors[0],
+        factors1=factors[1]
+    )
+
+    # save the q_mat but as a sparse object
+    q_mat_sparse = csc_matrix(q_mat)
+    save_npz(f"{output_filename}_q", q_mat_sparse)
+
+    # save plot of first 5 solutions
+    for i in range(5):
+        plt.plot(z_stars[i, :])
+    plt.savefig("z_stars.pdf")
+    plt.clf()
+
+    # save plot of first 5 q
+    for i in range(5):
+        plt.plot(q_mat[i, :])
+    plt.savefig("q.pdf")
+    plt.clf()
+
+    # save plot of first 5 parameters
+    for i in range(5):
+        plt.plot(theta_mat[i, :])
+    plt.savefig("thetas.pdf")
+    plt.clf()
+
+
+def load_results_dynamic(output_filename):
+    """
+    returns the saved results from the corresponding save_results_dynamic function
+    """
+    q_mat_sparse = load_npz(f"{output_filename}_q")
+    loaded_obj = jnp.load(output_filename)
+    theta_mat, z_stars = loaded_obj['thetas'], loaded_obj['z_stars']
+    factors0, factors1 = loaded_obj['factors0'], loaded_obj['factors1']
+    factors = (factors0, factors1)
+    return theta_mat, z_stars, q_mat_sparse, factors
 
 
 def osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=None):

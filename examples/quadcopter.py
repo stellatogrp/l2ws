@@ -7,18 +7,20 @@ import cvxpy as cp
 import yaml
 from l2ws.launcher import Workspace
 import os
-from examples.solve_script import osqp_setup_script
+from examples.solve_script import osqp_setup_script, save_results_dynamic
 import matplotlib.pyplot as plt
 from functools import partial
 from jax import vmap
 from scipy import sparse
+from l2ws.utils.mpc_utils import closed_loop_rollout, static_canon_mpc_osqp
+from l2ws.algo_steps import k_steps_eval_osqp, unvec_symm, vec_symm
 
 QUADCOPTER_NX = 12
 QUADCOPTER_NU = 4
 
 
 def run(run_cfg):
-    example = "mpc"
+    example = "quadcopter"
     data_yaml_filename = 'data_setup_copied.yaml'
 
     # read the yaml file
@@ -32,21 +34,45 @@ def run(run_cfg):
     # set the seed
     np.random.seed(setup_cfg['seed'])
 
-    # setup the training
-    T, x_init_factor = setup_cfg['T'], setup_cfg['x_init_factor']
-    nx, nu = setup_cfg['nx'], setup_cfg['nu']
-    quadcopter = setup_cfg.get('quadcopter', False)
-    # num_traj = setup_cfg['num_traj']
-    traj_length = setup_cfg['traj_length']
+    # # setup the training
+    # T, x_init_factor = setup_cfg['T'], setup_cfg['x_init_factor']
+    # nx, nu = setup_cfg['nx'], setup_cfg['nu']
+
+    # # num_traj = setup_cfg['num_traj']
+    # traj_length = setup_cfg['rollout_length']
+    # num_rollouts = setup_cfg['num_rollouts']
+    # opt_budget = setup_cfg['rollout_osqp_iters']
+    # sim_len = setup_cfg['rollout_length']
+
+    # # create the obstacle courses
+    # Q_diag_ref = jnp.zeros(nx)
+    # Q_diag_ref = Q_diag_ref.at[:3].set(1)
+    # Q_ref = jnp.diag(Q_diag_ref)
+    # ref_traj_dict_lists = []
+    # for i in range(num_rollouts):
+    #     traj_list = make_obstacle_course()
+    #     ref_traj_dict = dict(case='obstacle_course', traj_list=traj_list, Q=Q_ref, tol=.05)
+    #     ref_traj_dict_lists.append(ref_traj_dict)
+
+    # # initialize each rollout
+    # x_init_traj = jnp.zeros(nx)
+
+    # # do the closed loop rollouts
+    # for i in range(num_rollouts):
+    #     rollout_results = closed_loop_rollout(opt_qp_solver, sim_len, x_init_traj, quadcopter_dynamics,
+    #                                       system_constants, ref_traj_dict, opt_budget, noise_list=None)
+
+
+
+
+    
     mpc_setup = multiple_random_mpc_osqp(5,
                                          T=T,
                                          nx=nx,
                                          nu=nu,
                                          Ad=None,
                                          Bd=None,
-                                         seed=setup_cfg['seed'],
-                                         x_init_factor=x_init_factor,
-                                         quadcopter=quadcopter)
+                                         seed=setup_cfg['seed'])
     # factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, rho_vec = mpc_setup
     # factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
     factor, P, A, q_mat_train, theta_mat_train, x_min, x_max, Ad, Bd, rho_vec = mpc_setup
@@ -69,66 +95,193 @@ def run(run_cfg):
 
 def setup_probs(setup_cfg):
     cfg = setup_cfg
-    N_train, N_test = cfg.N_train, cfg.N_test
-    N = N_train + N_test
-
-    # np.random.seed(setup_cfg['seed'])
-    # m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
-    # A = jnp.array(np.random.normal(size=(m_orig, n_orig)))
-    # evals, evecs = jnp.linalg.eigh(A.T @ A)
-    # ista_step = 1 / evals.max()
-    # lambd = setup_cfg['lambd']
+    # N_train, N_test = cfg.N_train, cfg.N_test
+    # N = N_train + N_test
 
     np.random.seed(cfg.seed)
 
     # save output to output_filename
     output_filename = f"{os.getcwd()}/data_setup"
 
-    # P, A, cones, q_mat, theta_mat_jax, A_tensor = multiple_random_sparse_pca(
-    #     n_orig, cfg.k, cfg.r, N, factor=False)
-    # P_sparse, A_sparse = csc_matrix(P), csc_matrix(A)
-    # b_mat = generate_b_mat(A, N, p=.1)
-    # m, n = A.shape
-
     # setup the training
-    T, x_init_factor = cfg.T, cfg.x_init_factor
-    nx, nu = cfg.nx, cfg.nu
-    noise_std_dev = cfg.noise_std_dev
-    quadcopter = cfg.get('quadcopter', False)
-    mpc_setup = multiple_random_mpc_osqp(N_train,
-                                         T=T,
-                                         nx=nx,
-                                         nu=nu,
-                                         Ad=None,
-                                         Bd=None,
-                                         seed=cfg.seed,
-                                         x_init_factor=x_init_factor,
-                                         quadcopter=quadcopter)
-    factor, P, A, q_mat_train, theta_mat_train, x_min, x_max, Ad, Bd, rho_vec = mpc_setup
+    T, dt = setup_cfg['T'], setup_cfg['dt']
+    nx, nu = QUADCOPTER_NX, QUADCOPTER_NU
 
-    # setup the testing
-    q = q_mat_train[0, :]
+    num_rollouts = setup_cfg['num_rollouts']
+    opt_budget = setup_cfg['rollout_osqp_iters']
+    sim_len = setup_cfg['rollout_length']
 
-    if quadcopter:
-        num_traj_train = int(N_train / cfg.traj_length)
-        theta_mat_train, z_stars_train, q_mat_train = solve_multiple_trajectories(
-            cfg.traj_length, num_traj_train, x_min, x_max, x_init_factor, Ad, P, A, q)
+    # setup x_min, x_max, u_min, u_max
+    x_min = jnp.array(setup_cfg['x_min'])
+    x_max = jnp.array(setup_cfg['x_max'])
+    u_min = jnp.array(setup_cfg['u_min'])
+    u_max = jnp.array(setup_cfg['u_max'])
+    system_constants = dict(T=T, nx=nx, nu=nu, dt=dt,
+                            u_min=u_min, u_max=u_max,
+                            x_min=x_min, x_max=x_max)
+    
+    # setup Q, QT, R
+    Q = jnp.diag(jnp.array(setup_cfg['Q_diag']))
+    QT = setup_cfg['QT_factor'] * Q
+    R = jnp.diag(jnp.array(setup_cfg['R_diag']))
 
-        horizon = int(N_test / cfg.num_traj)
+    # create the obstacle courses
+    Q_diag_ref = jnp.zeros(nx)
+    Q_diag_ref = Q_diag_ref.at[:3].set(1)
+    Q_ref = jnp.diag(Q_diag_ref)
+    ref_traj_dict_lists = []
 
-    num_traj_test = int(N_test / cfg.traj_length)
-    theta_mat_test, z_stars_test, q_mat_test = solve_multiple_trajectories(
-        cfg.traj_length, num_traj_test, x_min, x_max, x_init_factor, Ad, P, A, q, noise_std_dev)
+    for i in range(num_rollouts):
+        traj_list = make_obstacle_course(setup_cfg['goal_bound'], setup_cfg['num_goals'])
+        ref_traj_dict = dict(case='obstacle_course', traj_list=traj_list, Q=Q_ref, tol=setup_cfg['obstacle_tol'])
+        ref_traj_dict_lists.append(ref_traj_dict)
+
+    # initialize each rollout
+    x_init_traj = jnp.zeros(nx)
+
+    # setup the opt_qp_solver
+    static_canon_mpc_osqp_partial = partial(static_canon_mpc_osqp, T=T, nx=nx, nu=nu,
+                                        x_min=x_min, x_max=x_max, u_min=u_min,
+                                        u_max=u_max, Q=Q, QT=QT, R=R)
+    opt_qp_solver_partial = partial(opt_qp_solver, 
+                                    static_canon_mpc_osqp_partial=static_canon_mpc_osqp_partial, 
+                                    dt=dt,
+                                    cd0=jnp.zeros(nx))
+
+    # do the closed loop rollouts
+    rollout_results_list = []
+    for i in range(num_rollouts):
+        rollout_results = closed_loop_rollout(opt_qp_solver_partial, sim_len, x_init_traj, quadcopter_dynamics,
+                                          system_constants, ref_traj_dict, opt_budget, noise_list=None)
+        rollout_results_list.append(rollout_results)
+        state_traj_list = rollout_results['state_traj_list']
+
+        # plot and save the rollout results
+        if not os.path.exists('rollouts'):
+            os.mkdir('rollouts')
+        plot_traj_3d([state_traj_list], goals=traj_list, labels=['optimal'], filename=f"rollouts/rollout_{i}.pdf")
 
     # create theta_mat and q_mat
-    q_mat = jnp.vstack([q_mat_train, q_mat_test])
-    theta_mat = jnp.vstack([theta_mat_train, theta_mat_test])
+    # q_mat = jnp.vstack([q_mat_train, q_mat_test])
+    # theta_mat = jnp.vstack([theta_mat_train, theta_mat_test])
     # z_stars = jnp.vstack([z_stars_train, z_stars_test])
 
-    # osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=z_stars)
-    osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=None)
-    # import pdb
-    # pdb.set_trace()
+    # osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=None)
+    theta_mat, z_stars, q_mat, factors = compile_rollout_results(rollout_results_list)
+
+    # save rollout results directly
+    #   need to save 
+    #   1. theta = (x0, u0, x_ref) (definitely)
+    #   2. z_stars (definitely)
+    #   3. q = (c, l, u, svec(P), vec(A)) (can be recreated)
+    #   4. factors (can be recreated)
+    output_filename = f"{os.getcwd()}/data_setup"
+    save_results_dynamic(output_filename, theta_mat, z_stars, q_mat, factors)
+
+
+def compile_rollout_results(rollout_results_list):
+    """
+    handles a list of rollouts and stitches them together
+
+    returns 
+    P_list
+    A_list
+    clu_list
+    factor_list
+    x0_list
+    u0_list
+    x_ref_list
+    sol_list
+
+    1. theta = (x0, u0, x_ref) (definitely)
+    2. z_stars (definitely)
+    3. q = (c, l, u, svec(P), vec(A)) (can be recreated)
+    4. factors (can be recreated)
+    """
+    P_list = [item for rollout_result in rollout_results_list for item in rollout_result['P_list']]
+    A_list = [item for rollout_result in rollout_results_list for item in rollout_result['A_list']]
+    x0_list = [item for rollout_result in rollout_results_list for item in rollout_result['x0_list']]
+    u0_list = [item for rollout_result in rollout_results_list for item in rollout_result['u0_list']]
+    x_ref_list = [item for rollout_result in rollout_results_list for item in rollout_result['x_ref_list']]
+    sol_list = [item for rollout_result in rollout_results_list for item in rollout_result['sol_list']]
+    clu_list = [item for rollout_result in rollout_results_list for item in rollout_result['clu_list']]
+    factor_list = [item for rollout_result in rollout_results_list for item in rollout_result['factor_list']]
+
+    N = len(P_list)
+    nx = x0_list[0].size
+    nu = u0_list[0].size
+    
+    m, n = A_list[0].shape
+    for i in range(len(rollout_results_list)):
+        pass
+
+    # get theta
+    theta_mat = jnp.zeros((N, 2 * nx + nu))
+    for i in range(N):
+        theta_mat = theta_mat.at[i, :nx].set(x0_list[i])
+        theta_mat = theta_mat.at[i, nx: nx + nu].set(u0_list[i])
+        theta_mat = theta_mat.at[i, nx + nu:].set(x_ref_list[i])
+
+    # get z_stars
+    z_stars = jnp.zeros((N, 2 * m + n))
+    for i in range(N):
+        z_stars = z_stars.at[i, :].set(sol_list[i])
+
+    # form q_mat
+    nc2 = int(n * (n + 1) / 2)
+    q_mat = jnp.zeros((N, 2 * m + n + nc2 + m * n))
+    for i in range(N):
+        q_mat = q_mat.at[i, :n + 2 * m].set(clu_list[i])
+        q_mat = q_mat.at[i, n + 2 * m: n + 2 * m + nc2].set(vec_symm(P_list[i]))
+        q_mat = q_mat.at[i, n + 2 * m + nc2:].set(jnp.reshape(A_list[i], (m * n)))
+
+    # form factors
+    factors = (jnp.stack([factor_list[i][0] for i in range(N)]), jnp.stack([factor_list[i][1] for i in range(N)]))
+    return theta_mat, z_stars, q_mat, factors
+
+
+
+def opt_qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, cd0, static_canon_mpc_osqp_partial, dt):
+    # get the discrete time system Ad, Bd from the continuous time system Ac, Bc
+    nx = x0.size
+    Ad = jnp.eye(nx) + Ac * dt
+    Bd = Bc * dt
+    # no need to use u0 for the non-learned case
+
+    # get the constants for the discrete system
+    cd = cd0 + (x_dot - Ac @ x0 - Bc @ u0) * dt
+
+    # get (P, A, c, l, u)
+    out_dict = static_canon_mpc_osqp_partial(ref_traj, x0, Ad, Bd, cd=cd)
+    P, A, c, l, u = out_dict['P'], out_dict['A'], out_dict['c'], out_dict['l'], out_dict['u']
+    m, n = A.shape
+    q = jnp.concatenate([c, l, u])
+
+    # get factor
+    rho_vec, sigma = jnp.ones(m), 1
+    rho_vec = rho_vec.at[l == u].set(1000)
+    M = P + sigma * jnp.eye(n) + A.T @ jnp.diag(rho_vec) @ A
+    factor = jsp.linalg.lu_factor(M)
+
+    # solve
+    z0 = prev_sol  # jnp.zeros(m + n)
+    out = k_steps_eval_osqp(budget, z0, q, factor, P, A, rho=rho_vec,
+                            sigma=sigma, supervised=False, z_star=None, jit=True)
+    sol = out[0]
+    print('loss', out[1][-1])
+    # plt.plot(out[1])
+    # plt.yscale('log')
+    # plt.show()
+    # plt.clf()
+
+    # z0 = sol[:nx]
+    # w0 = sol[T*nx:T*nx + nu]
+    # z1 = sol[nx:2*nx]
+    # w1 = sol[T*nx + nu:T*nx + 2*nu]
+
+    return sol, P, A, factor, q
+
+
 
 
 def shifted_sol(z_star, T, nx, nu, m, n):
@@ -793,7 +946,7 @@ def inertia_matrix_inverse(quaternion):
     return R @ I_inv @ R.T
 
 
-def plot_traj_3d(state_traj_list, goals, labels):
+def plot_traj_3d(state_traj_list, goals, labels, filename=None):
     """
     state_traj_list is a list of lists
     """
@@ -845,29 +998,10 @@ def plot_traj_3d(state_traj_list, goals, labels):
 
             body_coords_rotated = R_yaw @ R_pitch @ R_roll @ body_coords
             prop_coords_rotated = R_yaw @ R_pitch @ R_roll @ prop_coords
-            # import pdb
-            # pdb.set_trace()
-
-            # Plot body
-            # ax.plot3D(xs[i] + body_coords_rotated[0], ys[i] +
-            #           body_coords_rotated[1], zs[i] + body_coords_rotated[2], 'b')
             
-            # import pdb
-            # pdb.set_trace()
-
-            # Plot propellers
-            # for k in range(4):
-            #     ax.scatter(xs[i] + prop_coords_rotated[0, k], ys[i] + prop_coords_rotated[1, k], zs[i] + prop_coords_rotated[2, k], c='r')
-            # propeller_positions = 
             propeller_positions = prop_coords_rotated.T + np.array([xs[i], ys[i], zs[i]])
 
             # propellers 0 and 1 (to center) are red
-
-            # Plot the cross-shaped body of the quadcopter
-            # body_x = xs[i] + np.array([propeller_positions[0, 0], propeller_positions[2, 0]])
-            # body_y = ys[i] + np.array([propeller_positions[0, 1], propeller_positions[2, 1]])
-            # body_z = zs[i] + np.array([propeller_positions[0, 2], propeller_positions[2, 2]])
-            # ax.plot(body_x, body_y, body_z, 'b')
 
             # propeller 0 to center
             body_x = np.array([propeller_positions[0, 0], xs[i]])
@@ -893,15 +1027,6 @@ def plot_traj_3d(state_traj_list, goals, labels):
             body_z = np.array([propeller_positions[3, 2], zs[i]])
             ax.plot(body_x, body_y, body_z, 'r')
 
-            # body_x = xs[i] + np.array([propeller_positions[1, 0], propeller_positions[3, 0]])
-            # body_y = ys[i] + np.array([propeller_positions[1, 1], propeller_positions[3, 1]])
-            # body_z = zs[i] + np.array([propeller_positions[1, 2], propeller_positions[3, 2]])
-            # ax.plot(body_x, body_y, body_z, 'b')
-            # body_x = np.array([propeller_positions[1, 0], propeller_positions[3, 0]])
-            # body_y = np.array([propeller_positions[1, 1], propeller_positions[3, 1]])
-            # body_z = np.array([propeller_positions[1, 2], propeller_positions[3, 2]])
-            # ax.plot(body_x, body_y, body_z, 'b')
-
         # if labels[j] == 'optimal':
         #     ax.scatter(x, y, z, label=labels[j], color='green')
         # else:
@@ -914,7 +1039,11 @@ def plot_traj_3d(state_traj_list, goals, labels):
             # ax.scatter(x, y, z, cmap='Reds_r', c=weights[i], label=f"goal {i}")
             ax.scatter(x, y, z, label=f"goal {i}")
     plt.legend()
-    plt.show()
+    if filename is None:  
+        plt.show()
+    else:
+        plt.savefig(filename)
+        plt.clf()
 
 
 # def makeWaypoints():
@@ -942,31 +1071,33 @@ def plot_traj_3d(state_traj_list, goals, labels):
 #     return t, wp, yaw, v_average
 
 
-def make_obstacle_course():
-    deg2rad = jnp.pi / 180.0
-    goals = jnp.array([[2, 2, 1],
-                       [-2, 3, -3],
-                       [-2, -1, -3],
-                       [3, -2, 1],
-                       [0, 0, 0]]) # / 10
+def make_obstacle_course(goal_bound, num_goals):
+    # deg2rad = jnp.pi / 180.0
+    # goals = jnp.array([[2, 2, 1],
+    #                    [-2, 3, -3],
+    #                    [-2, -1, -3],
+    #                    [3, -2, 1],
+    #                    [0, 0, 0]]) # / 10
     # goals = jnp.array([[1, 1, 1],
     #                    [-2, 3, -3],
     #                    [-2, -1, -3],
     #                    [3, -2, 1],
     #                    [0, 0, 0]]) / 10
-    # goals_np = .1 * np.random.rand(5, 3) #.2 * np.random.rand(5, 3) - .1
-    # goals = jnp.array(goals_np)
-    rpys = 0  # * jnp.array([[.2, .2, 0],
+    goals_np = goal_bound * 2 * (np.random.rand(num_goals, 3) - .5) 
+    goals_np[-1, :] = 0
+
+    goals = jnp.array(goals_np)
+    # rpys = 0  # * jnp.array([[.2, .2, 0],
     #    [.2, .2, 0],
     #    [.2, .2, 0],
     #    [.2, .2, 0],
     #    [0, 0, 0]])
-    yaw_ini = 0
-    yaw = np.array([20, -90, 120, 45])
+    # yaw_ini = 0
+    # yaw = np.array([20, -90, 120, 45])
 
     # t = np.hstack((t_ini, t)).astype(float)
     # wp = np.vstack((wp_ini, wp)).astype(float)
-    yaw = np.hstack((yaw, yaw_ini)).astype(float)*deg2rad
+    # yaw = np.hstack((yaw, yaw_ini)).astype(float)*deg2rad
     nx = QUADCOPTER_NX
     traj_list = []
     for i in range(5):
@@ -979,3 +1110,23 @@ def make_obstacle_course():
         traj_list.append(ref)
 
     return traj_list
+
+
+def transform(x0, u0, x_ref):
+    """
+    given an initial theta value of theta = (x0, u0, x_ref),
+    it gives a new theta value that provides the same problem essentially
+
+    the (x, y, z) positions are 
+    """
+    transformed_u0 = u0
+    transformed_x0 = jnp.concatenate(jnp.array([0, 0, 0]), x0[3:])
+    transformed_x_ref = jnp.concatenate([x0[:3], x_ref[3:]])
+    return transformed_x0, transformed_u0, transformed_x_ref
+
+
+def reverse_transform(transformed_x0, transformed_u0, transformed_x_ref):
+    u0 = transformed_u0
+    x0 = jnp.concatenate(jnp.array([0, 0, 0]), x0[3:])
+    x_ref = jnp.concatenate(jnp.array([0, 0, 0]), x0[3:])
+    return x0, u0, x_ref

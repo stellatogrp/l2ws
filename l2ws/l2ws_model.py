@@ -132,7 +132,10 @@ class L2WSmodel(object):
 
         if self.factors_required and not self.factor_static_bool:
             # for only the case where the factors are needed
-            batch_factors = self.factors[batch_indices, :, :]
+            # batch_factors = self.factors[batch_indices, :, :]
+            batch_factors = (self.factors_train[0][batch_indices, :, :], self.factors_train[1][batch_indices, :]) 
+            # import pdb
+            # pdb.set_trace()
             results = self.optimizer.update(params=params,
                                             state=state,
                                             inputs=batch_inputs,
@@ -153,8 +156,11 @@ class L2WSmodel(object):
         params, state = results
         return state.value, params, state
 
-    def evaluate(self, k, inputs, b, z_stars, fixed_ws, tag='test'):
-        return self.static_eval(k, inputs, b, z_stars, tag=tag, fixed_ws=fixed_ws)
+    def evaluate(self, k, inputs, b, z_stars, fixed_ws, factors=None, tag='test'):
+        if self.factors_required and not self.factor_static_bool:
+            return self.dynamic_eval(k, inputs, b, z_stars, factors=factors, tag=tag, fixed_ws=fixed_ws)
+        else:
+            return self.static_eval(k, inputs, b, z_stars, tag=tag, fixed_ws=fixed_ws)
 
     def short_test_eval(self):
         # z_stars_test = self.z_stars_test if self.supervised else None
@@ -168,6 +174,20 @@ class L2WSmodel(object):
 
         time_per_iter = time_per_prob / self.train_unrolls
         return test_loss, time_per_iter
+    
+    def dynamic_eval(self, k, inputs, b, z_stars, factors, tag='test', fixed_ws=False):
+        if fixed_ws:
+            curr_loss_fn = self.loss_fn_fixed_ws
+        else:
+            curr_loss_fn = self.loss_fn_eval
+        num_probs, _ = inputs.shape
+
+        test_time0 = time.time()
+
+        loss, out = curr_loss_fn(self.params, inputs, b, k, z_stars, factors)
+        time_per_prob = (time.time() - test_time0)/num_probs
+
+        return loss, out, time_per_prob
     
     def static_eval(self, k, inputs, b, z_stars, tag='test', fixed_ws=False):
         if fixed_ws:
@@ -415,8 +435,11 @@ class L2WSmodel(object):
 
         if self.factors_required and not self.factor_static_bool:
             # for the case where the factors change for each problem
+            # batch_predict = vmap(predict,
+            #                     in_axes=(None, 0, 0, 0, None, 0),
+            #                     out_axes=out_axes)
             batch_predict = vmap(predict,
-                                in_axes=(None, 0, 0, 0, None, 0),
+                                in_axes=(None, 0, 0, None, 0, (0, 0)),
                                 out_axes=out_axes)
             @partial(jit, static_argnums=(3,))
             def loss_fn(params, inputs, b, iters, z_stars, factors):

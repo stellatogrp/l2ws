@@ -47,6 +47,9 @@ class OSQPmodel(L2WSmodel):
             self.k_steps_eval_fn = self.create_k_steps_eval_fn_dynamic()
             # self.k_steps_eval_fn = partial(k_steps_eval_osqp, rho=rho, sigma=sigma, jit=self.jit)
 
+            self.factors_train = input_dict['factors_train']
+            self.factors_test = input_dict['factors_test']
+
         # self.k_steps_train_fn = partial(k_steps_train_osqp, factor=factor, A=self.A, rho=rho, sigma=sigma, jit=self.jit)
         # self.k_steps_eval_fn = partial(k_steps_eval_osqp, factor=factor, P=self.P, A=self.A, rho=rho, sigma=sigma, jit=self.jit)
         self.out_axes_length = 6
@@ -60,12 +63,12 @@ class OSQPmodel(L2WSmodel):
         """
         m, n = self.m, self.n
 
-        def k_steps_train_osqp_dynamic(k, z0, q_bar, factor, supervised, z_star):
+        def k_steps_train_osqp_dynamic(k, z0, q, factor, supervised, z_star):
             nc2 = int(n * (n + 1) / 2)
-            q = q_bar[:2 * m + n]
-            P = unvec_symm(q_bar[2 * m + n: m + n + nc2], n)
-            A = jnp.reshape(q_bar[2 * m + n + nc2:], (m, n))
-            return k_steps_train_osqp(k=k, z0=z0, q=q,
+            q_bar = q[:2 * m + n]
+            P = unvec_symm(q[2 * m + n: 2 * m + n + nc2], n)
+            A = jnp.reshape(q[2 * m + n + nc2:], (m, n))
+            return k_steps_train_osqp(k=k, z0=z0, q=q_bar,
                                       factor=factor, A=A, rho=self.rho, sigma=self.sigma,
                                       supervised=supervised, z_star=z_star, jit=self.jit)
         return k_steps_train_osqp_dynamic
@@ -79,12 +82,12 @@ class OSQPmodel(L2WSmodel):
         """
         m, n = self.m, self.n
 
-        def k_steps_eval_osqp_dynamic(k, z0, q_bar, factor, supervised, z_star):
+        def k_steps_eval_osqp_dynamic(k, z0, q, factor, supervised, z_star):
             nc2 = int(n * (n + 1) / 2)
-            q = q_bar[:m + n]
-            P = unvec_symm(q_bar[m + n: m + n + nc2], n)
-            A = jnp.reshape(q_bar[m + n + nc2:], (m, n))
-            return k_steps_eval_osqp(k=k, z0=z0, q=q,
+            q_bar = q[:2 * m + n]
+            P = unvec_symm(q[2 * m + n: 2 * m + n + nc2], n)
+            A = jnp.reshape(q[2 * m + n + nc2:], (m, n))
+            return k_steps_eval_osqp(k=k, z0=z0, q=q_bar,
                                      factor=factor, P=P, A=A, rho=self.rho, sigma=self.sigma,
                                      supervised=supervised, z_star=z_star, jit=self.jit)
         return k_steps_eval_osqp_dynamic

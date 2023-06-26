@@ -13,7 +13,7 @@ import scs
 import logging
 import yaml
 from jax import vmap
-from l2ws.utils.mpc_utils import static_canon
+# from l2ws.utils.mpc_utils import static_canon
 log = logging.getLogger(__name__)
 
 
