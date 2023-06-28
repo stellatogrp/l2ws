@@ -25,7 +25,7 @@ def fp_train(i, val, q_r, factor, supervised, z_star, proj, hsde, homogeneous, s
         q = q_r
         z_next, u, u_tilde, v = fixed_point(z, q, factor, proj, scale_vec, alpha)
     if supervised:
-        # diff = jnp.linalg.norm(z - z_star)
+        # diff = jnp.linalg.norm(z[:-1] - z_star)
         diff = jnp.linalg.norm(z[:-1] / z[-1] - z_star)
     else:
         diff = jnp.linalg.norm(z_next / z_next[-1] - z / z[-1])

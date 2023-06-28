@@ -45,7 +45,8 @@ def run(run_cfg):
                                          x_init_factor=x_init_factor,
                                          quadcopter=quadcopter)
     # factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, rho_vec = mpc_setup
-    factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
+    # factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
+    factor, P, A, q_mat_train, theta_mat_train, x_min, x_max, Ad, Bd, rho_vec = mpc_setup
     m, n = A.shape
 
     static_dict = dict(factor=factor, P=P, A=A, rho=rho_vec)
@@ -330,7 +331,6 @@ def multiple_random_mpc_osqp(N,
     # return factor, P, A, q_mat, theta_mat
     # import pdb
     # pdb.set_trace()
-
     return factor, P, A, q_mat, theta_mat, x_min, x_max, Ad, Bd, rho_vec
 
 def solve_many_probs_cvxpy(P, A, q_mat):

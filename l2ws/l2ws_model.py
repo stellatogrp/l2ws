@@ -522,7 +522,9 @@ class L2WSmodel(object):
             if loss_method == 'constant_sum':
                 loss = iter_losses.sum()
             elif loss_method == 'fixed_k':
-                loss = jnp.linalg.norm(z_last[:-1]/z_star[-1] - z_star)
+                # loss = jnp.linalg.norm(z_last[:-1]/z_star[-1] - z_star)
+                # loss = jnp.linalg.norm(z_last[:-1]/z_last[-1] - z_star)
+                loss = iter_losses[-1]
         else:
             if loss_method == 'increasing_sum':
                 weights = (1+jnp.arange(iter_losses.size))

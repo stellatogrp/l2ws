@@ -1489,8 +1489,15 @@ class Workspace:
             plt.clf()
 
             for j in self.plot_iterates:
-                plt.plot(z_all[i, j, :] - self.l2ws_model.z_stars_train[i, :],
-                         label=f"prediction_{j}")
+                if isinstance(self.l2ws_model, OSQPmodel):
+                    plt.plot(z_all[i, j, :self.l2ws_model.m + self.l2ws_model.n] - self.l2ws_model.z_stars_train[i, :],
+                            label=f"prediction_{j}")
+                else:
+                    plt.plot(z_all[i, j, :] - self.l2ws_model.z_stars_train[i, :],
+                            label=f"prediction_{j}")
+            # for j in self.plot_iterates:
+            #     plt.plot(z_all[i, j, :] - self.l2ws_model.z_stars_train[i, :],
+            #              label=f"prediction_{j}")
             plt.legend()
             plt.title('diffs to optimal')
             plt.savefig(f"{ws_path}/{col}/prob_{i}_diffs_z.pdf")
