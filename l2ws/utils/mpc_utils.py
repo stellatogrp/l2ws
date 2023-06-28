@@ -10,8 +10,7 @@ import jax
 log = logging.getLogger(__name__)
 
 
-# def closed_loop_rollout(qp_solver, x_init_traj, nx, nu, ode, T, x_min, x_max, u_min, u_max, traj_list, budget):
-def closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_constants, ref_traj_dict, budget, noise_list):
+def closed_loop_rollout(qp_solver, sim_len, x_init_traj, u0, dynamics, system_constants, ref_traj_dict, budget, noise_list):
     """
     Runs a closed loop rollout for a control problem where we solve an mpc problem at each iteration
         and run the first control input
@@ -57,7 +56,6 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_consta
     nx, nu = system_constants['nx'], system_constants['nu']
     x_min, x_max = system_constants['x_min'], system_constants['x_max']
     u_min, u_max = system_constants['u_min'], system_constants['u_max']
-    # sim_len = len(traj_list)
 
     # noise
     if noise_list is None:
@@ -66,7 +64,7 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_consta
     # first state in the trajectory is given
     x0 = x_init_traj
     # u0 = jnp.array([9.8, 0, 0, 0])
-    u0 = jnp.array([9.8, 9.8, 9.8, 9.8]) / 4
+    # u0 = jnp.array([9.8, 9.8, 9.8, 9.8]) / 4
 
     sols = []
     state_traj_list = [x0]
@@ -91,12 +89,9 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_consta
         # solve the qp
         ref_traj = get_curr_ref_traj(ref_traj_dict, j, obstacle_num)
 
-        # import pdb
-        # pdb.set_trace()
         print('ref_traj', ref_traj)
         x_dot = dynamics(x0, u0, j)
         sol, P, A, factor, q = qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol)
-        # sol, P, A, factor, q = qp_solver(Ad, Bd, x0, u0, ref_traj, budget, prev_sol)
         sols.append(sol)
         P_list.append(P)
         A_list.append(A)
@@ -143,7 +138,6 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, dynamics, system_consta
                            u0_list=u0_list,
                            x_ref_list=x_ref_list)
     return rollout_results
-    # return state_traj_list, sols, P_list, A_list, factor_list, q_list, x0_list, u0_list, x_ref_list
 
 
 def update_obstacle_num(x, ref_traj_dict, j, obstacle_num):

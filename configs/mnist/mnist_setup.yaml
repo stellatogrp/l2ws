@@ -1,0 +1,8 @@
+solve_acc_abs: 1e-4
+solve_acc_rel: 0
+lambda: 1e-3
+N_train: 1000
+N_test: 100
+seed: 42
+solve: True
+noise_std_dev: 0.0

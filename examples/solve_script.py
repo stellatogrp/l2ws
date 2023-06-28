@@ -20,7 +20,7 @@ plt.rcParams.update(
 log = logging.getLogger(__name__)
 
 
-def save_results_dynamic(output_filename, theta_mat, z_stars, q_mat, factors):
+def save_results_dynamic(output_filename, theta_mat, z_stars, q_mat, factors, ref_traj_tensor=None):
     """
     saves the results from the setup phase
     saves q_mat in csc_matrix form to save space
@@ -30,13 +30,25 @@ def save_results_dynamic(output_filename, theta_mat, z_stars, q_mat, factors):
 
     # save theta_mat, z_stars, factors
     #   needs to save factors[0] and factors[1] separately
-    jnp.savez(
-        output_filename,
-        thetas=jnp.array(theta_mat),
-        z_stars=z_stars,
-        factors0=factors[0],
-        factors1=factors[1]
-    )
+
+    if ref_traj_tensor is None:
+        jnp.savez(
+            output_filename,
+            thetas=jnp.array(theta_mat),
+            z_stars=z_stars,
+            factors0=factors[0],
+            factors1=factors[1]
+        )
+    else:
+        jnp.savez(
+            output_filename,
+            thetas=jnp.array(theta_mat),
+            z_stars=z_stars,
+            factors0=factors[0],
+            factors1=factors[1],
+            ref_traj_tensor=ref_traj_tensor
+        )
+    # ref_traj_tensor has shape (num_rollouts, num_goals, goal_length)
 
     # save the q_mat but as a sparse object
     q_mat_sparse = csc_matrix(q_mat)

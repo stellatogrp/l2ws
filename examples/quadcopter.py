@@ -8,12 +8,14 @@ import yaml
 from l2ws.launcher import Workspace
 import os
 from examples.solve_script import osqp_setup_script, save_results_dynamic
+# import matplotlib
 import matplotlib.pyplot as plt
 from functools import partial
 from jax import vmap
 from scipy import sparse
 from l2ws.utils.mpc_utils import closed_loop_rollout, static_canon_mpc_osqp
 from l2ws.algo_steps import k_steps_eval_osqp, unvec_symm, vec_symm
+import imageio
 
 QUADCOPTER_NX = 12
 QUADCOPTER_NU = 4
@@ -34,15 +36,27 @@ def run(run_cfg):
     # set the seed
     np.random.seed(setup_cfg['seed'])
 
-    # # setup the training
-    # T, x_init_factor = setup_cfg['T'], setup_cfg['x_init_factor']
-    # nx, nu = setup_cfg['nx'], setup_cfg['nu']
+    # setup the training
+    T, dt = setup_cfg['T'], setup_cfg['dt']
+    nx, nu = QUADCOPTER_NX, QUADCOPTER_NU
+
+    # setup x_min, x_max, u_min, u_max
+    x_min = jnp.array(setup_cfg['x_min'])
+    x_max = jnp.array(setup_cfg['x_max'])
+    u_min = jnp.array(setup_cfg['u_min'])
+    u_max = jnp.array(setup_cfg['u_max'])
 
     # # num_traj = setup_cfg['num_traj']
     # traj_length = setup_cfg['rollout_length']
     # num_rollouts = setup_cfg['num_rollouts']
     # opt_budget = setup_cfg['rollout_osqp_iters']
-    # sim_len = setup_cfg['rollout_length']
+    rollout_length = setup_cfg['rollout_length']
+    # Q_ref = setup_cfg['Q_ref']
+    # create the obstacle courses
+    Q_diag_ref = jnp.zeros(nx)
+    Q_diag_ref = Q_diag_ref.at[:3].set(1)
+    Q_ref = jnp.diag(Q_diag_ref)
+    obstacle_tol = setup_cfg['obstacle_tol']
 
     # # create the obstacle courses
     # Q_diag_ref = jnp.zeros(nx)
@@ -62,32 +76,63 @@ def run(run_cfg):
     #     rollout_results = closed_loop_rollout(opt_qp_solver, sim_len, x_init_traj, quadcopter_dynamics,
     #                                       system_constants, ref_traj_dict, opt_budget, noise_list=None)
 
-
-
-
+    # mpc_setup = multiple_random_mpc_osqp(5,
+    #                                      T=T,
+    #                                      nx=nx,
+    #                                      nu=nu,
+    #                                      Ad=None,
+    #                                      Bd=None,
+    #                                      seed=setup_cfg['seed'])
+    # # factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, rho_vec = mpc_setup
+    # # factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
+    # factor, P, A, q_mat_train, theta_mat_train, x_min, x_max, Ad, Bd, rho_vec = mpc_setup
     
-    mpc_setup = multiple_random_mpc_osqp(5,
-                                         T=T,
-                                         nx=nx,
-                                         nu=nu,
-                                         Ad=None,
-                                         Bd=None,
-                                         seed=setup_cfg['seed'])
-    # factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, rho_vec = mpc_setup
-    # factor, P, A, q_mat_train, theta_mat_train, x_bar, Ad, Bd, rho_vec = mpc_setup
-    factor, P, A, q_mat_train, theta_mat_train, x_min, x_max, Ad, Bd, rho_vec = mpc_setup
-    m, n = A.shape
+    # m, n = A.shape
+    n = T * (nx + nu)
+    m = T * (2 * nx + nu)
 
-    static_dict = dict(factor=factor, P=P, A=A, rho=rho_vec)
+    static_dict = dict(m=m, n=n)
 
     # we directly save q now
-    static_flag = True
+    static_flag = False
     algo = 'osqp'
 
+    nx = QUADCOPTER_NX
+    nu = QUADCOPTER_NU
     partial_shifted_sol_fn = partial(shifted_sol, T=T, nx=nx, nu=nu, m=m, n=n)
     batch_shifted_sol_fn = vmap(partial_shifted_sol_fn, in_axes=(0), out_axes=(0))
-    workspace = Workspace(algo, run_cfg, static_flag, static_dict, example,
-                          traj_length=traj_length, shifted_sol_fn=batch_shifted_sol_fn)
+
+    # create closed_loop_rollout_dict
+    system_constants = dict(T=T, nx=nx, nu=nu, dt=dt,
+                            u_min=u_min, u_max=u_max,
+                            x_min=x_min, x_max=x_max,
+                            cd0=jnp.zeros(nx))
+    
+    # setup the opt_qp_solver
+
+    # setup Q, QT, R
+    Q = jnp.diag(jnp.array(setup_cfg['Q_diag']))
+    QT = setup_cfg['QT_factor'] * Q
+    R = jnp.diag(jnp.array(setup_cfg['R_diag']))
+    static_canon_mpc_osqp_partial = partial(static_canon_mpc_osqp, T=T, nx=nx, nu=nu,
+                                        x_min=x_min, x_max=x_max, u_min=u_min,
+                                        u_max=u_max, Q=Q, QT=QT, R=R)
+    closed_loop_rollout_dict = dict(rollout_length=rollout_length, 
+                                    num_rollouts=run_cfg['num_rollouts'],
+                                    closed_loop_budget=run_cfg['closed_loop_budget'],
+                                    dynamics=quadcopter_dynamics, 
+                                    u_init_traj=jnp.zeros(nu),
+                                    system_constants=system_constants,
+                                    Q_ref=Q_ref,
+                                    obstacle_tol=obstacle_tol,
+                                    static_canon_mpc_osqp_partial=static_canon_mpc_osqp_partial,
+                                    plot_traj=plot_traj_3d)
+
+    workspace = Workspace(algo, run_cfg, static_flag, static_dict, example, 
+                          closed_loop_rollout_dict=closed_loop_rollout_dict,
+                          shifted_sol_fn=batch_shifted_sol_fn,
+                          traj_length=rollout_length)#,
+                        #   traj_length=traj_length)#, shifted_sol_fn=batch_shifted_sol_fn)
 
     # run the workspace
     workspace.run()
@@ -131,10 +176,14 @@ def setup_probs(setup_cfg):
     Q_ref = jnp.diag(Q_diag_ref)
     ref_traj_dict_lists = []
 
+    ref_traj_tensor = jnp.zeros((num_rollouts, setup_cfg['num_goals'], nx))
     for i in range(num_rollouts):
         traj_list = make_obstacle_course(setup_cfg['goal_bound'], setup_cfg['num_goals'])
         ref_traj_dict = dict(case='obstacle_course', traj_list=traj_list, Q=Q_ref, tol=setup_cfg['obstacle_tol'])
         ref_traj_dict_lists.append(ref_traj_dict)
+
+        curr_rollout_matrix = jnp.stack(traj_list)
+        ref_traj_tensor = ref_traj_tensor.at[i, :, :].set(curr_rollout_matrix)
 
     # initialize each rollout
     x_init_traj = jnp.zeros(nx)
@@ -150,8 +199,10 @@ def setup_probs(setup_cfg):
 
     # do the closed loop rollouts
     rollout_results_list = []
+    u_init_traj = jnp.zeros(nu)
     for i in range(num_rollouts):
-        rollout_results = closed_loop_rollout(opt_qp_solver_partial, sim_len, x_init_traj, quadcopter_dynamics,
+        ref_traj_dict = ref_traj_dict_lists[i]
+        rollout_results = closed_loop_rollout(opt_qp_solver_partial, sim_len, x_init_traj, u_init_traj, quadcopter_dynamics,
                                           system_constants, ref_traj_dict, opt_budget, noise_list=None)
         rollout_results_list.append(rollout_results)
         state_traj_list = rollout_results['state_traj_list']
@@ -159,7 +210,9 @@ def setup_probs(setup_cfg):
         # plot and save the rollout results
         if not os.path.exists('rollouts'):
             os.mkdir('rollouts')
-        plot_traj_3d([state_traj_list], goals=traj_list, labels=['optimal'], filename=f"rollouts/rollout_{i}.pdf")
+        traj_list = ref_traj_dict['traj_list']
+        # plot_traj_3d([state_traj_list], goals=traj_list, labels=['optimal'], filename=f"rollouts/rollout_{i}.pdf")
+        plot_traj_3d([state_traj_list], goals=traj_list, labels=['optimal'], filename=f"rollouts/rollout_{i}")
 
     # create theta_mat and q_mat
     # q_mat = jnp.vstack([q_mat_train, q_mat_test])
@@ -176,7 +229,8 @@ def setup_probs(setup_cfg):
     #   3. q = (c, l, u, svec(P), vec(A)) (can be recreated)
     #   4. factors (can be recreated)
     output_filename = f"{os.getcwd()}/data_setup"
-    save_results_dynamic(output_filename, theta_mat, z_stars, q_mat, factors)
+    
+    save_results_dynamic(output_filename, theta_mat, z_stars, q_mat, factors, ref_traj_tensor=ref_traj_tensor)
 
 
 def compile_rollout_results(rollout_results_list):
@@ -216,11 +270,11 @@ def compile_rollout_results(rollout_results_list):
         pass
 
     # get theta
-    theta_mat = jnp.zeros((N, 2 * nx + nu))
+    theta_mat = jnp.zeros((N, 3 + nx + nu))
     for i in range(N):
         theta_mat = theta_mat.at[i, :nx].set(x0_list[i])
         theta_mat = theta_mat.at[i, nx: nx + nu].set(u0_list[i])
-        theta_mat = theta_mat.at[i, nx + nu:].set(x_ref_list[i])
+        theta_mat = theta_mat.at[i, nx + nu:].set(x_ref_list[i][:3])
 
     # get z_stars
     z_stars = jnp.zeros((N, 2 * m + n))
@@ -269,9 +323,9 @@ def opt_qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, cd0, static
                             sigma=sigma, supervised=False, z_star=None, jit=True)
     sol = out[0]
     print('loss', out[1][-1])
-    # plt.plot(out[1])
-    # plt.yscale('log')
-    # plt.show()
+    plt.plot(out[1])
+    plt.yscale('log')
+    plt.show()
     # plt.clf()
 
     # z0 = sol[:nx]
@@ -297,6 +351,7 @@ def shifted_sol(z_star, T, nx, nu, m, n):
     end_state = nx * T
     end_dyn_cons = nx * T
     end_state_cons = 2 * nx * T
+    end = T * (2 * nx + nu)
 
     # get primal vars
     shifted_states = x_star[nx:end_state]
@@ -309,12 +364,14 @@ def shifted_sol(z_star, T, nx, nu, m, n):
     # get dual vars
     shifted_dyn_cons = y_star[nx:end_dyn_cons]
     shifted_state_cons = y_star[end_dyn_cons + nx:end_state_cons]
-    shifted_control_cons = y_star[end_state_cons + nu:]
+    shifted_control_cons = y_star[end_state_cons + nu: end]
 
     # insert into shifted y_star
     shifted_y_star = shifted_y_star.at[:end_dyn_cons - nx].set(shifted_dyn_cons)
     shifted_y_star = shifted_y_star.at[end_dyn_cons:end_state_cons - nx].set(shifted_state_cons)
-    shifted_y_star = shifted_y_star.at[end_state_cons:-nu].set(shifted_control_cons)
+    # shifted_y_star = shifted_y_star.at[end_state_cons:-nu].set(shifted_control_cons)
+
+    shifted_y_star = shifted_y_star.at[end_state_cons:end - nu].set(shifted_control_cons)
 
     # concatentate primal and dual
     shifted_z_star = jnp.concatenate([shifted_x_star, shifted_y_star])
@@ -472,8 +529,7 @@ def multiple_random_mpc_osqp(N,
         x_diff = jnp.array(x_max - x_min)
         x_center = x_min + x_diff / 2
         x_init_mat = x_center + x_init_factor * (x_diff / 2) * (2 * np.random.rand(N, nx) - 1)
-    # import pdb
-    # pdb.set_trace()
+
 
     for i in range(N):
         # generate new rhs of first block constraint
@@ -484,8 +540,6 @@ def multiple_random_mpc_osqp(N,
         q_mat = q_mat.at[i, :].set(q_osqp)
     theta_mat = x_init_mat
     # return factor, P, A, q_mat, theta_mat
-    # import pdb
-    # pdb.set_trace()
 
     return factor, P, A, q_mat, theta_mat, x_min, x_max, Ad, Bd, rho_vec
 
@@ -497,16 +551,14 @@ def solve_many_probs_cvxpy(P, A, q_mat):
     # q_mat_finite = q_mat
     q_mat = q_mat.at[q_mat == np.inf].set(10000)
     q_mat = q_mat.at[q_mat == -np.inf].set(-10000)
-    # import pdb
-    # pdb.set_trace()
+
     P = cp.atoms.affine.wraps.psd_wrap(P)
     m, n = A.shape
     N = q_mat.shape[0]
     x, w = cp.Variable(n), cp.Variable(m)
     c_param, l_param, u_param = cp.Parameter(n), cp.Parameter(m), cp.Parameter(m)
     constraints = [A @ x == w, l_param <= w, w <= u_param]
-    # import pdb
-    # pdb.set_trace()
+
     prob = cp.Problem(cp.Minimize(.5 * cp.quad_form(x, P) + c_param @ x), constraints)
     # prob = cp.Problem(cp.Minimize(.5 * cp.sum_squares(np.array(A) @ z - b_param) + lambd * cp.tv(z)))
     z_stars = jnp.zeros((N, m + n))
@@ -518,8 +570,6 @@ def solve_many_probs_cvxpy(P, A, q_mat):
         prob.solve(verbose=False)
         objvals = objvals.at[i].set(prob.value)
 
-        # import pdb
-        # pdb.set_trace()
         x_star = jnp.array(x.value)
         w_star = jnp.array(w.value)
         y_star = jnp.array(constraints[0].dual_value)
@@ -612,8 +662,7 @@ def solve_trajectory(first_x_init, P_orig, A, q, traj_length, Ad, noise_std_dev)
         u_np = np.array(u)
         l_np[l_np == -np.inf] = -10000
         u_np[u_np == np.inf] = 10000
-        # import pdb
-        # pdb.set_trace()
+
         l_param.value = l_np
         u_param.value = u_np
         print('i', i)
@@ -946,7 +995,7 @@ def inertia_matrix_inverse(quaternion):
     return R @ I_inv @ R.T
 
 
-def plot_traj_3d(state_traj_list, goals, labels, filename=None):
+def plot_traj_3d(state_traj_list, goals, labels, filename=None, create_gif=True, gif_time=1):
     """
     state_traj_list is a list of lists
     """
@@ -980,6 +1029,8 @@ def plot_traj_3d(state_traj_list, goals, labels, filename=None):
         pitchs = np.array([curr_state_traj[i][7] for i in range(len(curr_state_traj))])
         yaws = np.array([curr_state_traj[i][8] for i in range(len(curr_state_traj))])
 
+        frames = []
+        propeller_data = []
         for i in range(len(rolls)):
             roll = rolls[i]
             pitch = pitchs[i]
@@ -1004,48 +1055,102 @@ def plot_traj_3d(state_traj_list, goals, labels, filename=None):
             # propellers 0 and 1 (to center) are red
 
             # propeller 0 to center
-            body_x = np.array([propeller_positions[0, 0], xs[i]])
-            body_y = np.array([propeller_positions[0, 1], ys[i]])
-            body_z = np.array([propeller_positions[0, 2], zs[i]])
-            ax.plot(body_x, body_y, body_z, 'b')
+            body_x0 = np.array([propeller_positions[0, 0], xs[i]])
+            body_y0 = np.array([propeller_positions[0, 1], ys[i]])
+            body_z0 = np.array([propeller_positions[0, 2], zs[i]])
+            p0 = (body_x0, body_y0, body_z0)
+            # ax.plot(body_x0, body_y0, body_z0, 'b')
 
             # propeller 1 to center
-            body_x = np.array([propeller_positions[1, 0], xs[i]])
-            body_y = np.array([propeller_positions[1, 1], ys[i]])
-            body_z = np.array([propeller_positions[1, 2], zs[i]])
-            ax.plot(body_x, body_y, body_z, 'b')
+            body_x1 = np.array([propeller_positions[1, 0], xs[i]])
+            body_y1 = np.array([propeller_positions[1, 1], ys[i]])
+            body_z1 = np.array([propeller_positions[1, 2], zs[i]])
+            p1 = (body_x1, body_y1, body_z1)
+            # ax.plot(body_x1, body_y1, body_z1, 'b')
 
             # propeller 2 to center
-            body_x = np.array([propeller_positions[2, 0], xs[i]])
-            body_y = np.array([propeller_positions[2, 1], ys[i]])
-            body_z = np.array([propeller_positions[2, 2], zs[i]])
-            ax.plot(body_x, body_y, body_z, 'r')
+            body_x2 = np.array([propeller_positions[2, 0], xs[i]])
+            body_y2 = np.array([propeller_positions[2, 1], ys[i]])
+            body_z2 = np.array([propeller_positions[2, 2], zs[i]])
+            p2 = (body_x2, body_y2, body_z2)
+            # ax.plot(body_x2, body_y2, body_z2, 'r')
 
             # propeller 3 to center
-            body_x = np.array([propeller_positions[3, 0], xs[i]])
-            body_y = np.array([propeller_positions[3, 1], ys[i]])
-            body_z = np.array([propeller_positions[3, 2], zs[i]])
-            ax.plot(body_x, body_y, body_z, 'r')
+            body_x3 = np.array([propeller_positions[3, 0], xs[i]])
+            body_y3 = np.array([propeller_positions[3, 1], ys[i]])
+            body_z3 = np.array([propeller_positions[3, 2], zs[i]])
+            p3 = (body_x3, body_y3, body_z3)
+            # ax.plot(body_x3, body_y3, body_z3, 'r')
+
+            propeller_data.append((p0, p1, p2, p3))
 
         # if labels[j] == 'optimal':
         #     ax.scatter(x, y, z, label=labels[j], color='green')
         # else:
         #     ax.scatter(x, y, z, label=labels[j])
 
-        # plot the goals
-        weights = np.arange(1, len(goals) + 1) / (len(goals) + 1)
-        for i in range(len(goals)):
-            x, y, z = goals[i][0], goals[i][1], goals[i][2]
-            # ax.scatter(x, y, z, cmap='Reds_r', c=weights[i], label=f"goal {i}")
-            ax.scatter(x, y, z, label=f"goal {i}")
+    # plot the goals
+    weights = np.arange(1, len(goals) + 1) / (len(goals) + 1)
+    for i in range(len(goals)):
+        x, y, z = goals[i][0], goals[i][1], goals[i][2]
+        # ax.scatter(x, y, z, cmap='Reds_r', c=weights[i], label=f"goal {i}")
+        ax.scatter(x, y, z, label=f"goal {i}")
+
+    # plot the propeller data in a single plot
+    for i in range(len(propeller_data)):
+        for j in range(4):
+            body_x, body_y, body_z = propeller_data[i][j]
+            color = 'r' if j <= 1 else 'b'
+            ax.plot(body_x, body_y, body_z, color)
     plt.legend()
     if filename is None:  
         plt.show()
     else:
-        plt.savefig(filename)
+        plt.savefig(f"{filename}_img.pdf")
         plt.clf()
 
+    # create the gif    
+    # matplotlib.use('Agg')
+    if not os.path.exists(filename):
+        os.mkdir(filename)
+    if create_gif:
+        # fig = plt.figure()
+        # ax = fig.add_subplot(projection='3d')
+        weights = np.arange(1, len(goals) + 1) / (len(goals) + 1)
+        frames = []
+        filenames = []
+        for i in range(len(propeller_data)):
+            fig = plt.figure()
+            ax = fig.add_subplot(projection='3d')
+            ax.set_xlim([-1.1, 1.1])  # Set limits for the X-axis
+            ax.set_ylim([-1.1, 1.1])  # Set limits for the Y-axis
+            ax.set_zlim([-1.1, 1.1])
+            for j in range(4):
+                body_x, body_y, body_z = propeller_data[i][j]
+                color = 'r' if j <= 1 else 'b'
+                ax.plot(body_x, body_y, body_z, color)
 
+            # plot the goals for each one
+            for k in range(len(goals)):
+                x, y, z = goals[k][0], goals[k][1], goals[k][2]
+                # ax.scatter(x, y, z, cmap='Reds_r', c=weights[i], label=f"goal {i}")
+                ax.scatter(x, y, z, label=f"goal {i}")
+            frame_name = f"{filename}/frame_{i}.png"
+            filenames.append(frame_name)
+            plt.savefig(frame_name)
+            plt.clf()
+        
+        # create the gif
+        with imageio.get_writer(f"{filename}_flight.gif", mode='I') as writer:
+            for filename in filenames:
+                image = imageio.imread(filename)
+                writer.append_data(image)
+
+        # delete the images - todo
+        for filename in set(filenames):
+            os.remove(filename)
+
+        
 # def makeWaypoints():
 #     deg2rad = jnp.pi / 180.0
 
@@ -1102,8 +1207,7 @@ def make_obstacle_course(goal_bound, num_goals):
     traj_list = []
     for i in range(5):
         ref = jnp.zeros(nx)
-        # import pdb
-        # pdb.set_trace()
+
         ref = ref.at[:3].set(goals[i, :])
         # ref = ref.at[6:9].set(rpys[i, :])
         # ref = ref.at[8].set(yaw[i])

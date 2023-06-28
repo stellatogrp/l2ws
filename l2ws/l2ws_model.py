@@ -33,9 +33,6 @@ class L2WSmodel(object):
         # optimal solutions (not needed as input)
         self.setup_optimal_solutions(dict)
 
-        # share all method
-        # self.setup_share_all(dict)
-
         # create_all_loss_fns
         self.create_all_loss_fns(dict)
 
@@ -74,7 +71,8 @@ class L2WSmodel(object):
                 hsde = self.hsde
             else:
                 hsde = False
-            z0, alpha = self.predict_warm_start(params, input, bypass_nn, hsde=hsde)
+            # z0, alpha = self.predict_warm_start(params, input, bypass_nn, hsde=hsde)
+            z0 = self.predict_warm_start(params, input, bypass_nn)
 
             # if self.out_axes_length == 8:
             # if isinstance(self, SCSmodel):
@@ -82,31 +80,31 @@ class L2WSmodel(object):
 
             if diff_required:
                 if self.factors_required:
-                    z_final, iter_losses = self.k_steps_train_fn(k=iters, 
-                                                                z0=z0, 
-                                                                q=q,
-                                                                supervised=supervised, 
-                                                                z_star=z_star,
-                                                                factor=factor)
+                    z_final, iter_losses = self.k_steps_train_fn(k=iters,
+                                                                 z0=z0,
+                                                                 q=q,
+                                                                 supervised=supervised,
+                                                                 z_star=z_star,
+                                                                 factor=factor)
                 else:
-                    z_final, iter_losses = self.k_steps_train_fn(k=iters, 
-                                                                z0=z0, 
-                                                                q=q,
-                                                                supervised=supervised, 
-                                                                z_star=z_star)
+                    z_final, iter_losses = self.k_steps_train_fn(k=iters,
+                                                                 z0=z0,
+                                                                 q=q,
+                                                                 supervised=supervised,
+                                                                 z_star=z_star)
             else:
                 if self.factors_required:
-                    eval_out = self.k_steps_eval_fn(k=iters, 
-                                                    z0=z0, 
-                                                    q=q, 
-                                                    factor=factor, 
-                                                    supervised=supervised, 
+                    eval_out = self.k_steps_eval_fn(k=iters,
+                                                    z0=z0,
+                                                    q=q,
+                                                    factor=factor,
+                                                    supervised=supervised,
                                                     z_star=z_star)
                 else:
-                    eval_out = self.k_steps_eval_fn(k=iters, 
-                                                    z0=z0, 
-                                                    q=q, 
-                                                    supervised=supervised, 
+                    eval_out = self.k_steps_eval_fn(k=iters,
+                                                    z0=z0,
+                                                    q=q,
+                                                    supervised=supervised,
                                                     z_star=z_star)
                 z_final, iter_losses, z_all_plus_1 = eval_out[0], eval_out[1], eval_out[2]
 
@@ -133,9 +131,8 @@ class L2WSmodel(object):
         if self.factors_required and not self.factor_static_bool:
             # for only the case where the factors are needed
             # batch_factors = self.factors[batch_indices, :, :]
-            batch_factors = (self.factors_train[0][batch_indices, :, :], self.factors_train[1][batch_indices, :]) 
-            # import pdb
-            # pdb.set_trace()
+            batch_factors = (self.factors_train[0][batch_indices,
+                             :, :], self.factors_train[1][batch_indices, :])
             results = self.optimizer.update(params=params,
                                             state=state,
                                             inputs=batch_inputs,
@@ -165,16 +162,24 @@ class L2WSmodel(object):
     def short_test_eval(self):
         # z_stars_test = self.z_stars_test if self.supervised else None
         z_stars_test = self.z_stars_test
-        
-        test_loss, test_out, time_per_prob = self.static_eval(self.train_unrolls,
-                                                              self.test_inputs,
-                                                              self.q_mat_test,
-                                                              z_stars_test)
+
+        if self.factors_required and not self.factor_static_bool:
+            test_loss, test_out, time_per_prob = self.dynamic_eval(self.train_unrolls,
+                                                                  self.test_inputs,
+                                                                  self.q_mat_test,
+                                                                  z_stars_test,
+                                                                  factors=self.factors_test)
+        else:
+            test_loss, test_out, time_per_prob = self.static_eval(self.train_unrolls,
+                                                                  self.test_inputs,
+                                                                  self.q_mat_test,
+                                                                  z_stars_test)
+
         self.te_losses.append(test_loss)
 
         time_per_iter = time_per_prob / self.train_unrolls
         return test_loss, time_per_iter
-    
+
     def dynamic_eval(self, k, inputs, b, z_stars, factors, tag='test', fixed_ws=False):
         if fixed_ws:
             curr_loss_fn = self.loss_fn_fixed_ws
@@ -188,7 +193,7 @@ class L2WSmodel(object):
         time_per_prob = (time.time() - test_time0)/num_probs
 
         return loss, out, time_per_prob
-    
+
     def static_eval(self, k, inputs, b, z_stars, tag='test', fixed_ws=False):
         if fixed_ws:
             curr_loss_fn = self.loss_fn_fixed_ws
@@ -202,6 +207,7 @@ class L2WSmodel(object):
         time_per_prob = (time.time() - test_time0)/num_probs
 
         return loss, out, time_per_prob
+
 
     def initialize_neural_network(self, input_dict):
         nn_cfg = input_dict.get('nn_cfg', {})
@@ -299,7 +305,6 @@ class L2WSmodel(object):
         self.tr_losses_batch = []
         self.te_losses = []
 
-
     def decay_upon_plateau(self):
         """
         this method decays the learning rate upon hitting a plateau
@@ -352,36 +357,29 @@ class L2WSmodel(object):
         """
         batch_indices = jnp.arange(self.N_train)
         return self.train_batch(batch_indices, params, state)
-    
-    def predict_warm_start(self, params, input, bypass_nn, hsde=None, share_all=False, Z_shared=None, normalize_alpha=None):
+
+    # def predict_warm_start(self, params, input, bypass_nn, hsde=None, share_all=False, Z_shared=None, normalize_alpha=None):
+    def predict_warm_start(self, params, input, bypass_nn):
         """
         gets the warm-start
         bypass_nn means we ignore the neural network and set z0=input
         """
-        alpha = None
         if bypass_nn:
             z0 = input
         else:
-            if share_all:
-                alpha_raw = predict_y(params, input)
-                alpha = self.normalize_alpha_fn(alpha_raw, normalize_alpha)
-                z0 = Z_shared @ alpha
-            else:
-                nn_output = predict_y(params, input)
-                z0 = nn_output
-        if hsde:
+            nn_output = predict_y(params, input)
+            z0 = nn_output
+        if self.algo == 'scs':
             z0_full = jnp.ones(z0.size + 1)
             z0_full = z0_full.at[:z0.size].set(z0)
         else:
             z0_full = z0
-        return z0_full, alpha
-
+        return z0_full
 
     def compute_angle(self, d1, d2):
         cos = d1 @ d2 / (jnp.linalg.norm(d1) * jnp.linalg.norm(d2))
         angle = jnp.arccos(cos)
         return angle
-
 
     def final_loss(self, loss_method, z_last, iter_losses, supervised, z0, z_star):
         """
@@ -411,7 +409,7 @@ class L2WSmodel(object):
             elif loss_method == 'first_2_last':
                 loss = jnp.linalg.norm(z_last - z0)
         return loss
-    
+
     def get_out_axes_shape(self, diff_required):
         if diff_required:
             # out_axes for (loss)
@@ -426,7 +424,7 @@ class L2WSmodel(object):
             else:
                 out_axes = (0,) * self.out_axes_length
         return out_axes
-    
+
     def predict_2_loss(self, predict, diff_required):
         out_axes = self.get_out_axes_shape(diff_required)
 
@@ -439,8 +437,9 @@ class L2WSmodel(object):
             #                     in_axes=(None, 0, 0, 0, None, 0),
             #                     out_axes=out_axes)
             batch_predict = vmap(predict,
-                                in_axes=(None, 0, 0, None, 0, (0, 0)),
-                                out_axes=out_axes)
+                                 in_axes=(None, 0, 0, None, 0, (0, 0)),
+                                 out_axes=out_axes)
+
             @partial(jit, static_argnums=(3,))
             def loss_fn(params, inputs, b, iters, z_stars, factors):
                 if diff_required:
@@ -458,8 +457,9 @@ class L2WSmodel(object):
             #   2. factor is constant for all problems (pass in the same factor as a static argument)
             predict_partial = partial(predict, factor=self.factor_static)
             batch_predict = vmap(predict_partial,
-                                in_axes=(None, 0, 0, None, 0),
-                                out_axes=out_axes)
+                                 in_axes=(None, 0, 0, None, 0),
+                                 out_axes=out_axes)
+
             @partial(jit, static_argnums=(3,))
             def loss_fn(params, inputs, b, iters, z_stars):
                 if diff_required:
@@ -473,4 +473,3 @@ class L2WSmodel(object):
                     return losses.mean(), predict_out
 
         return loss_fn
-    

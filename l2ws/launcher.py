@@ -14,11 +14,13 @@ from jax import lax
 import hydra
 import time
 from scipy.spatial import distance_matrix
-from l2ws.algo_steps import create_projection_fn, get_psd_sizes
+from l2ws.algo_steps import create_projection_fn, get_psd_sizes, vec_symm
 from l2ws.utils.generic_utils import sample_plot, setup_permutation, count_files_in_directory
 import scs
 from scipy.sparse import csc_matrix
 from functools import partial
+from scipy.sparse import csc_matrix, save_npz, load_npz
+from l2ws.utils.mpc_utils import closed_loop_rollout
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
@@ -31,31 +33,28 @@ class Workspace:
     def __init__(self, algo, cfg, static_flag, static_dict, example,
                  traj_length=None,
                  custom_visualize_fn=None,
-                 shifted_sol_fn=None):
+                 shifted_sol_fn=None,
+                 closed_loop_rollout_dict=None):
         '''
         cfg is the run_cfg from hydra
         static_flag is True if the matrices P and A don't change from problem to problem
         static_dict holds the data that doesn't change from problem to problem
         example is the string (e.g. 'robust_kalman')
         '''
+        self.static_flag = static_flag
         self.example = example
         self.eval_unrolls = cfg.eval_unrolls
         self.eval_every_x_epochs = cfg.eval_every_x_epochs
         self.save_every_x_epochs = cfg.save_every_x_epochs
-
         self.num_samples = cfg.num_samples
         self.eval_batch_size = cfg.get('eval_batch_size', self.num_samples)
-
         self.pretrain_cfg = cfg.pretrain
         self.key_count = 0
         self.save_weights_flag = cfg.get('save_weights_flag', False)
         self.load_weights_datetime = cfg.get('load_weights_datetime', None)
         self.shifted_sol_fn = shifted_sol_fn
-
         self.plot_iterates = cfg.plot_iterates
-        # share_all = cfg.get('share_all', False)
         self.normalize_inputs = cfg.get('normalize_inputs', True)
-
         self.epochs_jit = cfg.epochs_jit
         self.accs = cfg.get('accuracies')
 
@@ -74,42 +73,203 @@ class Workspace:
         if self.solve_c_num == 'all':
             self.solve_c_num = N_test
 
-        # load the data from problem to problem
-        jnp_load_obj = self.load_setup_data(example, cfg.data.datetime)
-
-        thetas = jnp.array(jnp_load_obj['thetas'])
-        self.thetas_train = thetas[:N_train, :]
-        self.thetas_test = thetas[N_train:N, :]
-
+        # for control problems only
+        self.closed_loop_rollout_dict = closed_loop_rollout_dict
         self.traj_length = traj_length
-        
         if traj_length is not None:
             self.prev_sol_eval = True
         else:
             self.prev_sol_eval = False
 
-        if algo != 'ista':
-            q_mat = jnp.array(jnp_load_obj['q_mat'])
-            q_mat_train = q_mat[:N_train, :]
-            q_mat_test = q_mat[N_train:N, :]
-
         self.train_unrolls = cfg.train_unrolls
-        eval_unrolls = cfg.train_unrolls
+
+        # load the data from problem to problem
+        jnp_load_obj = self.load_setup_data(example, cfg.data.datetime, N_train, N)
+        thetas = jnp.array(jnp_load_obj['thetas'])
+        self.thetas_train = thetas[:N_train, :]
+        self.thetas_test = thetas[N_train:N, :]
 
         train_inputs, test_inputs = self.normalize_inputs_fn(thetas, N_train, N_test)
-
+        self.train_inputs, self.test_inputs = train_inputs, test_inputs
         self.skip_startup = cfg.get('skip_startup', False)
-
-        num_plot = 5
+        self.setup_opt_sols(algo, jnp_load_obj, N_train, N)
 
         # everything below is specific to the algo
+        if algo == 'ista':
+            # get b_mat
+            self.q_mat_train = thetas[:N_train, :]
+            self.q_mat_test = thetas[N_train:N, :]
 
-        # extract optimal solutions
+            self.create_ista_model(cfg, static_dict)
+        elif algo == 'osqp':
+            self.create_osqp_model(cfg, static_dict)
+        elif algo == 'scs':
+            self.create_scs_model(cfg, static_dict)
+
+    def create_ista_model(self, cfg, static_dict):
+        # get A, lambd, ista_step
+        A, lambd = static_dict['A'], static_dict['lambd']
+        ista_step = static_dict['ista_step']
+
+        input_dict = dict(algorithm='ista',
+                          supervised=cfg.supervised,
+                          train_unrolls=self.train_unrolls,
+                          jit=True,
+                          train_inputs=self.train_inputs,
+                          test_inputs=self.test_inputs,
+                          b_mat_train=self.q_mat_train,
+                          b_mat_test=self.q_mat_test,
+                          lambd=lambd,
+                          ista_step=ista_step,
+                          A=A,
+                          nn_cfg=cfg.nn_cfg,
+                          z_stars_train=self.z_stars_train,
+                          z_stars_test=self.z_stars_test,
+                          )
+        self.l2ws_model = ISTAmodel(input_dict)
+
+    def create_osqp_model(self, cfg, static_dict):
+        if self.static_flag:
+            factor = static_dict['factor']
+            A = static_dict['A']
+            P = static_dict['P']
+            rho = static_dict['rho']
+            input_dict = dict(factor_static_bool=True,
+                              supervised=cfg.supervised,
+                              rho=rho,
+                              q_mat_train=self.q_mat_train,
+                              q_mat_test=self.q_mat_test,
+                              A=A,
+                              P=P,
+                              factor=factor,
+                              train_inputs=self.train_inputs,
+                              test_inputs=self.test_inputs,
+                              train_unrolls=self.train_unrolls,
+                              eval_unrolls=self.eval_unrolls,
+                              nn_cfg=cfg.nn_cfg,
+                              z_stars_train=self.z_stars_train,
+                              z_stars_test=self.z_stars_test,
+                              jit=True)
+        else:
+            self.m, self.n = static_dict['m'], static_dict['n']
+            m, n = self.m, self.n
+            rho_vec = jnp.ones(m)
+            l0 = self.q_mat_train[0, n: n + m]
+            u0 = self.q_mat_train[0, n + m: n + 2 * m]
+            rho_vec = rho_vec.at[l0 == u0].set(1000)
+
+            input_dict = dict(factor_static_bool=False,
+                              supervised=cfg.supervised,
+                              rho=rho_vec,
+                              q_mat_train=self.q_mat_train,
+                              q_mat_test=self.q_mat_test,
+                              m=self.m,
+                              n=self.n,
+                              train_inputs=self.train_inputs,
+                              test_inputs=self.test_inputs,
+                              factors_train=self.factors_train,
+                              factors_test=self.factors_test,
+                              train_unrolls=self.train_unrolls,
+                              eval_unrolls=self.eval_unrolls,
+                              nn_cfg=cfg.nn_cfg,
+                              z_stars_train=self.z_stars_train,
+                              z_stars_test=self.z_stars_test,
+                              jit=True)
+
+        self.l2ws_model = OSQPmodel(input_dict)
+
+    def create_scs_model(self, cfg):
+        get_M_q = None
+        if get_M_q is None:
+            q_mat = jnp_load_obj['q_mat']
+
+        if static_flag:
+            static_M = static_dict['M']
+
+            static_algo_factor = static_dict['algo_factor']
+            cones = static_dict['cones_dict']
+
+            # call get_q_mat
+            if get_M_q is not None:
+                q_mat = get_M_q(thetas)
+            M_tensor_train, M_tensor_test = None, None
+            matrix_invs_train, matrix_invs_test = None, None
+
+            # M_plus_I = static_M + jnp.eye(n + m)
+            # static_algo_factor = jsp.linalg.lu_factor(M_plus_I)
+        else:
+            # load the algo_factors -- check if factor or inverse
+            M_tensor, q_mat = get_M_q(thetas)
+
+            # load the matrix invs
+            matrix_invs = jnp_load_obj['matrix_invs']
+
+            static_M, static_algo_factor = None, None
+
+            cones = static_dict['cones_dict']
+            M_tensor_train = M_tensor[:N_train, :, :]
+            M_tensor_test = M_tensor[N_train:N, :, :]
+            matrix_invs_train = matrix_invs[:N_train, :, :]
+            matrix_invs_test = matrix_invs[N_train:N, :, :]
+        rho_x = cfg.get('rho_x', 1)
+        scale = cfg.get('scale', 1)
+        alpha_relax = cfg.get('alpha_relax', 1)
+
+        # save cones
+        self.cones = static_dict['cones_dict']
+
+        # alternate -- load it if available (but this is memory-intensive)
+        q_mat_train = jnp.array(q_mat[:N_train, :])
+        q_mat_test = jnp.array(q_mat[N_train:N, :])
+
+        self.M = static_M
+        proj = create_projection_fn(cones, n)
+        psd_sizes = get_psd_sizes(cones)
+
+        self.psd_size = psd_sizes[0]
+
+        input_dict = {'nn_cfg': cfg.nn_cfg,
+                      'proj': proj,
+                      'train_inputs': self.train_inputs,
+                      'test_inputs': self.test_inputs,
+                      'train_unrolls': self.train_unrolls,
+                      'eval_unrolls': self.eval_unrolls,
+                      'z_stars_train': self.z_stars_train,
+                      'z_stars_test': self.z_stars_test,
+                      'q_mat_train': q_mat_train,
+                      'q_mat_test': q_mat_test,
+                      'M_tensor_train': M_tensor_train,
+                      'M_tensor_test': M_tensor_test,
+                      'm': self.m,
+                      'n': self.n,
+                      'static_M': static_M,
+                      'y_stars_train': self.y_stars_train,
+                      'y_stars_test': self.y_stars_test,
+                      'x_stars_train': self.x_stars_train,
+                      'x_stars_test': self.x_stars_test,
+                      'static_flag': static_flag,
+                      'static_algo_factor': static_algo_factor,
+                      'matrix_invs_train': matrix_invs_train,
+                      'matrix_invs_test': matrix_invs_test,
+                      'supervised': cfg.get('supervised', False),
+                      'loss_method': cfg.get('loss_method', 'fixed_k'),
+                      'pretrain_alpha': cfg.get('pretrain_alpha'),
+                      'normalize_alpha': cfg.get('normalize_alpha'),
+                      'plateau_decay': cfg.plateau_decay,
+                      'rho_x': rho_x,
+                      'scale': scale,
+                      'alpha_relax': alpha_relax,
+                      'zero_cone_size': cones['z'],
+                      'cones': cones
+                      }
+        self.l2ws_model = SCSmodel(input_dict)
+
+    def setup_opt_sols(self, algo, jnp_load_obj, N_train, N, num_plot=5):
         if algo != 'scs':
             z_stars = jnp_load_obj['z_stars']
             z_stars_train = z_stars[:N_train, :]
             z_stars_test = z_stars[N_train:N, :]
-            self.plot_samples(num_plot, thetas, train_inputs, z_stars_train)
+            self.plot_samples(num_plot, self.thetas_train, self.train_inputs, z_stars_train)
             self.z_stars_test = z_stars_test
             self.z_stars_train = z_stars_train
         else:
@@ -133,146 +293,11 @@ class Workspace:
                 x_stars_train, self.x_stars_test = None, None
                 y_stars_train, self.y_stars_test = None, None
                 z_stars_train, z_stars_test = None, None
-                m, n = int(jnp_load_obj['m']), int(jnp_load_obj['n'])
-            self.plot_samples_scs(num_plot, thetas, train_inputs,
+                self.m, self.n = int(jnp_load_obj['m']), int(jnp_load_obj['n'])
+            self.plot_samples_scs(num_plot, self.thetas_train, self.train_inputs,
                                   x_stars_train, y_stars_train, z_stars_train)
-
-        if algo == 'ista':
-            # get A, lambd, ista_step
-            A, lambd = static_dict['A'], static_dict['lambd']
-            ista_step = static_dict['ista_step']
-
-            # get b_mat
-            b_mat_train = thetas[:N_train, :]
-            b_mat_test = thetas[N_train:N, :]
-
-            input_dict = dict(algorithm='ista',
-                              supervised=False,
-                              train_unrolls=self.train_unrolls,
-                              jit=True,
-                              train_inputs=train_inputs,
-                              test_inputs=test_inputs,
-                              b_mat_train=b_mat_train,
-                              b_mat_test=b_mat_test,
-                              lambd=lambd,
-                              ista_step=ista_step,
-                              A=A,
-                              nn_cfg=cfg.nn_cfg,
-                              z_stars_train=z_stars_train,
-                              z_stars_test=z_stars_test,
-                              )
-            self.l2ws_model = ISTAmodel(input_dict)
-        elif algo == 'osqp':
-            factor = static_dict['factor']
-            A = static_dict['A']
-            P = static_dict['P']
-            rho = static_dict['rho']
-
-            input_dict = dict(supervised=False,
-                              rho=rho,
-                              q_mat_train=q_mat_train,
-                              q_mat_test=q_mat_test,
-                              A=A,
-                              P=P,
-                              factor=factor,
-                              train_inputs=train_inputs,
-                              test_inputs=test_inputs,
-                              train_unrolls=self.train_unrolls,
-                              nn_cfg=cfg.nn_cfg,
-                              z_stars_train=z_stars_train,
-                              z_stars_test=z_stars_test,
-                              jit=True)
-            self.l2ws_model = OSQPmodel(input_dict)
-        elif algo == 'scs':
-            get_M_q = None
-            if get_M_q is None:
-                q_mat = jnp_load_obj['q_mat']
-
-            if static_flag:
-                static_M = static_dict['M']
-
-                static_algo_factor = static_dict['algo_factor']
-                cones = static_dict['cones_dict']
-
-                # call get_q_mat
-                if get_M_q is not None:
-                    q_mat = get_M_q(thetas)
-                M_tensor_train, M_tensor_test = None, None
-                matrix_invs_train, matrix_invs_test = None, None
-
-                # M_plus_I = static_M + jnp.eye(n + m)
-                # static_algo_factor = jsp.linalg.lu_factor(M_plus_I)
-            else:
-                # load the algo_factors -- check if factor or inverse
-                M_tensor, q_mat = get_M_q(thetas)
-
-                # load the matrix invs
-                matrix_invs = jnp_load_obj['matrix_invs']
-
-                static_M, static_algo_factor = None, None
-
-                cones = static_dict['cones_dict']
-                M_tensor_train = M_tensor[:N_train, :, :]
-                M_tensor_test = M_tensor[N_train:N, :, :]
-                matrix_invs_train = matrix_invs[:N_train, :, :]
-                matrix_invs_test = matrix_invs[N_train:N, :, :]
-            rho_x = cfg.get('rho_x', 1)
-            scale = cfg.get('scale', 1)
-            alpha_relax = cfg.get('alpha_relax', 1)
-
-            # save cones
-            self.cones = static_dict['cones_dict']
-
-            # alternate -- load it if available (but this is memory-intensive)
-            q_mat_train = jnp.array(q_mat[:N_train, :])
-            q_mat_test = jnp.array(q_mat[N_train:N, :])
-
-            self.M = static_M
-            proj = create_projection_fn(cones, n)
-            psd_sizes = get_psd_sizes(cones)
-
-            self.psd_size = psd_sizes[0]
-            sdp_bool = self.psd_size > 0
-
-            input_dict = {'nn_cfg': cfg.nn_cfg,
-                          'proj': proj,
-                          'train_inputs': train_inputs,
-                          'test_inputs': test_inputs,
-                          'train_unrolls': self.train_unrolls,
-                          'eval_unrolls': eval_unrolls,
-                          'z_stars_train': z_stars_train,
-                          'z_stars_test': z_stars_test,
-                          'q_mat_train': q_mat_train,
-                          'q_mat_test': q_mat_test,
-                          'M_tensor_train': M_tensor_train,
-                          'M_tensor_test': M_tensor_test,
-                          'm': m,
-                          'n': n,
-                          'static_M': static_M,
-                          'y_stars_train': y_stars_train,
-                          'y_stars_test': self.y_stars_test,
-                          'x_stars_train': x_stars_train,
-                          'x_stars_test': self.x_stars_test,
-                          'static_flag': static_flag,
-                          'static_algo_factor': static_algo_factor,
-                          'matrix_invs_train': matrix_invs_train,
-                          'matrix_invs_test': matrix_invs_test,
-                          'supervised': cfg.get('supervised', False),
-                          'loss_method': cfg.get('loss_method', 'fixed_k'),
-                          'pretrain_alpha': cfg.get('pretrain_alpha'),
-                          'normalize_alpha': cfg.get('normalize_alpha'),
-                          'plateau_decay': cfg.plateau_decay,
-                          'rho_x': rho_x,
-                          'scale': scale,
-                          'alpha_relax': alpha_relax,
-                          'zero_cone_size': cones['z'],
-                          'cones': cones
-                          }
-            self.l2ws_model = SCSmodel(input_dict)
-
-        # if self.load_weights_datetime is not None:
-        #     self.load_weights(example, self.load_weights_datetime)
-
+            self.z_stars_train = z_stars_train
+            self.z_stars_test = z_stars_test
 
     def save_weights(self):
         nn_weights = self.l2ws_model.params
@@ -285,7 +310,6 @@ class Workspace:
         for i, params in enumerate(nn_weights):
             weight_matrix, bias_vector = params
             jnp.savez(f"nn_weights/layer_{i}_params.npz", weight=weight_matrix, bias=bias_vector)
-
 
     def load_weights(self, example, datetime):
         # get the appropriate folder
@@ -307,25 +331,65 @@ class Workspace:
         # store the weights as the l2ws_model params
         self.l2ws_model.params = params
 
-
     def normalize_inputs_fn(self, thetas, N_train, N_test):
         # normalize the inputs if the option is on
         N = N_train + N_test
         if self.normalize_inputs:
             col_sums = thetas.mean(axis=0)
-            inputs_normalized = (thetas - col_sums) / thetas.std(axis=0)
+            std_devs = thetas.std(axis=0)
+            inputs_normalized = (thetas - col_sums) / std_devs #thetas.std(axis=0)
             inputs = jnp.array(inputs_normalized)
+            
+            # save the col_sums and std deviations
+            self.normalize_col_sums = col_sums
+            self.normalize_std_dev = std_devs
         else:
             inputs = jnp.array(thetas)
         train_inputs = inputs[:N_train, :]
         test_inputs = inputs[N_train:N, :]
-        return train_inputs, test_inputs
 
-    def load_setup_data(self, example, datetime):
+        
+        return train_inputs, test_inputs
+    
+    def normalize_theta(self, theta):
+        normalized_input = (theta - self.normalize_col_sums) / self.normalize_std_dev
+        return normalized_input
+
+    def load_setup_data(self, example, datetime, N_train, N):
         orig_cwd = hydra.utils.get_original_cwd()
         folder = f"{orig_cwd}/outputs/{example}/data_setup_outputs/{datetime}"
         filename = f"{folder}/data_setup.npz"
-        jnp_load_obj = jnp.load(filename)
+
+        if self.static_flag:
+            jnp_load_obj = jnp.load(filename)
+        else:
+            jnp_load_obj = jnp.load(filename)
+            q_mat = jnp.array(load_npz(f"{filename[:-4]}_q.npz").todense())
+            self.q_mat_train = q_mat[:N_train, :]
+            self.q_mat_test = q_mat[N_train:N, :]
+
+            # load factors
+            factors0, factors1 = jnp_load_obj['factors0'], jnp_load_obj['factors1']
+            # factors = (factors0, factors1)
+            # jnp_load_obj['factors'] = factors
+
+            # if we are in the dynamic case, then we need to get q from the sparse format
+            # jnp_load_obj['q_mat'] = jnp.array(q_mat_sparse)
+
+            self.factors_train = (jnp.array(factors0[:N_train, :, :]), jnp.array(factors1[:N_train, :]))
+            self.factors_test = (jnp.array(factors0[N_train:N, :, :]), jnp.array(factors1[N_train:N, :]))
+
+        if 'q_mat' in jnp_load_obj.keys():
+            q_mat = jnp.array(jnp_load_obj['q_mat'])
+            q_mat_train = q_mat[:N_train, :]
+            q_mat_test = q_mat[N_train:N, :]
+            self.q_mat_train, self.q_mat_test = q_mat_train, q_mat_test
+
+        # load the closed_loop_rollout trajectories
+        if 'ref_traj_tensor' in jnp_load_obj.keys():
+            # load all of the goals
+            self.closed_loop_rollout_dict['ref_traj_tensor'] = jnp_load_obj['ref_traj_tensor']
+        
         return jnp_load_obj
 
     def plot_samples(self, num_plot, thetas, train_inputs, z_stars):
@@ -412,11 +476,11 @@ class Workspace:
             obj_vals_diff = out_train[4].mean(axis=0)
 
         df_out = self.update_eval_csv(
-            iter_losses_mean, train, col, 
+            iter_losses_mean, train, col,
             primal_residuals=primal_residuals,
             dual_residuals=dual_residuals,
             obj_vals_diff=obj_vals_diff
-            )
+        )
         iters_df, primal_residuals_df, dual_residuals_df, obj_vals_diff_df = df_out
 
         if not self.skip_startup:
@@ -433,7 +497,7 @@ class Workspace:
 
         # plot the warm-start predictions
         z_all = out_train[2]
-        
+
         if isinstance(self.l2ws_model, SCSmodel):
             u_all = out_train[6]
         # u_all = out_train[0][3]
@@ -464,6 +528,10 @@ class Workspace:
             except:
                 print('Exception occurred during custom visualization')
 
+        # closed loop control rollouts
+        if not train:
+            self.run_closed_loop_rollouts(col)
+
         # solve with scs
         # z0_mat = z_all[:, 0, :]
         # self.solve_scs(z0_mat, train, col)
@@ -478,7 +546,6 @@ class Workspace:
             self.save_weights()
 
         return out_train
-    
 
     def solve_c_helper(self, z0_mat, train, col):
         """
@@ -504,8 +571,8 @@ class Workspace:
             abs_tol = self.abs_tols[i]
             acc_string = f"abs_{abs_tol}_rel_{rel_tol}"
 
-            
-            solve_c_out = self.l2ws_model.solve_c(z0_mat[:self.solve_c_num,:], q_mat[:self.solve_c_num,:], rel_tol, abs_tol)
+            solve_c_out = self.l2ws_model.solve_c(
+                z0_mat[:self.solve_c_num, :], q_mat[:self.solve_c_num, :], rel_tol, abs_tol)
             solve_times, solve_iters = solve_c_out[0], solve_c_out[1]
             mean_solve_times[i] = solve_times.mean()
             mean_solve_iters[i] = solve_iters.mean()
@@ -529,7 +596,7 @@ class Workspace:
                 os.mkdir(solve_times_path)
             if not os.path.exists(f"{solve_times_path}/{col}/{acc_string}"):
                 os.mkdir(f"{solve_times_path}/{col}/{acc_string}")
-            
+
             solve_times_df.to_csv(f"{solve_times_path}/{col}/{acc_string}/solve_times.csv")
 
         # update the mean values
@@ -545,7 +612,6 @@ class Workspace:
             self.agg_solve_iters_df_test[col] = mean_solve_iters
             self.agg_solve_times_df_test.to_csv(f"solve_C/{train_str}_aggregate_solve_times.csv")
             self.agg_solve_iters_df_test.to_csv(f"solve_C/{train_str}_aggregate_solve_iters.csv")
-    
 
     def solve_scs(self, z0_mat, train, col):
         # create the path
@@ -630,6 +696,149 @@ class Workspace:
         y = z_init[n:n + m]
         s = jnp.zeros(m)
         return x, y, s
+    
+    def run_closed_loop_rollouts(self, col):
+        """
+        implements the closed_loop_rollouts
+
+        qp_solver will depend on the col
+        - if cold-start or trained: run through neural network
+        - if nearest-neighbor, compute nn on-the-fly
+        - if prev-sol, need function to get previous sol
+        """
+        num_rollouts = self.closed_loop_rollout_dict['num_rollouts']
+        rollout_length = self.closed_loop_rollout_dict['rollout_length']
+        dynamics = self.closed_loop_rollout_dict['dynamics']
+        u_init_traj = self.closed_loop_rollout_dict['u_init_traj']
+        system_constants = self.closed_loop_rollout_dict['system_constants']
+        plot_traj = self.closed_loop_rollout_dict.get('plot_traj', None)
+        # ref_traj_dict_lists = self.closed_loop_rollout_dict['ref_traj_dict_lists_test']
+        ref_traj_tensor = self.closed_loop_rollout_dict['ref_traj_tensor']
+        budget = self.closed_loop_rollout_dict['closed_loop_budget']
+        dt, nx = system_constants['dt'], system_constants['nx']
+        cd0 = system_constants['cd0']
+
+        Q_ref =  self.closed_loop_rollout_dict['Q_ref']
+        obstacle_tol = self.closed_loop_rollout_dict['obstacle_tol']
+
+        static_canon_mpc_osqp_partial = self.closed_loop_rollout_dict['static_canon_mpc_osqp_partial']
+
+        # setup the qp_solver
+        qp_solver = partial(self.qp_solver, dt=dt, cd0=cd0, nx=nx, method=col, static_canon_mpc_osqp_partial=static_canon_mpc_osqp_partial)
+
+        num_goals = ref_traj_tensor.shape[1]
+        N_train = self.thetas_train.shape[0]
+        num_train_rollouts = int(N_train / rollout_length)
+
+        # do the closed loop rollouts
+        rollout_results_list = []
+        for i in range(num_rollouts):
+            # get x_init_traj
+            thetas_index = i * rollout_length
+            x_init_traj = self.thetas_test[thetas_index, :nx] # assumes theta = (x0, u0, x_ref)
+
+            ref_traj_index = num_train_rollouts + i
+            traj_list = [ref_traj_tensor[ref_traj_index, i, :] for i in range(num_goals)]
+            ref_traj_dict = dict(case='obstacle_course', traj_list=traj_list, Q=Q_ref, tol=obstacle_tol)
+            rollout_results = closed_loop_rollout(qp_solver,
+                                rollout_length,
+                                x_init_traj,
+                                u_init_traj,
+                                dynamics,
+                                system_constants,
+                                ref_traj_dict,
+                                budget,
+                                noise_list=None)
+            rollout_results_list.append(rollout_results)
+            state_traj_list = rollout_results['state_traj_list']
+
+            # plot and save the rollout results
+            if not os.path.exists('rollouts'):
+                os.mkdir('rollouts')
+            if not os.path.exists(f"rollouts/{col}"):
+                os.mkdir(f"rollouts/{col}")
+            traj_list = ref_traj_dict['traj_list']
+            
+            if plot_traj is not None:
+                plot_traj([state_traj_list], goals=traj_list, labels=[col], filename=f"rollouts/{col}/rollout_{i}.pdf")
+
+    def qp_solver(self, Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, dt, cd0, nx, static_canon_mpc_osqp_partial, method):
+        """
+        method could be one of the following
+        - cold-start
+        - nearest-neighbor
+        - prev-sol
+        - anything learned
+        """
+        # get the discrete time system Ad, Bd from the continuous time system Ac, Bc
+        Ad = jnp.eye(nx) + Ac * dt
+        Bd = Bc * dt
+        # no need to use u0 for the non-learned case
+
+        # get the constants for the discrete system
+        cd = cd0 + (x_dot - Ac @ x0 - Bc @ u0) * dt
+
+        # get (P, A, c, l, u)
+        out_dict = static_canon_mpc_osqp_partial(ref_traj, x0, Ad, Bd, cd=cd)
+        P, A, c, l, u = out_dict['P'], out_dict['A'], out_dict['c'], out_dict['l'], out_dict['u']
+        m, n = A.shape
+        q = jnp.concatenate([c, l, u])
+
+        # get factor
+        rho_vec, sigma = jnp.ones(m), 1
+        rho_vec = rho_vec.at[l == u].set(1000)
+        M = P + sigma * jnp.eye(n) + A.T @ jnp.diag(rho_vec) @ A
+        factor = jsp.linalg.lu_factor(M)
+
+        # solve
+        # z0 = prev_sol  # jnp.zeros(m + n)
+        # out = k_steps_eval_osqp(budget, z0, q, factor, P, A, rho=rho_vec,
+        #                         sigma=sigma, supervised=False, z_star=None, jit=True)
+
+        # expand so that vectors become matrices
+        #   i.e. we are only feeding one input into our method, but out method handles batches
+        #   input has shape (d), but inputs has shape (1, d)
+        factors = (jnp.expand_dims(factor[0], 0), jnp.expand_dims(factor[1], 0))
+
+        q_full = jnp.concatenate([q, vec_symm(P), jnp.reshape(A, (m * n))])
+        q_mat = jnp.expand_dims(q_full, 0)
+        z_stars = None
+
+        # get theta
+        theta = jnp.concatenate([x0, u0, ref_traj[:3]]) # assumes specific form of theta
+
+        # need to transform the input
+        if method == 'nearest_neighbor':
+            inputs = self.theta_2_nearest_neighbor(theta)
+            fixed_ws = True
+        elif method == 'prev_sol':
+            # input = self.shifted_sol(prev_sol)
+            prev_sol_mat = jnp.expand_dims(prev_sol, 0)
+            inputs = self.shifted_sol_fn(prev_sol_mat)
+            # inputs = jnp.expand_dims(input, 0)
+            fixed_ws = True
+        else:
+            normalized_input = self.normalize_theta(theta)
+            inputs = jnp.expand_dims(normalized_input, 0)
+            fixed_ws = False
+
+        loss, out, time_per_prob  = self.l2ws_model.dynamic_eval(budget, inputs, q_mat, z_stars, factors, tag='test', fixed_ws=fixed_ws)
+
+        # sol = out[0]
+        sol = out[2][0, -1, :]
+        print('loss', out[1][-1])
+        # plt.plot(out[1])
+        # plt.yscale('log')
+        # plt.show()
+        # plt.clf()
+
+        # z0 = sol[:nx]
+        # w0 = sol[T*nx:T*nx + nu]
+        # z1 = sol[nx:2*nx]
+        # w1 = sol[T*nx + nu:T*nx + 2*nu]
+
+        return sol, P, A, factor, q
+
 
     def custom_visualize(self, x_primals, train, col):
         """
@@ -648,8 +857,6 @@ class Workspace:
         if train:
             x_stars = self.l2ws_model.x_stars_train
             thetas = self.thetas_train
-            # import pdb
-            # pdb.set_trace()
             if 'x_nn_train' in dir(self):
                 x_nn = self.x_nn_train
         else:
@@ -675,7 +882,7 @@ class Workspace:
 
         if col != 'nearest_neighbor' and col != 'no_train':
             self.custom_visualize_fn(x_primals, x_stars, x_no_learn, x_nn,
-                                    thetas, self.iterates_visualize, visual_path)
+                                     thetas, self.iterates_visualize, visual_path)
 
         # save x_primals to csv (TODO)
         # x_primals_df = pd.DataFrame(x_primals[:5, :])
@@ -708,7 +915,6 @@ class Workspace:
         # load the weights AFTER the cold-start
         if self.load_weights_datetime is not None:
             self.load_weights(self.example, self.load_weights_datetime)
-
 
         # eval test data to start
         self.test_eval_write()
@@ -874,6 +1080,13 @@ class Workspace:
 
     def evaluate_only(self, fixed_ws, num, train, col, batch_size):
         tag = 'train' if train else 'test'
+        if self.static_flag:
+            factors = None
+        else:
+            if train:
+                factors = (self.factors_train[0][:num, :, :], self.factors_train[1][:num, :])
+            else:
+                factors = (self.factors_test[0][:num, :, :], self.factors_test[1][:num, :])
         if self.l2ws_model.z_stars_train is None:
             z_stars = None
         else:
@@ -882,30 +1095,23 @@ class Workspace:
                                                                                                   :]
         if col == 'prev_sol':
             q_mat_full = self.l2ws_model.q_mat_train[:num,
-                                            :] if train else self.l2ws_model.q_mat_test[:num, :]
+                                                     :] if train else self.l2ws_model.q_mat_test[:num, :]
             non_first_indices = jnp.mod(jnp.arange(num), self.traj_length) != 0
             q_mat = q_mat_full[non_first_indices, :]
             z_stars = z_stars[non_first_indices, :]
+            factors = (factors[0][non_first_indices, :, :], factors[1][non_first_indices, :])
         else:
             q_mat = self.l2ws_model.q_mat_train[:num,
-                                            :] if train else self.l2ws_model.q_mat_test[:num, :]
-            
-
-        # factors = None if self.l2ws_model.static_flag else self.l2ws_model.matrix_invs_train[:num,
-        #                                                                                      :]
-        # M_tensor = None if self.l2ws_model.static_flag else self.l2ws_model.M_tensor_train[:num, :]
+                                                :] if train else self.l2ws_model.q_mat_test[:num, :]
 
         inputs = self.get_inputs_for_eval(fixed_ws, num, train, col)
-        # eval_out = self.l2ws_model.evaluate(self.eval_unrolls, inputs, factors,
-        #                                     M_tensor, q_mat, z_stars, fixed_ws, tag=tag)
-
 
         # do the batching
         num_batches = int(num / batch_size)
         full_eval_out = []
         if num_batches == 1:
             eval_out = self.l2ws_model.evaluate(
-                self.eval_unrolls, inputs, q_mat, z_stars, fixed_ws, tag=tag)
+                self.eval_unrolls, inputs, q_mat, z_stars, fixed_ws, factors=factors, tag=tag)
             return eval_out
 
         for i in range(num_batches):
@@ -918,7 +1124,7 @@ class Workspace:
             else:
                 curr_z_stars = None
             eval_out = self.l2ws_model.evaluate(
-                self.eval_unrolls, curr_inputs, curr_q_mat, curr_z_stars, fixed_ws, tag=tag)
+                self.eval_unrolls, curr_inputs, curr_q_mat, curr_z_stars, fixed_ws, factors=factors, tag=tag)
             full_eval_out.append(eval_out)
         loss = np.array([curr_out[0] for curr_out in full_eval_out]).mean()
         time_per_prob = np.array([curr_out[2] for curr_out in full_eval_out]).mean()
@@ -926,12 +1132,12 @@ class Workspace:
 
         flattened_eval_out = (loss, out, time_per_prob)
         return flattened_eval_out
-    
+
     def stack_tuples(self, tuples_list):
         result = []
         num_tuples = len(tuples_list)
         tuple_length = len(tuples_list[0])
-        
+
         for i in range(tuple_length):
             stacked_entry = []
             for j in range(num_tuples):
@@ -941,7 +1147,7 @@ class Workspace:
                 result.append(jnp.vstack(stacked_entry))
             elif tuples_list[j][i].ndim == 1:
                 result.append(jnp.hstack(stacked_entry))
-            elif tuples_list[j][i].ndim == 3 and i  == 0:
+            elif tuples_list[j][i].ndim == 3 and i == 0:
                 result.append(jnp.vstack(stacked_entry))
         return result
 
@@ -955,7 +1161,8 @@ class Workspace:
                 # inputs = inputs.at[1:, :].set(self.z_stars_test[:num - 1, :])
 
                 # now set the indices (0, num_traj, 2 * num_traj) to zero
-                non_last_indices = jnp.mod(jnp.arange(num), self.traj_length) != self.traj_length - 1
+                non_last_indices = jnp.mod(jnp.arange(
+                    num), self.traj_length) != self.traj_length - 1
                 # inputs = inputs[non_last_indices, :]
                 # inputs = self.shifted_sol_fn(inputs)
 
@@ -966,6 +1173,25 @@ class Workspace:
             else:
                 inputs = self.l2ws_model.test_inputs[:num, :]
         return inputs
+    
+    def theta_2_nearest_neighbor(self, theta):
+        """
+        given a new theta returns the closest training problem solution
+        """
+        # first normalize theta
+        test_input = self.normalize_theta(theta)
+
+        # make it a matrix
+        test_inputs = jnp.expand_dims(test_input, 0)
+
+        distances = distance_matrix(
+                np.array(test_inputs),
+                np.array(self.l2ws_model.train_inputs))
+        indices = np.argmin(distances, axis=1)
+        if isinstance(self.l2ws_model, OSQPmodel):
+            return self.l2ws_model.z_stars_train[indices, :self.m + self.n]
+        else:
+            return self.l2ws_model.z_stars_train[indices, :]
 
     def get_nearest_neighbors(self, train, num):
         if train:
@@ -987,6 +1213,8 @@ class Workspace:
         else:
             plt.savefig("indices_train_plot.pdf", bbox_inches='tight')
         plt.clf()
+        if isinstance(self.l2ws_model, OSQPmodel):
+            return self.l2ws_model.z_stars_train[indices, :self.m + self.n]
         return self.l2ws_model.z_stars_train[indices, :]
 
     def setup_dataframes(self):
@@ -1016,7 +1244,7 @@ class Workspace:
             columns=['iterations'])
         self.dual_residuals_df_test['iterations'] = np.arange(
             1, self.eval_unrolls+1)
-        
+
         # obj_vals_diff
         self.obj_vals_diff_df_train = pd.DataFrame(
             columns=['iterations'])
@@ -1026,7 +1254,7 @@ class Workspace:
             columns=['iterations'])
         self.obj_vals_diff_df_test['iterations'] = np.arange(
             1, self.eval_unrolls+1)
-        
+
         # setup solve times
         self.agg_solve_times_df_train = pd.DataFrame()
         self.agg_solve_times_df_train['rel_tol'] = self.rel_tols
@@ -1034,14 +1262,13 @@ class Workspace:
         self.agg_solve_iters_df_train = pd.DataFrame()
         self.agg_solve_iters_df_train['rel_tol'] = self.rel_tols
         self.agg_solve_iters_df_train['abs_tol'] = self.abs_tols
-        
+
         self.agg_solve_times_df_test = pd.DataFrame()
         self.agg_solve_times_df_test['rel_tol'] = self.rel_tols
         self.agg_solve_times_df_test['abs_tol'] = self.abs_tols
         self.agg_solve_iters_df_test = pd.DataFrame()
         self.agg_solve_iters_df_test['rel_tol'] = self.rel_tols
         self.agg_solve_iters_df_test['abs_tol'] = self.abs_tols
-
 
     def train_full(self):
         print("Training full...")
@@ -1141,9 +1368,9 @@ class Workspace:
         plt.savefig('train_losses_over_training.pdf', bbox_inches='tight')
         plt.clf()
 
-    def update_eval_csv(self, iter_losses_mean, train, col, primal_residuals=None, 
+    def update_eval_csv(self, iter_losses_mean, train, col, primal_residuals=None,
                         dual_residuals=None, obj_vals_diff=None):
-    # def update_eval_csv(self, iter_losses_mean, train, col):
+        # def update_eval_csv(self, iter_losses_mean, train, col):
         """
         update the eval csv files
             fixed point residuals
@@ -1168,7 +1395,7 @@ class Workspace:
                 self.obj_vals_diff_df_train.to_csv('obj_vals_diff_train.csv')
                 obj_vals_diff_df = self.obj_vals_diff_df_train
             iters_df = self.iters_df_train
-            
+
         else:
             self.iters_df_test[col] = iter_losses_mean
             self.iters_df_test.to_csv('iters_compared_test.csv')
@@ -1185,9 +1412,8 @@ class Workspace:
                 obj_vals_diff_df = self.obj_vals_diff_df_test
 
             iters_df = self.iters_df_test
-            
+
         return iters_df, primal_residuals_df, dual_residuals_df, obj_vals_diff_df
-    
 
     def plot_eval_iters_df(self, df, train, col, ylabel, filename):
         # plot the cold-start if applicable
@@ -1219,17 +1445,17 @@ class Workspace:
             plt.savefig(f"{filename}_test.pdf", bbox_inches='tight')
         plt.clf()
 
-
     def plot_eval_iters(self, iters_df, primal_residuals_df, dual_residuals_df, plot_pretrain,
                         obj_vals_diff_df,
                         train, col):
         self.plot_eval_iters_df(iters_df, train, col, 'fixed point residual', 'eval_iters')
         if primal_residuals_df is not None:
-            self.plot_eval_iters_df(primal_residuals_df, train, col, 'primal residual', 'primal_residuals')
-            self.plot_eval_iters_df(dual_residuals_df, train, col, 'dual residual', 'dual_residuals')
+            self.plot_eval_iters_df(primal_residuals_df, train, col,
+                                    'primal residual', 'primal_residuals')
+            self.plot_eval_iters_df(dual_residuals_df, train, col,
+                                    'dual residual', 'dual_residuals')
         if obj_vals_diff_df is not None:
             self.plot_eval_iters_df(obj_vals_diff_df, train, col, 'obj diff', 'obj_diffs')
-
 
     # def plot_eval_iters(self, iters_df, primal_residuals_df, dual_residuals_df, plot_pretrain,
     #                     train, col):
@@ -1296,15 +1522,13 @@ class Workspace:
     #         plt.savefig('primal_residuals_test.pdf', bbox_inches='tight')
     #     plt.clf()
 
-
-
     #     # plot of the dual residuals
     #     if 'no_train' in iters_df.keys():
     #         # plt.plot(primal_residuals_df['no_train'],
     #         #         'k+', label='no learning primal')
     #         plt.plot(dual_residuals_df['no_train'],
     #                 'k-', label='no learning dual')
-            
+
     #     # plot the nearest_neighbor if applicable
     #     if col != 'no_train' and 'nearest_neighbor' in iters_df.keys():
     #         plt.plot(dual_residuals_df['nearest_neighbor'], 'm-', label='nearest neighbor')
@@ -1490,11 +1714,15 @@ class Workspace:
 
             for j in self.plot_iterates:
                 if isinstance(self.l2ws_model, OSQPmodel):
-                    plt.plot(z_all[i, j, :self.l2ws_model.m + self.l2ws_model.n] - self.l2ws_model.z_stars_train[i, :],
-                            label=f"prediction_{j}")
+                    try:
+                        plt.plot(z_all[i, j, :self.l2ws_model.m + self.l2ws_model.n] - self.l2ws_model.z_stars_train[i, :],
+                                label=f"prediction_{j}")
+                    except:
+                        plt.plot(z_all[i, j, :self.l2ws_model.m + self.l2ws_model.n] - self.l2ws_model.z_stars_train[i, :self.l2ws_model.m + self.l2ws_model.n],
+                                label=f"prediction_{j}")
                 else:
                     plt.plot(z_all[i, j, :] - self.l2ws_model.z_stars_train[i, :],
-                            label=f"prediction_{j}")
+                             label=f"prediction_{j}")
             plt.legend()
             plt.title('diffs to optimal')
             plt.savefig(f"{ws_path}/{col}/prob_{i}_diffs_z.pdf")
