@@ -2,7 +2,7 @@ T: 20
 dt: .05
 rollout_length: 500
 rollout_osqp_iters: 1000
-num_rollouts: 2
+num_rollouts: 5
 R_diag: [1, 1, 1, 1]
 # Q_diag: [1, 1, 1, 1, 1, 1, 0, 0, 0, .01, .01, .01]
 Q_diag: [10, 10, 10, 1, 1, 1, 0, 0, 0, .01, .01, .01]
