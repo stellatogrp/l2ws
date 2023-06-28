@@ -4,164 +4,360 @@ import jax.numpy as jnp
 from scipy.sparse import csc_matrix
 import jax.scipy as jsp
 import logging
+from trajax import integrators
+import jax
 
 log = logging.getLogger(__name__)
 
 
-def static_canon(T, nx, nu, state_box, control_box,
-                 Q_val,
-                 QT_val,
-                 R_val,
-                 Ad=None,
-                 Bd=None,
-                 delta_control_box=None):
-    '''
-    take in (nx, nu, )
+def closed_loop_rollout(qp_solver, sim_len, x_init_traj, u0, dynamics, system_constants, ref_traj_dict, budget, noise_list):
+    """
+    Runs a closed loop rollout for a control problem where we solve an mpc problem at each iteration
+        and run the first control input
+    The policy is given by the qp_solver which runs a first order method (osqp or scs) with a fixed number of steps
+        which we specify as the budget
 
-    Q, R, q, QT, qT, xmin, xmax, umin, umax, T
+    The ode gives the dynamics of the system
+        - to solve the mpc problem we linearize the dynamics from the current point
+        - i.e. x_dot = f(x, u)
+        - want to linearize around x0, u0: use automatic differentiation
 
-    return (P, c, A, b) ... but b will change so not meaningful
+    implements a closed loop rollout of the mpc problem
+    min .5 \sum_{t=0]^{T-1} (x_t - x_t^ref)^T Q (x_t - x_t^ref) + (x_T - x_T^ref)^T Q (x_T - x_T^ref)
+        s.t. x_{t+1} = f(x)
 
-    x0 is always the only thing that changes!
-    (P, c, A) will be the same
-    (b) will change in the location where x_init is!
-    '''
+    arguments
+    qp_solver: input: A, B, x0, u0, ref_traj, budget
+        output: qp solution - primal and dual solutions stacked together (i.e. the z vector that is used as the fixed point)
+        important: the qp_solver must already be customized to work with the lower and upper bounds of x and u
+            and the cost matrices Q, QT, and R must already be set
 
-    # keep the following data the same for all
-    if isinstance(Q_val, int) or isinstance(Q_val, float):
-        Q = Q_val * np.eye(nx)
+    system_constants: dictionary that includes (T, nx, nu, x_min, x_max, u_min, u_max, dt)
+        T: mpc horizon length
+        nx: numger of states
+        nu: number of controls
+        x_min: a vector of lower bounds on the states
+        x_max: a vector of upper bounds on the states
+        u_min: a vector of lower bounds on the controls
+        u_max: a vector of upper bounds on the controls
+        dt: the discretization
+    dynamics: a jax differentiable function that describes the dynamics in the form of
+        x_dot = dynamics(x, u)
+    traj_list: a list of vectors of states that is the reference trajectory
+        the length of traj_list is the number of simulation steps to run
+    budget: the number of first order steps we allowe the qp_solver to perform
+    noise_list: is a list of vectors that describes the noise for the state
+
+    the problem is parametric around (x0, u0, ref_traj)
+        u0 is needed since (A, B) are linearized around the current control
+        so theta = (x0, u0, ref_traj)
+    """
+    T, dt = system_constants['T'], system_constants['dt']
+    nx, nu = system_constants['nx'], system_constants['nu']
+    x_min, x_max = system_constants['x_min'], system_constants['x_max']
+    u_min, u_max = system_constants['u_min'], system_constants['u_max']
+
+    # noise
+    if noise_list is None:
+        noise_list = [jnp.zeros(nx)] * sim_len
+
+    # first state in the trajectory is given
+    x0 = x_init_traj
+    # u0 = jnp.array([9.8, 0, 0, 0])
+    # u0 = jnp.array([9.8, 9.8, 9.8, 9.8]) / 4
+
+    sols = []
+    state_traj_list = [x0]
+    P_list, A_list, factor_list, q_list = [], [], [], []
+    x0_list, u0_list, x_ref_list = [], [], []
+    obstacle_num = 0
+    integrator = integrators.rk4(dynamics, dt=dt)
+    n = T * (nx + nu)
+    m = T * (2 * nx + 1 * nu)
+    # m = T * (2 * nx + 2 * nu)
+    prev_sol = jnp.zeros(m + n)
+
+    for j in range(sim_len):
+        # Compute the state matrix Ad
+        Ac = jax.jacobian(lambda x: dynamics(x, u0, j))(x0)
+
+        # Compute the input matrix B
+        Bc = jax.jacobian(lambda u: dynamics(x0, u, j))(u0)
+
+        print(j)
+
+        # solve the qp
+        ref_traj = get_curr_ref_traj(ref_traj_dict, j, obstacle_num)
+
+        print('ref_traj', ref_traj)
+        x_dot = dynamics(x0, u0, j)
+        sol, P, A, factor, q = qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol)
+        sols.append(sol)
+        P_list.append(P)
+        A_list.append(A)
+        factor_list.append(factor)
+        q_list.append(q)
+        prev_sol = sol[:m + n]
+        x0_list.append(x0)
+        u0_list.append(u0)
+        x_ref_list.append(ref_traj)
+
+        # implement the first control
+        u0 = extract_first_control(sol, T, nx, nu, control_num=0)
+        for i in range(T):
+            print('u', i, extract_first_control(sol, T, nx, nu, control_num=i))
+
+        clipped_u0 = jnp.clip(u0, a_min=u_min, a_max=u_max)
+        print('u0', clipped_u0)
+
+        state_dot = dynamics(x0, clipped_u0, j)
+        print('state_dot', state_dot)
+
+        # get the next state
+        x0 = integrator(x0, clipped_u0, j) + noise_list[j]
+        print('x0', x0)
+        print('expected x0', sol[:nx])
+        print('expected x1', sol[nx:2*nx])
+        print('final expected state', sol[(T-1)*nx:T*nx])
+        print('final expected control', sol[(T-1)*nu + T*nx: T*nu + T*nx])
+
+        # check if the obstacle number should be updated
+        obstacle_num = update_obstacle_num(x0, ref_traj_dict, j, obstacle_num)
+        print('obstacle_num', obstacle_num)
+
+        state_traj_list.append(x0)
+        if obstacle_num == -1:
+            obstacle_num = 0
+    rollout_results = dict(state_traj_list=state_traj_list,
+                           sol_list=sols,
+                           P_list=P_list,
+                           A_list=A_list,
+                           factor_list=factor_list,
+                           clu_list=q_list,
+                           x0_list=x0_list,
+                           u0_list=u0_list,
+                           x_ref_list=x_ref_list)
+    return rollout_results
+
+
+def update_obstacle_num(x, ref_traj_dict, j, obstacle_num):
+    """
+    checks to see if we are close enough to the current obstacle
+    """
+    if ref_traj_dict['case'] == 'obstacle_course':
+        # check if (x - x_ref)^T Q (x - x_ref) is small -- if it is, we move onto the next obstacle
+        tol = ref_traj_dict['tol']
+        Q = ref_traj_dict['Q']
+        curr_ref = ref_traj_dict['traj_list'][obstacle_num]
+        dist = jnp.sqrt((x - curr_ref).T @ Q @ (x - curr_ref))
+        print('dist', dist)
+        if dist <= tol:
+            # check if obstacle course finished
+            if obstacle_num == len(ref_traj_dict['traj_list']) - 1:
+                obstacle_num = -1
+            else:
+                obstacle_num += 1
+    return obstacle_num
+
+
+def get_curr_ref_traj(ref_traj_dict, t, obstacle_num):
+    if ref_traj_dict['case'] == 'fixed_path':
+        return ref_traj_dict['traj_list'][t]
+    elif ref_traj_dict['case'] == 'obstacle_course':
+        return ref_traj_dict['traj_list'][obstacle_num]
+
+
+def simulate_fwd_l2ws(sim_len, l2ws_model, k, noise_vec_list, q_init, x_init, A, Ad, Bd, T, nx, nu, prev_sol=False):
+    """
+    does the forward simulation
+
+    returns
+    """
+    m, n = A.shape
+    # get the first test_input and q_mat_test
+    input = x_init
+    q_mat = q_init
+
+    opt_sols = []
+    state_traj = [x_init]
+
+    opt_sol = np.zeros(n + 2 * m)
+
+    for i in range(sim_len):
+        # evaluate
+        if prev_sol:
+            # get the shifted previous solution
+            prev_z_shift = shifted_sol(opt_sol[:m + n], T, nx, nu, m, n)
+            final_eval_out = l2ws_model.evaluate(
+                k, prev_z_shift[None, :], q_mat[None, :], z_stars=None, fixed_ws=True, tag='test')
+            # z_star = final_eval_out[1][2][0, -1, :]
+        else:
+            final_eval_out = l2ws_model.evaluate(
+                k, input[None, :], q_mat[None, :], z_stars=None, fixed_ws=False, tag='test')
+        print('loss', k, prev_sol, final_eval_out[1][0])
+
+        # get the first control input
+        # final_eval_out[1][2] will have shape (1, k, n + 2 * m)
+        opt_sol = final_eval_out[1][2][0, -1, :]
+
+        u0 = opt_sol[T * nx: T * nx + nu]
+
+        # input the first control to get the next state and perturb it
+        x_init = Ad @ x_init + Bd @ u0 + noise_vec_list[i]
+
+        # set test_input and q_mat_test
+        input = x_init
+        c, l, u = q_mat[:n], q_mat[n:n + m], q_mat[n + m:]
+        Ad_x_init = Ad @ x_init
+        l = l.at[:nx].set(-Ad_x_init)
+        u = u.at[:nx].set(-Ad_x_init)
+        q_mat = q_mat.at[n:n + m].set(l)
+        q_mat = q_mat.at[n + m:].set(u)
+
+        # append to the optimal solutions
+        opt_sols.append(opt_sol)
+
+        # append to the state trajectory
+        state_traj.append(x_init)
+
+    return opt_sols, state_traj
+
+
+def extract_first_control(sol, T, nx, nu, control_num=0):
+    return sol[T * nx + control_num * nu: T * nx + (control_num + 1) * nu]
+
+
+def static_canon_mpc_osqp(x_ref, x0, Ad, Bd, cd, T, nx, nu, x_min, x_max, u_min, u_max, Q, QT, R,
+                          delta_u=None, u_prev=None):
+    """
+    given the mpc problem
+    min (x_t - x_t^{ref})^T Q_T (x_t - x_t^{ref}) + sum_{i=1}^{T-1} (x_t - x_t^{ref})^T Q (x_t - x_t^{ref}) + u_t^T R u_t
+        s.t. x_{t+1} = Ad x_t + Bd u_t
+             x_min <= x_t <= x_max
+             u_min <= u_t <= u_max
+             -delta_u <= u_{t+1} - u_t <= delta_u (if delta_u is not None)
+
+    returns (P, A, c, l, u) in the canonical osqp form
+
+    It is possible that (x_ref, x0, Ad, Bd) change from problem to problem
+
+    (T, nx, nu, x_min, x_max, u_min, u_max, Q_val, QT_val, R_val) should all be the same
+    """
+    if np.isscalar(Q):
+        Q = Q * np.eye(nx)
     else:
-        Q = np.diag(Q_val)
-    if isinstance(QT_val, int) or isinstance(QT_val, float):
-        QT = QT_val * np.eye(nx)
+        Q = Q
+    if np.isscalar(Q):
+        QT = QT * np.eye(nx)
     else:
-        QT = np.diag(QT_val)
-    if isinstance(R_val, int) or isinstance(R_val, float):
-        R = R_val * np.eye(nu)
+        QT = QT
+    if np.isscalar(R):
+        R = R * np.eye(nu)
     else:
-        R = np.diag(R_val)
+        R = R
 
-    q = np.zeros(nx)
-    qT = np.zeros(nx)
-    if Ad is None and Bd is None:
-        Ad = .1 * np.random.normal(size=(nx, nx))
-        Bd = .1 * np.random.normal(size=(nx, nu))
+    if x_ref is None:
+        x_ref = np.zeros(nx)
 
     # Quadratic objective
-    P_sparse = sparse.block_diag(
+    P = sparse.block_diag(
         [sparse.kron(sparse.eye(T-1), Q), QT, sparse.kron(sparse.eye(T), R)],
         format="csc",
     )
 
     # Linear objective
-    c = np.hstack([np.kron(np.ones(T-1), q), qT, np.zeros(T * nu)])
+    c = np.hstack([np.kron(np.ones(T - 1), -Q @ x_ref), -QT @ x_ref, np.zeros(T * nu)])
 
     # Linear dynamics
     Ax = sparse.kron(sparse.eye(T + 1), -sparse.eye(nx)) + sparse.kron(
         sparse.eye(T + 1, k=-1), Ad
     )
     Ax = Ax[nx:, nx:]
-
     Bu = sparse.kron(
         sparse.eye(T), Bd
     )
     Aeq = sparse.hstack([Ax, Bu])
+    # import pdb
+    # pdb.set_trace()
 
-    beq = np.zeros(T * nx)
-
-    '''
-    top block for (x, u) <= (xmax, umax)
-    bottom block for (x, u) >= (xmin, umin)
-    i.e. (-x, -u) <= (-xmin, -umin)
-    '''
-    if state_box == np.inf:
-        zero_states = csc_matrix((T * nu, T * nx))
-        block1 = sparse.hstack([zero_states, sparse.eye(T * nu)])
-        block2 = sparse.hstack([zero_states, -sparse.eye(T * nu)])
+    if delta_u is None:
         A_ineq = sparse.vstack(
-            [block1,
-             block2]
+            [sparse.eye(T * nx + T * nu)]
         )
     else:
-        A_ineq = sparse.vstack(
-            [sparse.eye(T * nx + T * nu),
-             -sparse.eye(T * nx + T * nu)]
+        A_minmax = sparse.vstack(
+            [sparse.eye(T * nx + T * nu)]
         )
-    if delta_control_box is not None:
-        A_delta_u = sparse.kron(sparse.eye(T), -sparse.eye(nu)) + sparse.kron(
+        # A_deltau = np.eye(T * nu)
+        # np.fill_diagonal(A_deltau[1:, :], -1)
+        A_deltau = sparse.eye(T * nu) - sparse.kron(
             sparse.eye(T, k=-1), sparse.eye(nu)
         )
-        zero_states = csc_matrix((T * nu, T * nx))
-        block1 = sparse.hstack([zero_states, A_delta_u])
-        block2 = sparse.hstack([zero_states, -A_delta_u])
-        A_ineq = sparse.vstack([A_ineq, block1, block2])
 
-    # stack A
-    A_sparse = sparse.vstack(
+        zeros_sparse = sparse.coo_matrix(np.zeros((T * nu, T * nx)))
+        # A_deltau_sparse = sparse.coo_matrix(A_deltau)
+
+        # import pdb
+        # pdb.set_trace()
+
+        A_deltau_full = sparse.hstack([zeros_sparse, A_deltau])
+        # import pdb
+        # pdb.set_trace()
+
+        A_ineq = sparse.vstack(
+            [A_minmax,
+             A_deltau_full]
+        )
+
+    A = sparse.vstack(
         [
             Aeq,
             A_ineq
         ]
     )
 
-    if isinstance(control_box, int) or isinstance(control_box, float):
-        control_lim = control_box * np.ones(T * nu)
-    else:
-        control_lim = control_box
+    # get l, u
+    x_max_vec = np.tile(x_max, T)
+    x_min_vec = np.tile(x_min, T)
+    u_max_vec = np.tile(u_max, T)
+    u_min_vec = np.tile(u_min, T)
 
-    # get b
-    if state_box == np.inf:
-        # b_control_box = np.kron(control_lim, np.ones(T))
-        b_control_box = np.kron(np.ones(T), control_lim)
+    if delta_u is None:
         b_upper = np.hstack(
-            [b_control_box])
+            [x_max_vec, u_max_vec])
         b_lower = np.hstack(
-            [b_control_box])
+            [x_min_vec, u_min_vec])
     else:
+        delta_u_tiled = np.tile(delta_u, T)
+
         b_upper = np.hstack(
-            [state_box*np.ones(T * nx), control_lim])
+            [x_max_vec, u_max_vec, delta_u_tiled])
         b_lower = np.hstack(
-            [state_box*np.ones(T * nx), control_lim])
-    if delta_control_box is None:
-        b = np.hstack([beq, b_upper, b_lower])
-    else:
-        if isinstance(delta_control_box, int) or isinstance(delta_control_box, float):
-            delta_control_box_vec = delta_control_box * np.ones(nu)
-        else:
-            delta_control_box_vec = delta_control_box
-        b_delta_u = np.kron(delta_control_box_vec, np.ones(T))
-        b = np.hstack([beq, b_upper, b_lower, b_delta_u, b_delta_u])
+            [x_min_vec, u_min_vec, -delta_u_tiled])
 
-    # cones = dict(z=T * nx, l=2 * (T * nx + T * nu))
-    num_ineq = b.size - T * nx
-    cones = dict(z=T * nx, l=num_ineq)
-    cones_array = jnp.array([cones['z'], cones['l']])
+        b_upper[T * (nx + nu): T * (nx + nu) + nu] += u_prev
+        b_lower[T * (nx + nu): T * (nx + nu) + nu] += u_prev
 
-    # create the matrix M
-    m, n = A_sparse.shape
-    M = jnp.zeros((n + m, n + m))
-    P = P_sparse.todense()
-    A = A_sparse.todense()
-    P_jax = jnp.array(P)
-    A_jax = jnp.array(A)
-    M = M.at[:n, :n].set(P_jax)
-    M = M.at[:n, n:].set(A_jax.T)
-    M = M.at[n:, :n].set(-A_jax)
+    # set beq
+    beq = np.zeros(T * nx)
 
-    # factor for DR splitting
-    algo_factor = jsp.linalg.lu_factor(M + jnp.eye(n+m))
+    # use the initial state x0
+    beq[:nx] = -Ad @ x0
 
-    A_sparse = csc_matrix(A)
-    P_sparse = csc_matrix(P)
+    # add in cd
+    cd_tiled = np.tile(cd, T)
+    beq = beq - cd_tiled
 
-    out_dict = dict(M=M,
-                    algo_factor=algo_factor,
-                    cones_array=cones_array,
-                    cones_dict=cones,
-                    A_sparse=A_sparse,
-                    P_sparse=P_sparse,
-                    b=b,
-                    c=c,
-                    A_dynamics=Ad)
+    l = np.hstack([beq, b_lower])
+    u = np.hstack([beq, b_upper])
 
+    cones = dict(z=T * nx, l=2 * (T * nx + T * nu))
+
+    out_dict = dict(cones=cones,
+                    A=jnp.array(A.todense()),
+                    P=jnp.array(P.todense()),
+                    l=jnp.array(l),
+                    u=jnp.array(u),
+                    c=jnp.array(c),
+                    A_dynamics=jnp.array(Ad))
     return out_dict

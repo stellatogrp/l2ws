@@ -478,3 +478,94 @@ def solve_trajectory(first_x_init, P_orig, A, q, traj_length, Ad, noise_std_dev)
         x_init = x_star[:nx] + noise
         # print('x_init', x_init)
     return theta_mat, z_stars, q_mat
+
+
+def quadcopter_dynamics(state, thrusts):
+    """
+    x = state
+    u = thrusts
+    returns x_dot = f(x, u)
+
+    written in jax so we can use autodifferentiation to compute the linearized dynamics
+    """
+    # State variables
+    position = state[:3]  # Position [x, y, z]
+    velocity = state[3:6]  # Velocity [vx, vy, vz]
+    quaternion = state[6:10]  # Quaternion [qw, qx, qy, qz]
+    angular_velocity = state[10:]  # Angular velocity [p, q, r]
+
+    # Constants
+    mass = 1.0  # Quadcopter mass
+    g = 9.81  # Acceleration due to gravity
+
+    # Thrust and torque constants
+    k_thrust = 2.5  # Thrust coefficient
+    k_torque = 0.25  # Torque coefficient
+
+    # Calculate forces and torques
+    forces = jnp.array([0.0, 0.0, -mass * g])  # Gravity force
+    thrusts = jnp.clip(thrusts, 0.0, np.inf)  # Ensure thrusts are non-negative
+    body_z = quaternion_to_rotation_matrix(quaternion)[:, 2]  # Body z-axis in world frame
+    forces += k_thrust * np.sum(thrusts) * body_z  # Thrust forces
+
+    torques = jnp.array([
+        k_torque * (thrusts[1] - thrusts[3]),  # Roll torque
+        k_torque * (thrusts[2] - thrusts[0]),  # Pitch torque
+        k_torque * (thrusts[1] + thrusts[3] - thrusts[0] - thrusts[2])  # Yaw torque
+    ])
+
+    # Calculate state derivatives
+
+    # Position derivative
+    position_dot = velocity
+
+    # Velocity derivative
+    velocity_dot = forces / mass
+
+    # Quaternion derivative
+    quaternion_dot = 0.5 * quaternion_product(quaternion, jnp.concatenate([[0], angular_velocity]))
+
+    # Angular velocity derivative
+    inertia_matrix_inv = inertia_matrix_inverse(quaternion)
+    angular_velocity_dot = inertia_matrix_inv.dot(torques)
+
+    # Concatenate the state derivatives
+    state_dot = jnp.concatenate([position_dot, velocity_dot, quaternion_dot[1:], angular_velocity_dot])
+
+    return state_dot
+
+
+def quaternion_to_rotation_matrix(quaternion):
+    w, x, y, z = quaternion
+    return np.array([
+        [1 - 2 * (y ** 2 + z ** 2), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+        [2 * (x * y + w * z), 1 - 2 * (x ** 2 + z ** 2), 2 * (y * z - w * x)],
+        [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x ** 2 + y ** 2)]
+    ])
+
+def quaternion_product(quaternion1, quaternion2):
+    w1, x1, y1, z1 = quaternion1
+    w2, x2, y2, z2 = quaternion2
+    w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
+    x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
+    y = w1 * y
+    return np.array([w, x, y, z])
+
+
+def inertia_matrix_inverse(quaternion):
+    # Assuming diagonal inertia matrix
+    Ixx = 1.0
+    Iyy = 1.0
+    Izz = 1.0
+
+    qw, qx, qy, qz = quaternion
+
+    I_inv = np.array([
+        [1 / Ixx, 0, 0],
+        [0, 1 / Iyy, 0],
+        [0, 0, 1 / Izz]
+    ])
+
+    R = quaternion_to_rotation_matrix(quaternion)
+
+    return R @ I_inv @ R.T

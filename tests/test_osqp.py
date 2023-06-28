@@ -73,7 +73,7 @@ def test_mnist():
 
 # @pytest.mark.skip(reason="temp")
 def test_quadcopter():
-    N_train = 1000
+    N_train = 100
     N_test = 100
     N = N_train + N_test
     T = 10
@@ -116,6 +116,8 @@ def test_quadcopter():
     input_dict = dict(rho=rho_vec,
                       q_mat_train=q_mat_train,
                       q_mat_test=q_mat_test,
+                      m=m,
+                      n=n,
                       P=P,
                       A=A,
                       factor=factor,

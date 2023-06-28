@@ -10,6 +10,8 @@ import examples.phase_retrieval as phase_retrieval
 import examples.lasso as lasso
 import examples.unconstrained_qp as unconstrained_qp
 import examples.mpc as mpc
+import examples.quadcopter as quadcopter
+import examples.mnist as mnist
 import hydra
 import pdb
 import yaml
@@ -53,6 +55,32 @@ def main_run_lasso(cfg):
         cfg.data.datetime = setup_datetime
     copy_data_file(example, setup_datetime)
     lasso.run(cfg)
+
+
+@hydra.main(config_path='configs/quadcopter', config_name='quadcopter_run.yaml')
+def main_run_quadcopter(cfg):
+    orig_cwd = hydra.utils.get_original_cwd()
+    example = 'quadcopter'
+    setup_datetime = cfg.data.datetime
+    if setup_datetime == '':
+        # get the most recent datetime and update datetimes
+        setup_datetime = recover_last_datetime(orig_cwd, example, 'data_setup')
+        cfg.data.datetime = setup_datetime
+    copy_data_file(example, setup_datetime)
+    quadcopter.run(cfg)
+
+
+@hydra.main(config_path='configs/mnist', config_name='mnist_run.yaml')
+def main_run_mnist(cfg):
+    orig_cwd = hydra.utils.get_original_cwd()
+    example = 'mnist'
+    setup_datetime = cfg.data.datetime
+    if setup_datetime == '':
+        # get the most recent datetime and update datetimes
+        setup_datetime = recover_last_datetime(orig_cwd, example, 'data_setup')
+        cfg.data.datetime = setup_datetime
+    copy_data_file(example, setup_datetime)
+    mnist.run(cfg)
 
 
 @hydra.main(config_path='configs/unconstrained_qp', config_name='unconstrained_qp_run.yaml')
@@ -211,4 +239,11 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'lasso/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_run_unconstrained_qp()
-        
+    elif sys.argv[1] == 'quadcopter':
+        sys.argv[1] = base + 'quadcopter/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_run_quadcopter()
+    elif sys.argv[1] == 'mnist':
+        sys.argv[1] = base + 'mnist/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_run_mnist()

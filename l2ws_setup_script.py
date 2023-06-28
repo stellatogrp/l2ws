@@ -10,6 +10,8 @@ import examples.phase_retrieval as phase_retrieval
 import examples.lasso as lasso
 import examples.mpc as mpc
 import examples.unconstrained_qp as unconstrained_qp
+import examples.quadcopter as quadcopter
+import examples.mnist as mnist
 import hydra
 
 
@@ -26,6 +28,16 @@ def main_setup_osc_mass(cfg):
 @hydra.main(config_path='configs/vehicle', config_name='vehicle_setup.yaml')
 def main_setup_vehicle(cfg):
     vehicle.setup_probs(cfg)
+
+
+@hydra.main(config_path='configs/quadcopter', config_name='quadcopter_setup.yaml')
+def main_setup_quadcopter(cfg):
+    quadcopter.setup_probs(cfg)
+
+
+@hydra.main(config_path='configs/mnist', config_name='mnist_setup.yaml')
+def main_setup_mnist(cfg):
+    mnist.setup_probs(cfg)
 
 
 @hydra.main(config_path='configs/robust_kalman', config_name='robust_kalman_setup.yaml')
@@ -120,3 +132,11 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'unconstrained_qp/data_setup_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_setup_unconstrained_qp()
+    elif sys.argv[1] == 'quadcopter':
+        sys.argv[1] = base + 'quadcopter/data_setup_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_setup_quadcopter()
+    elif sys.argv[1] == 'mnist':
+        sys.argv[1] = base + 'mnist/data_setup_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_setup_mnist()

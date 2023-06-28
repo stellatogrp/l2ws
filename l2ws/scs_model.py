@@ -18,6 +18,8 @@ class SCSmodel(L2WSmodel):
         the input_dict is required to contain these keys
         otherwise there is an error
         """
+        self.algo = 'scs'
+        self.factors_required = True
         self.hsde = input_dict.get('hsde', True)
         self.m, self.n = input_dict['m'], input_dict['n']
         self.cones = input_dict['cones']

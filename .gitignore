@@ -141,3 +141,5 @@ slurm-*
 examples/mnist.py
 examples/mnist_data/
 mnist_data/
+cartpole*
+high_mpc/
