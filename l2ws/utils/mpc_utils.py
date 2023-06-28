@@ -127,7 +127,7 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, u0, dynamics, system_co
 
         state_traj_list.append(x0)
         if obstacle_num == -1:
-            break
+            obstacle_num = 0
     rollout_results = dict(state_traj_list=state_traj_list,
                            sol_list=sols,
                            P_list=P_list,

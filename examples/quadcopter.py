@@ -323,9 +323,9 @@ def opt_qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, cd0, static
                             sigma=sigma, supervised=False, z_star=None, jit=True)
     sol = out[0]
     print('loss', out[1][-1])
-    plt.plot(out[1])
-    plt.yscale('log')
-    plt.show()
+    # plt.plot(out[1])
+    # plt.yscale('log')
+    # plt.show()
     # plt.clf()
 
     # z0 = sol[:nx]
