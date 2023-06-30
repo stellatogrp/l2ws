@@ -14,13 +14,14 @@ from jax import lax
 import hydra
 import time
 from scipy.spatial import distance_matrix
-from l2ws.algo_steps import create_projection_fn, get_psd_sizes, vec_symm
+from l2ws.algo_steps import create_projection_fn, get_psd_sizes, vec_symm, form_osqp_matrix, unvec_symm
 from l2ws.utils.generic_utils import sample_plot, setup_permutation, count_files_in_directory
 import scs
 from scipy.sparse import csc_matrix
 from functools import partial
 from scipy.sparse import csc_matrix, save_npz, load_npz
 from l2ws.utils.mpc_utils import closed_loop_rollout
+from jax import vmap
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
@@ -157,6 +158,34 @@ class Workspace:
             l0 = self.q_mat_train[0, n: n + m]
             u0 = self.q_mat_train[0, n + m: n + 2 * m]
             rho_vec = rho_vec.at[l0 == u0].set(1000)
+
+            t0 = time.time()
+
+            # form matrices (N, m + n, m + n)
+            nc2 = int(n * (n + 1) / 2)
+            q_mat = jnp.vstack([self.q_mat_train, self.q_mat_test])
+            N_train, N_test = self.q_mat_train.shape[0], self.q_mat_test[0]
+            N = q_mat.shape[0]
+            unvec_symm_batch = vmap(unvec_symm, in_axes=(0, None), out_axes=(0))
+            P_tensor = unvec_symm_batch(q_mat[:, 2 * m + n: 2 * m + n + nc2], n)
+            A_tensor = jnp.reshape(q_mat[:, 2 * m + n + nc2:], (N, m, n))
+            sigma = 1
+            # M = P + sigma * jnp.eye(n) + A.T @ jnp.diag(rho_vec) @ A
+            batch_form_osqp_matrix = vmap(form_osqp_matrix, in_axes=(0, 0, None, None), out_axes=(0))
+            matrices = batch_form_osqp_matrix(P_tensor, A_tensor, rho_vec, sigma)
+
+
+            # do factors
+            # factors0, factors1 = self.batch_factors(self.q_mat_train)
+            batch_lu_factor = vmap(jsp.linalg.lu_factor, in_axes=(0,), out_axes=(0, 0))
+            factors0, factors1 = batch_lu_factor(matrices)
+
+            t1 = time.time()
+            print('batch factor time', t1 - t0)
+
+            self.factors_train = (factors0[:N_train, :, :], factors1[:N_train, :])
+            self.factors_test = (factors0[N_train:N, :, :], factors1[N_train:N, :])
+
 
             input_dict = dict(factor_static_bool=False,
                               supervised=cfg.supervised,
@@ -369,15 +398,21 @@ class Workspace:
             self.q_mat_test = q_mat[N_train:N, :]
 
             # load factors
-            factors0, factors1 = jnp_load_obj['factors0'], jnp_load_obj['factors1']
+            # factors0, factors1 = jnp_load_obj['factors0'], jnp_load_obj['factors1']
             # factors = (factors0, factors1)
             # jnp_load_obj['factors'] = factors
+            
+
+            # compute factors
+            # all_factors_train is a tuple with shapes ((N, n + m, n + m), (N, n + m))
+            # factors0, factors1 = self.batch_factors(q_mat)
+
 
             # if we are in the dynamic case, then we need to get q from the sparse format
             # jnp_load_obj['q_mat'] = jnp.array(q_mat_sparse)
 
-            self.factors_train = (jnp.array(factors0[:N_train, :, :]), jnp.array(factors1[:N_train, :]))
-            self.factors_test = (jnp.array(factors0[N_train:N, :, :]), jnp.array(factors1[N_train:N, :]))
+            # self.factors_train = (jnp.array(factors0[:N_train, :, :]), jnp.array(factors1[:N_train, :]))
+            # self.factors_test = (jnp.array(factors0[N_train:N, :, :]), jnp.array(factors1[N_train:N, :]))
 
         if 'q_mat' in jnp_load_obj.keys():
             q_mat = jnp.array(jnp_load_obj['q_mat'])

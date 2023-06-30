@@ -7,6 +7,10 @@ from l2ws.utils.generic_utils import python_fori_loop
 TAU_FACTOR = 10
 
 
+def form_osqp_matrix(P, A, rho_vec, sigma):
+    m, n = A.shape
+    return P + sigma * jnp.eye(n) + A.T @ jnp.diag(rho_vec) @ A
+
 
 def eval_ista_obj(z, A, b, lambd):
     return .5 * jnp.linalg.norm(A @ z - b) ** 2 + lambd * jnp.linalg.norm(z, ord=1)

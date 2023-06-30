@@ -35,18 +35,20 @@ def save_results_dynamic(output_filename, theta_mat, z_stars, q_mat, factors, re
         jnp.savez(
             output_filename,
             thetas=jnp.array(theta_mat),
-            z_stars=z_stars,
-            factors0=factors[0],
-            factors1=factors[1]
+            z_stars=z_stars#,
+            # factors0=factors[0],
+            # factors1=factors[1]
         )
     else:
         jnp.savez(
             output_filename,
             thetas=jnp.array(theta_mat),
             z_stars=z_stars,
-            factors0=factors[0],
-            factors1=factors[1],
             ref_traj_tensor=ref_traj_tensor
+            #,
+            # factors0=factors[0],
+            # factors1=factors[1],
+            # ref_traj_tensor=ref_traj_tensor
         )
     # ref_traj_tensor has shape (num_rollouts, num_goals, goal_length)
 

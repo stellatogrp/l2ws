@@ -16,6 +16,7 @@ from scipy import sparse
 from l2ws.utils.mpc_utils import closed_loop_rollout, static_canon_mpc_osqp
 from l2ws.algo_steps import k_steps_eval_osqp, unvec_symm, vec_symm
 import imageio
+import time
 
 QUADCOPTER_NX = 12
 QUADCOPTER_NU = 4
@@ -111,9 +112,10 @@ def run(run_cfg):
     # setup the opt_qp_solver
 
     # setup Q, QT, R
-    Q = jnp.diag(jnp.array(setup_cfg['Q_diag']))
+    obj_factor = 1
+    Q = jnp.diag(jnp.array(setup_cfg['Q_diag'])) / obj_factor
     QT = setup_cfg['QT_factor'] * Q
-    R = jnp.diag(jnp.array(setup_cfg['R_diag']))
+    R = jnp.diag(jnp.array(setup_cfg['R_diag'])) / obj_factor
     static_canon_mpc_osqp_partial = partial(static_canon_mpc_osqp, T=T, nx=nx, nu=nu,
                                         x_min=x_min, x_max=x_max, u_min=u_min,
                                         u_max=u_max, Q=Q, QT=QT, R=R)
@@ -187,6 +189,7 @@ def setup_probs(setup_cfg):
 
     # initialize each rollout
     x_init_traj = jnp.zeros(nx)
+    # x_init_traj = x_init_traj.at[6].set(1)
 
     # setup the opt_qp_solver
     static_canon_mpc_osqp_partial = partial(static_canon_mpc_osqp, T=T, nx=nx, nu=nu,
@@ -315,7 +318,10 @@ def opt_qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, cd0, static
     rho_vec, sigma = jnp.ones(m), 1
     rho_vec = rho_vec.at[l == u].set(1000)
     M = P + sigma * jnp.eye(n) + A.T @ jnp.diag(rho_vec) @ A
+    t0 = time.time()
     factor = jsp.linalg.lu_factor(M)
+    t1 = time.time()
+    print('factor time', t1 - t0)
 
     # solve
     z0 = prev_sol  # jnp.zeros(m + n)
@@ -740,8 +746,8 @@ def quadcopter_dynamics(state, thrusts, t):
     gravity = jnp.array([0, 0, -9.8])
     mass = 1
     k_drag = 1
-    k_thrust = 10
-    k_torque = 100  # 1
+    k_thrust = 10 #10
+    k_torque = 40 #100  # 1
     k = 1
     b = 1
     L = 1
