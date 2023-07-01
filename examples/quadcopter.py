@@ -223,7 +223,10 @@ def setup_probs(setup_cfg):
     # z_stars = jnp.vstack([z_stars_train, z_stars_test])
 
     # osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=None)
+    t0 = time.time()
     theta_mat, z_stars, q_mat, factors = compile_rollout_results(rollout_results_list)
+    t1 = time.time()
+    print('compile time', t1 - t0)
 
     # save rollout results directly
     #   need to save 
@@ -255,6 +258,7 @@ def compile_rollout_results(rollout_results_list):
     3. q = (c, l, u, svec(P), vec(A)) (can be recreated)
     4. factors (can be recreated)
     """
+    t0 = time.time()
     P_list = [item for rollout_result in rollout_results_list for item in rollout_result['P_list']]
     A_list = [item for rollout_result in rollout_results_list for item in rollout_result['A_list']]
     x0_list = [item for rollout_result in rollout_results_list for item in rollout_result['x0_list']]
@@ -263,6 +267,8 @@ def compile_rollout_results(rollout_results_list):
     sol_list = [item for rollout_result in rollout_results_list for item in rollout_result['sol_list']]
     clu_list = [item for rollout_result in rollout_results_list for item in rollout_result['clu_list']]
     factor_list = [item for rollout_result in rollout_results_list for item in rollout_result['factor_list']]
+    t1 = time.time()
+    print('list comprehension time', t1 - t0)
 
     N = len(P_list)
     nx = x0_list[0].size
@@ -273,24 +279,40 @@ def compile_rollout_results(rollout_results_list):
         pass
 
     # get theta
+    t2 = time.time()
     theta_mat = jnp.zeros((N, 3 + nx + nu))
     for i in range(N):
         theta_mat = theta_mat.at[i, :nx].set(x0_list[i])
         theta_mat = theta_mat.at[i, nx: nx + nu].set(u0_list[i])
         theta_mat = theta_mat.at[i, nx + nu:].set(x_ref_list[i][:3])
+    t3 = time.time()
+    print('theta time', t3 - t2)
 
     # get z_stars
+    t4 = time.time()
     z_stars = jnp.zeros((N, 2 * m + n))
     for i in range(N):
         z_stars = z_stars.at[i, :].set(sol_list[i])
+    t5 = time.time()
+    print('z star time', t5 - t4)
 
     # form q_mat
     nc2 = int(n * (n + 1) / 2)
     q_mat = jnp.zeros((N, 2 * m + n + nc2 + m * n))
-    for i in range(N):
-        q_mat = q_mat.at[i, :n + 2 * m].set(clu_list[i])
-        q_mat = q_mat.at[i, n + 2 * m: n + 2 * m + nc2].set(vec_symm(P_list[i]))
-        q_mat = q_mat.at[i, n + 2 * m + nc2:].set(jnp.reshape(A_list[i], (m * n)))
+    t6 = time.time()
+
+    # P stays the same for all problems
+    P = vec_symm(P_list[0])
+    q_mat = q_mat.at[:, n + 2 * m: n + 2 * m + nc2].set(P)
+    clu_mat = jnp.stack(clu_list)
+    A_tensor = jnp.stack(A_list)
+    q_mat = q_mat.at[:, :n + 2 * m].set(clu_mat)
+    q_mat = q_mat.at[:, n + 2 * m + nc2:].set(jnp.reshape(A_tensor, (N, m * n)))
+    # for i in range(N):
+    #     q_mat = q_mat.at[i, :n + 2 * m].set(clu_list[i])
+    #     q_mat = q_mat.at[i, n + 2 * m + nc2:].set(jnp.reshape(A_list[i], (m * n)))
+    t7 = time.time()
+    print('q mat time', t7 - t6)
 
     # form factors
     factors = (jnp.stack([factor_list[i][0] for i in range(N)]), jnp.stack([factor_list[i][1] for i in range(N)]))
@@ -747,7 +769,7 @@ def quadcopter_dynamics(state, thrusts, t):
     mass = 1
     k_drag = 1
     k_thrust = 10 #10
-    k_torque = 40 #100  # 1
+    k_torque = 50 #100  # 1
     k = 1
     b = 1
     L = 1

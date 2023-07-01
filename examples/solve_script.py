@@ -30,7 +30,7 @@ def save_results_dynamic(output_filename, theta_mat, z_stars, q_mat, factors, re
 
     # save theta_mat, z_stars, factors
     #   needs to save factors[0] and factors[1] separately
-
+    t0 = time.time()
     if ref_traj_tensor is None:
         jnp.savez(
             output_filename,
@@ -51,10 +51,15 @@ def save_results_dynamic(output_filename, theta_mat, z_stars, q_mat, factors, re
             # ref_traj_tensor=ref_traj_tensor
         )
     # ref_traj_tensor has shape (num_rollouts, num_goals, goal_length)
+    t1 = time.time()
+    print('time to save non-sparse', t1 - t0)
 
     # save the q_mat but as a sparse object
+    t2 = time.time()
     q_mat_sparse = csc_matrix(q_mat)
     save_npz(f"{output_filename}_q", q_mat_sparse)
+    t3 = time.time()
+    print('time to save non-sparse', t3 - t2)
 
     # save plot of first 5 solutions
     for i in range(5):

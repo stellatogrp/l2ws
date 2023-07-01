@@ -60,5 +60,5 @@ save_weights_flag: True
 # solve_c_num: 100
 
 # rollouts
-num_rollouts: 2
+num_rollouts: 1
 closed_loop_budget: 20

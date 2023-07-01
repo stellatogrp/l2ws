@@ -161,7 +161,7 @@ class Workspace:
 
             t0 = time.time()
 
-            # form matrices (N, m + n, m + n)
+            # form matrices (N, m + n, m + n) to be factored
             nc2 = int(n * (n + 1) / 2)
             q_mat = jnp.vstack([self.q_mat_train, self.q_mat_test])
             N_train, N_test = self.q_mat_train.shape[0], self.q_mat_test[0]
@@ -170,7 +170,6 @@ class Workspace:
             P_tensor = unvec_symm_batch(q_mat[:, 2 * m + n: 2 * m + n + nc2], n)
             A_tensor = jnp.reshape(q_mat[:, 2 * m + n + nc2:], (N, m, n))
             sigma = 1
-            # M = P + sigma * jnp.eye(n) + A.T @ jnp.diag(rho_vec) @ A
             batch_form_osqp_matrix = vmap(form_osqp_matrix, in_axes=(0, 0, None, None), out_axes=(0))
             matrices = batch_form_osqp_matrix(P_tensor, A_tensor, rho_vec, sigma)
 
