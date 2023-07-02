@@ -171,13 +171,21 @@ class Workspace:
             A_tensor = jnp.reshape(q_mat[:, 2 * m + n + nc2:], (N, m, n))
             sigma = 1
             batch_form_osqp_matrix = vmap(form_osqp_matrix, in_axes=(0, 0, None, None), out_axes=(0))
-            matrices = batch_form_osqp_matrix(P_tensor, A_tensor, rho_vec, sigma)
+
+            # try batching
+            cutoff = 4000
+            matrices1 = batch_form_osqp_matrix(P_tensor[:cutoff, :, :], A_tensor[:cutoff, :, :], rho_vec, sigma)
+            matrices2 = batch_form_osqp_matrix(P_tensor[cutoff:, :, :], A_tensor[cutoff:, :, :], rho_vec, sigma)
+            # matrices = 
 
 
             # do factors
             # factors0, factors1 = self.batch_factors(self.q_mat_train)
             batch_lu_factor = vmap(jsp.linalg.lu_factor, in_axes=(0,), out_axes=(0, 0))
-            factors0, factors1 = batch_lu_factor(matrices)
+            factors10, factors11 = batch_lu_factor(matrices1)
+            factors20, factors21 = batch_lu_factor(matrices2)
+            factors0 = jnp.vstack([factors10, factors20])
+            factors1 = jnp.vstack([factors11, factors21])
 
             t1 = time.time()
             print('batch factor time', t1 - t0)
