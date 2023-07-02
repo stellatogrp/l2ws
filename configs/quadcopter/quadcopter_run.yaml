@@ -32,9 +32,9 @@ save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 10
-N_train: 8000
-N_test: 500
-num_samples: 500
+N_train: 10
+N_test: 10
+num_samples: 10
 prediction_variable: w
 angle_anchors: [0]
 supervised: True

@@ -239,7 +239,7 @@ def setup_probs(setup_cfg):
     save_results_dynamic(output_filename, theta_mat, z_stars, q_mat, factors, ref_traj_tensor=ref_traj_tensor)
 
 
-def compile_rollout_results(rollout_results_list):
+def compile_rollout_results(rollout_results_list, transform=True):
     """
     handles a list of rollouts and stitches them together
 
@@ -282,9 +282,20 @@ def compile_rollout_results(rollout_results_list):
     t2 = time.time()
     theta_mat = jnp.zeros((N, 3 + nx + nu))
     for i in range(N):
-        theta_mat = theta_mat.at[i, :nx].set(x0_list[i])
         theta_mat = theta_mat.at[i, nx: nx + nu].set(u0_list[i])
-        theta_mat = theta_mat.at[i, nx + nu:].set(x_ref_list[i][:3])
+        x0 = x0_list[i]
+        x_ref_pos = x_ref_list[i][:3]
+        if transform:
+            x_ref_pos_transform = x_ref_pos - x0[:3]
+            x0_transform = x0.at[:3].set(0)
+
+            theta_mat = theta_mat.at[i, :nx].set(x0_transform)
+            theta_mat = theta_mat.at[i, nx + nu:].set(x_ref_pos_transform)
+        else:
+            theta_mat = theta_mat.at[i, :nx].set(x0)
+            theta_mat = theta_mat.at[i, nx + nu:].set(x_ref_pos)
+    if transform:
+        theta_mat = theta_mat[:, 3:]
     t3 = time.time()
     print('theta time', t3 - t2)
 
@@ -320,7 +331,7 @@ def compile_rollout_results(rollout_results_list):
 
 
 
-def opt_qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, cd0, static_canon_mpc_osqp_partial, dt):
+def opt_qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, cd0, static_canon_mpc_osqp_partial, dt, transform=True):
     # get the discrete time system Ad, Bd from the continuous time system Ac, Bc
     nx = x0.size
     Ad = jnp.eye(nx) + Ac * dt
@@ -329,6 +340,11 @@ def opt_qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, cd0, static
 
     # get the constants for the discrete system
     cd = cd0 + (x_dot - Ac @ x0 - Bc @ u0) * dt
+
+    # modify to get the new system
+    if transform:
+        ref_traj = ref_traj.at[:3].set(ref_traj[:3] - x0[:3])
+        x0 = x0.at[:3].set(0)
 
     # get (P, A, c, l, u)
     out_dict = static_canon_mpc_osqp_partial(ref_traj, x0, Ad, Bd, cd=cd)
