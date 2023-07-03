@@ -336,6 +336,8 @@ def opt_qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, cd0, static
     nx = x0.size
     Ad = jnp.eye(nx) + Ac * dt
     Bd = Bc * dt
+
+    print('Bd', Bd)
     # no need to use u0 for the non-learned case
 
     # get the constants for the discrete system
@@ -367,6 +369,8 @@ def opt_qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, cd0, static
                             sigma=sigma, supervised=False, z_star=None, jit=True)
     sol = out[0]
     print('loss', out[1][-1])
+    if out[1][-1] > .001:
+        print('HIGH LOSS VALUE')
     # plt.plot(out[1])
     # plt.yscale('log')
     # plt.show()
@@ -376,6 +380,8 @@ def opt_qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, cd0, static
     # w0 = sol[T*nx:T*nx + nu]
     # z1 = sol[nx:2*nx]
     # w1 = sol[T*nx + nu:T*nx + 2*nu]
+    # import pdb
+    # pdb.set_trace()
 
     return sol, P, A, factor, q
 
@@ -783,8 +789,8 @@ def quadcopter_dynamics(state, thrusts, t):
     ])
     gravity = jnp.array([0, 0, -9.8])
     mass = 1
-    k_drag = 1
-    k_thrust = 10 #10
+    k_drag = 0
+    k_thrust = 5 #10 #10
     k_torque = 50 #100  # 1
     k = 1
     b = 1

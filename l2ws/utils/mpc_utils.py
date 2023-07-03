@@ -118,6 +118,9 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, u0, dynamics, system_co
         print('x0', x0)
         print('expected x0', sol[:nx])
         print('expected x1', sol[nx:2*nx])
+        print('expected x2', sol[2*nx:3*nx])
+        print('expected x3', sol[3*nx:4*nx])
+        print('expected x4', sol[4*nx:5*nx])
         print('final expected state', sol[(T-1)*nx:T*nx])
         print('final expected control', sol[(T-1)*nu + T*nx: T*nu + T*nx])
 
