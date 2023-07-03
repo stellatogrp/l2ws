@@ -77,12 +77,14 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, u0, dynamics, system_co
     # m = T * (2 * nx + 2 * nu)
     prev_sol = jnp.zeros(m + n)
 
+    u00 = jnp.array([9.8, 0, 0, 0])
+
     for j in range(sim_len):
         # Compute the state matrix Ad
-        Ac = jax.jacobian(lambda x: dynamics(x, u0, j))(x0)
+        Ac = jax.jacobian(lambda x: dynamics(x, u00, j))(x0)
 
         # Compute the input matrix B
-        Bc = jax.jacobian(lambda u: dynamics(x0, u, j))(u0)
+        Bc = jax.jacobian(lambda u: dynamics(x0, u, j))(u00)
 
         print(j)
 

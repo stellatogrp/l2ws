@@ -18,7 +18,7 @@ from l2ws.algo_steps import k_steps_eval_osqp, unvec_symm, vec_symm
 import imageio
 import time
 
-QUADCOPTER_NX = 12
+QUADCOPTER_NX = 10
 QUADCOPTER_NU = 4
 
 
@@ -189,7 +189,10 @@ def setup_probs(setup_cfg):
 
     # initialize each rollout
     x_init_traj = jnp.zeros(nx)
-    # x_init_traj = x_init_traj.at[6].set(1)
+
+    x_init_traj = x_init_traj.at[6].set(1)
+    # x_init_traj_mat = jnp.array(2 * np.random.rand(num_rollouts, nx) - 1)
+    # x_init_traj_mat = x_init_traj_mat.at[:, :3].set(0)
 
     # setup the opt_qp_solver
     static_canon_mpc_osqp_partial = partial(static_canon_mpc_osqp, T=T, nx=nx, nu=nu,
@@ -203,10 +206,16 @@ def setup_probs(setup_cfg):
     # do the closed loop rollouts
     rollout_results_list = []
     u_init_traj = jnp.zeros(nu)
+
+    perturbation = np.zeros(nx)
+    perturbation[0] = 0
+    noise_list = [perturbation for i in range(sim_len)]
     for i in range(num_rollouts):
+        print('rollout', i)
         ref_traj_dict = ref_traj_dict_lists[i]
+        # x_init_traj = x_init_traj_mat[i, :]
         rollout_results = closed_loop_rollout(opt_qp_solver_partial, sim_len, x_init_traj, u_init_traj, quadcopter_dynamics,
-                                          system_constants, ref_traj_dict, opt_budget, noise_list=None)
+                                          system_constants, ref_traj_dict, opt_budget, noise_list=noise_list)
         rollout_results_list.append(rollout_results)
         state_traj_list = rollout_results['state_traj_list']
 
@@ -215,7 +224,8 @@ def setup_probs(setup_cfg):
             os.mkdir('rollouts')
         traj_list = ref_traj_dict['traj_list']
         # plot_traj_3d([state_traj_list], goals=traj_list, labels=['optimal'], filename=f"rollouts/rollout_{i}.pdf")
-        plot_traj_3d([state_traj_list], goals=traj_list, labels=['optimal'], filename=f"rollouts/rollout_{i}")
+        if setup_cfg['save_gif']:
+            plot_traj_3d([state_traj_list], goals=traj_list, labels=['optimal'], filename=f"rollouts/rollout_{i}")
 
     # create theta_mat and q_mat
     # q_mat = jnp.vstack([q_mat_train, q_mat_test])
@@ -239,7 +249,7 @@ def setup_probs(setup_cfg):
     save_results_dynamic(output_filename, theta_mat, z_stars, q_mat, factors, ref_traj_tensor=ref_traj_tensor)
 
 
-def compile_rollout_results(rollout_results_list, transform=True):
+def compile_rollout_results(rollout_results_list, transform=False):
     """
     handles a list of rollouts and stitches them together
 
@@ -331,7 +341,7 @@ def compile_rollout_results(rollout_results_list, transform=True):
 
 
 
-def opt_qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, cd0, static_canon_mpc_osqp_partial, dt, transform=True):
+def opt_qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, cd0, static_canon_mpc_osqp_partial, dt, transform=False):
     # get the discrete time system Ad, Bd from the continuous time system Ac, Bc
     nx = x0.size
     Ad = jnp.eye(nx) + Ac * dt
@@ -350,9 +360,13 @@ def opt_qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, cd0, static
 
     # get (P, A, c, l, u)
     out_dict = static_canon_mpc_osqp_partial(ref_traj, x0, Ad, Bd, cd=cd)
-    P, A, c, l, u = out_dict['P'], out_dict['A'], out_dict['c'], out_dict['l'], out_dict['u']
+    factor = 1
+    P, A, c, l, u = out_dict['P'], out_dict['A'] * factor, out_dict['c'], out_dict['l'] * factor, out_dict['u'] * factor
     m, n = A.shape
     q = jnp.concatenate([c, l, u])
+
+    # import pdb
+    # pdb.set_trace()
 
     # get factor
     rho_vec, sigma = jnp.ones(m), 1
@@ -737,94 +751,94 @@ def solve_trajectory(first_x_init, P_orig, A, q, traj_length, Ad, noise_std_dev)
     return theta_mat, z_stars, q_mat
 
 
-# def quadcopter_dynamics(state, inputs, t):
-#     # State variables
-#     position = state[:3]  # Position [x, y, z]
-#     velocity = state[3:6]  # Velocity [vx, vy, vz]
-#     quaternion = state[6:]  # Angular velocity of the body frame [q_w, q_x, q_y, q_z]
-#     qw, qx, qy, qz = quaternion[0], quaternion[1], quaternion[2], quaternion[3]
-
-#     # inputs is u = [thrust, wx, wy, wz]
-
-#     # 0.5 * ( -wx*qx - wy*qy - wz*qz ),
-#     # 0.5 * (  wx*qw + wz*qy - wy*qz ),
-#     # 0.5 * (  wy*qw - wz*qx + wx*qz ),
-#     # 0.5 * (  wz*qw + wy*qx - wx*qy ),
-#     # 2 * (qw*qy + qx*qz) * thrust,
-#     # 2 * (qy*qz - qw*qx) * thrust,
-#     # (qw*qw - qx*qx - qy*qy + qz*qz) * thrust - self._gz
-#     # (1 - 2*qx*qx - 2*qy*qy) * thrust - self._gz
-
-#     position_dot = velocity
-#     quaternion_dot = quaternion_product(inputs[1:], quaternion)
-
-#     thrust = inputs[0]
-
-#     velocity_dot = jnp.array([2 * (qw*qy + qx*qz) * thrust,
-#                                 2 * (qy*qz - qw*qx) * thrust,
-#                                 (qw*qw - qx*qx - qy*qy + qz*qz) * thrust - 9.8])
-#     state_dot = jnp.concatenate([position_dot, velocity_dot, quaternion_dot])
-
-#     return state_dot
-
-
-def quadcopter_dynamics(state, thrusts, t):
+def quadcopter_dynamics(state, inputs, t):
     # State variables
     position = state[:3]  # Position [x, y, z]
     velocity = state[3:6]  # Velocity [vx, vy, vz]
-    theta = state[6:9]  # Angles of the inertial frame (roll, pitch, yaw) [r, p, y]
-    omega = state[9:]  # Angular velocity of the body frame [w_x, w_y, w_z]
+    quaternion = state[6:]  # Angular velocity of the body frame [q_w, q_x, q_y, q_z]
+    qw, qx, qy, qz = quaternion[0], quaternion[1], quaternion[2], quaternion[3]
 
-    # constants
-    Ixx, Iyy, Izz = 1, 1, 1
-    I = jnp.array([
-        [Ixx, 0, 0],
-        [0, Iyy, 0],
-        [0, 0, Izz]
-    ])
-    I_inv = jnp.array([
-        [1 / Ixx, 0, 0],
-        [0, 1 / Iyy, 0],
-        [0, 0, 1 / Izz]
-    ])
-    gravity = jnp.array([0, 0, -9.8])
-    mass = 1
-    k_drag = 0
-    k_thrust = 5 #10 #10
-    k_torque = 50 #100  # 1
-    k = 1
-    b = 1
-    L = 1
+    # inputs is u = [thrust, wx, wy, wz]
 
-    # rotation matrix
-    R = get_rotation_matrix(theta)
-
-    # calculate forces and torques
-    drag_force = -k_drag * velocity
-    # thrust_force = k_thrust * R @ jnp.array([thrusts[3] + thrusts[1] - thrusts[2] - thrusts[0],
-    #                                          thrusts[0] + thrusts[1] - thrusts[2] - thrusts[3],
-    #                                          k * jnp.sum(thrusts[:4])])
-    # thrust_x = thrusts[1] + thrusts[3] - thrusts[0] - thrusts[2]  # Thrust difference between right and left propellers
-    # thrust_y = thrusts[0] + thrusts[1] - thrusts[2] - thrusts[3]
-    # thrust_force = k_thrust * R @ jnp.array([ 0,
-    #                                           0,
-    #                                          k * jnp.sum(thrusts[:4])])
-    thrust_force = k_thrust * R @ jnp.array([0, 0, k * jnp.sum(thrusts[:4])])
-    # print('thrust_force', thrust_force)
-
-    # horizontal_force = jnp.array([thrusts[4], thrusts[5], 0])
-    torques = k_torque * jnp.array([L * k * (thrusts[0] - thrusts[2]),
-                                    L * k * (thrusts[1] - thrusts[3]),
-                                    b * (thrusts[0] - thrusts[1] + thrusts[2] - thrusts[3])])
-    # print('torque', torques)
+    # 0.5 * ( -wx*qx - wy*qy - wz*qz ),
+    # 0.5 * (  wx*qw + wz*qy - wy*qz ),
+    # 0.5 * (  wy*qw - wz*qx + wx*qz ),
+    # 0.5 * (  wz*qw + wy*qx - wx*qy ),
+    # 2 * (qw*qy + qx*qz) * thrust,
+    # 2 * (qy*qz - qw*qx) * thrust,
+    # (qw*qw - qx*qx - qy*qy + qz*qz) * thrust - self._gz
+    # (1 - 2*qx*qx - 2*qy*qy) * thrust - self._gz
 
     position_dot = velocity
-    theta_dot = omega_2_thetadot(theta, omega)
-    velocity_dot = gravity + (thrust_force + drag_force) / mass
-    omega_dot = I_inv @ (torques - jnp.cross(omega, I @ omega))
-    state_dot = jnp.concatenate([position_dot, velocity_dot, theta_dot, omega_dot])
+    quaternion_dot = quaternion_product(inputs[1:], quaternion)
+
+    thrust = inputs[0]
+
+    velocity_dot = jnp.array([2 * (qw*qy + qx*qz) * thrust,
+                                2 * (qy*qz - qw*qx) * thrust,
+                                (qw*qw - qx*qx - qy*qy + qz*qz) * thrust - 9.8])
+    state_dot = jnp.concatenate([position_dot, velocity_dot, quaternion_dot])
 
     return state_dot
+
+
+# def quadcopter_dynamics(state, thrusts, t):
+#     # State variables
+#     position = state[:3]  # Position [x, y, z]
+#     velocity = state[3:6]  # Velocity [vx, vy, vz]
+#     theta = state[6:9]  # Angles of the inertial frame (roll, pitch, yaw) [r, p, y]
+#     omega = state[9:]  # Angular velocity of the body frame [w_x, w_y, w_z]
+
+#     # constants
+#     Ixx, Iyy, Izz = 1, 1, 1
+#     I = jnp.array([
+#         [Ixx, 0, 0],
+#         [0, Iyy, 0],
+#         [0, 0, Izz]
+#     ])
+#     I_inv = jnp.array([
+#         [1 / Ixx, 0, 0],
+#         [0, 1 / Iyy, 0],
+#         [0, 0, 1 / Izz]
+#     ])
+#     gravity = jnp.array([0, 0, -9.8])
+#     mass = 1
+#     k_drag = 0
+#     k_thrust = 5 #10 #10
+#     k_torque = 50 #100  # 1
+#     k = 1
+#     b = 1
+#     L = 1
+
+#     # rotation matrix
+#     R = get_rotation_matrix(theta)
+
+    # # calculate forces and torques
+    # drag_force = -k_drag * velocity
+    # # thrust_force = k_thrust * R @ jnp.array([thrusts[3] + thrusts[1] - thrusts[2] - thrusts[0],
+    # #                                          thrusts[0] + thrusts[1] - thrusts[2] - thrusts[3],
+    # #                                          k * jnp.sum(thrusts[:4])])
+    # # thrust_x = thrusts[1] + thrusts[3] - thrusts[0] - thrusts[2]  # Thrust difference between right and left propellers
+    # # thrust_y = thrusts[0] + thrusts[1] - thrusts[2] - thrusts[3]
+    # # thrust_force = k_thrust * R @ jnp.array([ 0,
+    # #                                           0,
+    # #                                          k * jnp.sum(thrusts[:4])])
+    # thrust_force = k_thrust * R @ jnp.array([0, 0, k * jnp.sum(thrusts[:4])])
+    # # print('thrust_force', thrust_force)
+
+    # # horizontal_force = jnp.array([thrusts[4], thrusts[5], 0])
+    # torques = k_torque * jnp.array([L * k * (thrusts[0] - thrusts[2]),
+    #                                 L * k * (thrusts[1] - thrusts[3]),
+    #                                 b * (thrusts[0] - thrusts[1] + thrusts[2] - thrusts[3])])
+    # # print('torque', torques)
+
+    # position_dot = velocity
+    # theta_dot = omega_2_thetadot(theta, omega)
+    # velocity_dot = gravity + (thrust_force + drag_force) / mass
+    # omega_dot = I_inv @ (torques - jnp.cross(omega, I @ omega))
+    # state_dot = jnp.concatenate([position_dot, velocity_dot, theta_dot, omega_dot])
+
+    # return state_dot
 
 
 def get_rotation_matrix(theta):
@@ -997,6 +1011,15 @@ def YPRToQuat(rpy):
     return q
 
 
+def quat_2_ypr(q):
+    qw, qx, qy, qz = q[0], q[1], q[2], q[3]
+    roll = jnp.arctan2(2.0*(qy * qz + qw * qx), qw * qw - qx * qx - qy * qy + qz * qz)
+    pitch = jnp.arcsin(-2.0*(qx * qz - qw * qy))
+    yaw = jnp.arctan2(2.0*(qx * qy + qw * qz), qw * qw + qx * qx - qy * qy - qz * qz)
+    rpy = jnp.array([roll, pitch, yaw])
+    return rpy
+
+
 def quaternion_to_rotation_matrix(quaternion):
     w, x, y, z = quaternion
     return jnp.array([
@@ -1075,9 +1098,21 @@ def plot_traj_3d(state_traj_list, goals, labels, filename=None, create_gif=True,
         xs = np.array([curr_state_traj[i][0] for i in range(len(curr_state_traj))])
         ys = np.array([curr_state_traj[i][1] for i in range(len(curr_state_traj))])
         zs = np.array([curr_state_traj[i][2] for i in range(len(curr_state_traj))])
-        rolls = np.array([curr_state_traj[i][6] for i in range(len(curr_state_traj))])
-        pitchs = np.array([curr_state_traj[i][7] for i in range(len(curr_state_traj))])
-        yaws = np.array([curr_state_traj[i][8] for i in range(len(curr_state_traj))])
+        if curr_state_traj[0].size == 12:
+            rolls = np.array([curr_state_traj[i][6] for i in range(len(curr_state_traj))])
+            pitchs = np.array([curr_state_traj[i][7] for i in range(len(curr_state_traj))])
+            yaws = np.array([curr_state_traj[i][8] for i in range(len(curr_state_traj))])
+        else:
+            quat_mat = np.array([curr_state_traj[i][6:] for i in range(len(curr_state_traj))])
+            rolls = np.zeros(len(curr_state_traj))
+            pitchs = np.zeros(len(curr_state_traj))
+            yaws = np.zeros(len(curr_state_traj))
+            for i in range(len(curr_state_traj)):
+                rpy = quat_2_ypr(quat_mat[i, :])
+                rolls[i] = rpy[0]
+                pitchs[i] = rpy[1]
+                yaws[i] = rpy[2]
+                print('rpy', i, rpy)
 
         frames = []
         propeller_data = []
@@ -1232,16 +1267,23 @@ def make_obstacle_course(goal_bound, num_goals):
     #                    [-2, 3, -3],
     #                    [-2, -1, -3],
     #                    [3, -2, 1],
-    #                    [0, 0, 0]]) # / 10
+    #                    [0, 0, 0]])  / 3
     # goals = jnp.array([[1, 1, 1],
     #                    [-2, 3, -3],
     #                    [-2, -1, -3],
     #                    [3, -2, 1],
     #                    [0, 0, 0]]) / 10
+
+    # old
     goals_np = goal_bound * 2 * (np.random.rand(num_goals, 3) - .5) 
     goals_np[-1, :] = 0
-
     goals = jnp.array(goals_np)
+
+    # perturbations_np = .1 * goal_bound * 2 * (np.random.rand(num_goals, 3) - .5) 
+    # perturbations = jnp.array(perturbations_np)
+    # goals = goals + perturbations
+
+
     # rpys = 0  # * jnp.array([[.2, .2, 0],
     #    [.2, .2, 0],
     #    [.2, .2, 0],
