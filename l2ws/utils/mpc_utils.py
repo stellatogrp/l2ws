@@ -81,10 +81,10 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, u0, dynamics, system_co
 
     for j in range(sim_len):
         # Compute the state matrix Ad
-        Ac = jax.jacobian(lambda x: dynamics(x, u00, j))(x0)
+        Ac = jax.jacobian(lambda x: dynamics(x, u0, j))(x0)
 
         # Compute the input matrix B
-        Bc = jax.jacobian(lambda u: dynamics(x0, u, j))(u00)
+        Bc = jax.jacobian(lambda u: dynamics(x0, u, j))(u0)
 
         print(j)
 

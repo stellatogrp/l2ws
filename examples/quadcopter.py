@@ -59,6 +59,15 @@ def run(run_cfg):
     Q_ref = jnp.diag(Q_diag_ref)
     obstacle_tol = setup_cfg['obstacle_tol']
 
+    n = T * (nx + nu)
+    m = T * (2 * nx + nu)
+
+    # setup delta_u
+    delta_u_list = setup_cfg.get('delta_u', None)
+    if delta_u_list is not None:
+        delta_u = jnp.array(setup_cfg['delta_u'])
+        m = m + T * nu
+
     # # create the obstacle courses
     # Q_diag_ref = jnp.zeros(nx)
     # Q_diag_ref = Q_diag_ref.at[:3].set(1)
@@ -89,8 +98,7 @@ def run(run_cfg):
     # factor, P, A, q_mat_train, theta_mat_train, x_min, x_max, Ad, Bd, rho_vec = mpc_setup
     
     # m, n = A.shape
-    n = T * (nx + nu)
-    m = T * (2 * nx + nu)
+    
 
     static_dict = dict(m=m, n=n)
 
@@ -118,7 +126,7 @@ def run(run_cfg):
     R = jnp.diag(jnp.array(setup_cfg['R_diag'])) / obj_factor
     static_canon_mpc_osqp_partial = partial(static_canon_mpc_osqp, T=T, nx=nx, nu=nu,
                                         x_min=x_min, x_max=x_max, u_min=u_min,
-                                        u_max=u_max, Q=Q, QT=QT, R=R)
+                                        u_max=u_max, Q=Q, QT=QT, R=R, delta_u=delta_u)
     closed_loop_rollout_dict = dict(rollout_length=rollout_length, 
                                     num_rollouts=run_cfg['num_rollouts'],
                                     closed_loop_budget=run_cfg['closed_loop_budget'],
@@ -172,6 +180,9 @@ def setup_probs(setup_cfg):
     QT = setup_cfg['QT_factor'] * Q
     R = jnp.diag(jnp.array(setup_cfg['R_diag']))
 
+    # setup delta_u
+    delta_u = jnp.array(setup_cfg['delta_u'])
+
     # create the obstacle courses
     Q_diag_ref = jnp.zeros(nx)
     Q_diag_ref = Q_diag_ref.at[:3].set(1)
@@ -197,7 +208,7 @@ def setup_probs(setup_cfg):
     # setup the opt_qp_solver
     static_canon_mpc_osqp_partial = partial(static_canon_mpc_osqp, T=T, nx=nx, nu=nu,
                                         x_min=x_min, x_max=x_max, u_min=u_min,
-                                        u_max=u_max, Q=Q, QT=QT, R=R)
+                                        u_max=u_max, Q=Q, QT=QT, R=R, delta_u=delta_u)
     opt_qp_solver_partial = partial(opt_qp_solver, 
                                     static_canon_mpc_osqp_partial=static_canon_mpc_osqp_partial, 
                                     dt=dt,
@@ -215,7 +226,7 @@ def setup_probs(setup_cfg):
         ref_traj_dict = ref_traj_dict_lists[i]
         # x_init_traj = x_init_traj_mat[i, :]
         rollout_results = closed_loop_rollout(opt_qp_solver_partial, sim_len, x_init_traj, u_init_traj, quadcopter_dynamics,
-                                          system_constants, ref_traj_dict, opt_budget, noise_list=noise_list)
+                                          system_constants, ref_traj_dict, opt_budget, noise_list=None)
         rollout_results_list.append(rollout_results)
         state_traj_list = rollout_results['state_traj_list']
 
@@ -335,6 +346,7 @@ def compile_rollout_results(rollout_results_list, transform=False):
     t7 = time.time()
     print('q mat time', t7 - t6)
 
+
     # form factors
     factors = (jnp.stack([factor_list[i][0] for i in range(N)]), jnp.stack([factor_list[i][1] for i in range(N)]))
     return theta_mat, z_stars, q_mat, factors
@@ -359,11 +371,12 @@ def opt_qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, cd0, static
         x0 = x0.at[:3].set(0)
 
     # get (P, A, c, l, u)
-    out_dict = static_canon_mpc_osqp_partial(ref_traj, x0, Ad, Bd, cd=cd)
+    out_dict = static_canon_mpc_osqp_partial(ref_traj, x0, Ad, Bd, cd=cd, u_prev=u0)
     factor = 1
     P, A, c, l, u = out_dict['P'], out_dict['A'] * factor, out_dict['c'], out_dict['l'] * factor, out_dict['u'] * factor
     m, n = A.shape
     q = jnp.concatenate([c, l, u])
+    print('q', q[:30])
 
     # import pdb
     # pdb.set_trace()
@@ -378,7 +391,7 @@ def opt_qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, cd0, static
     print('factor time', t1 - t0)
 
     # solve
-    z0 = prev_sol  # jnp.zeros(m + n)
+    z0 = jnp.zeros(m + n) #prev_sol  # jnp.zeros(m + n)
     out = k_steps_eval_osqp(budget, z0, q, factor, P, A, rho=rho_vec,
                             sigma=sigma, supervised=False, z_star=None, jit=True)
     sol = out[0]

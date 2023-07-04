@@ -778,6 +778,7 @@ class Workspace:
             # get x_init_traj
             thetas_index = i * rollout_length
             x_init_traj = self.thetas_test[thetas_index, :nx] # assumes theta = (x0, u0, x_ref)
+            print('x_init_traj', x_init_traj)
 
             ref_traj_index = num_train_rollouts + i
             traj_list = [ref_traj_tensor[ref_traj_index, i, :] for i in range(num_goals)]
@@ -815,6 +816,7 @@ class Workspace:
         # get the discrete time system Ad, Bd from the continuous time system Ac, Bc
         Ad = jnp.eye(nx) + Ac * dt
         Bd = Bc * dt
+        print('Bd', Bd)
         # no need to use u0 for the non-learned case
 
         # get the constants for the discrete system
@@ -825,6 +827,7 @@ class Workspace:
         P, A, c, l, u = out_dict['P'], out_dict['A'], out_dict['c'], out_dict['l'], out_dict['u']
         m, n = A.shape
         q = jnp.concatenate([c, l, u])
+        print('q', q[:30])
 
         # get factor
         rho_vec, sigma = jnp.ones(m), 1
@@ -848,6 +851,7 @@ class Workspace:
 
         # get theta
         theta = jnp.concatenate([x0, u0, ref_traj[:3]]) # assumes specific form of theta
+        print('theta', theta)
 
         # need to transform the input
         if method == 'nearest_neighbor':
@@ -863,8 +867,12 @@ class Workspace:
             normalized_input = self.normalize_theta(theta)
             inputs = jnp.expand_dims(normalized_input, 0)
             fixed_ws = False
+            print('inputs', inputs)
+            # import pdb
+            # pdb.set_trace()
 
         loss, out, time_per_prob  = self.l2ws_model.dynamic_eval(budget, inputs, q_mat, z_stars, factors, tag='test', fixed_ws=fixed_ws)
+        
 
         # sol = out[0]
         sol = out[2][0, -1, :]
