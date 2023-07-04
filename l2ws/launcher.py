@@ -823,7 +823,7 @@ class Workspace:
         cd = cd0 + (x_dot - Ac @ x0 - Bc @ u0) * dt
 
         # get (P, A, c, l, u)
-        out_dict = static_canon_mpc_osqp_partial(ref_traj, x0, Ad, Bd, cd=cd)
+        out_dict = static_canon_mpc_osqp_partial(ref_traj, x0, Ad, Bd, cd=cd, u_prev=u0)
         P, A, c, l, u = out_dict['P'], out_dict['A'], out_dict['c'], out_dict['l'], out_dict['u']
         m, n = A.shape
         q = jnp.concatenate([c, l, u])
