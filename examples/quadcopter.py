@@ -17,6 +17,7 @@ from l2ws.utils.mpc_utils import closed_loop_rollout, static_canon_mpc_osqp
 from l2ws.algo_steps import k_steps_eval_osqp, unvec_symm, vec_symm
 import imageio
 import time
+from scipy.interpolate import splprep, splev
 
 QUADCOPTER_NX = 10
 QUADCOPTER_NU = 4
@@ -115,7 +116,8 @@ def run(run_cfg):
     system_constants = dict(T=T, nx=nx, nu=nu, dt=dt,
                             u_min=u_min, u_max=u_max,
                             x_min=x_min, x_max=x_max,
-                            cd0=jnp.zeros(nx))
+                            cd0=jnp.zeros(nx),
+                            delta_u=delta_u)
     
     # setup the opt_qp_solver
 
@@ -166,6 +168,9 @@ def setup_probs(setup_cfg):
     opt_budget = setup_cfg['rollout_osqp_iters']
     sim_len = setup_cfg['rollout_length']
 
+    # setup delta_u
+    delta_u = jnp.array(setup_cfg['delta_u'])
+
     # setup x_min, x_max, u_min, u_max
     x_min = jnp.array(setup_cfg['x_min'])
     x_max = jnp.array(setup_cfg['x_max'])
@@ -173,17 +178,39 @@ def setup_probs(setup_cfg):
     u_max = jnp.array(setup_cfg['u_max'])
     system_constants = dict(T=T, nx=nx, nu=nu, dt=dt,
                             u_min=u_min, u_max=u_max,
-                            x_min=x_min, x_max=x_max)
+                            x_min=x_min, x_max=x_max,
+                            delta_u=delta_u)
     
     # setup Q, QT, R
     Q = jnp.diag(jnp.array(setup_cfg['Q_diag']))
     QT = setup_cfg['QT_factor'] * Q
     R = jnp.diag(jnp.array(setup_cfg['R_diag']))
 
-    # setup delta_u
-    delta_u = jnp.array(setup_cfg['delta_u'])
+    
 
     # create the obstacle courses
+    # Example usage
+    num_trajectories = 20
+    num_timesteps = 100
+    num_waypoints = 10
+    x_range = [-10, 10]
+    y_range = [-5, 5]
+    z_range = [0, 10]
+
+    trajectories = generate_reference_trajectories(num_trajectories, num_timesteps, num_waypoints, x_range, y_range, z_range)
+
+    # Print the shape of each trajectory
+    for i, trajectory in enumerate(trajectories):
+        print(f'Trajectory {i+1}: {trajectory.shape}')
+    # plt.plot(trajectories[i])
+    curr_traj = [np.zeros(10), np.zeros(10)]
+    goals = [trajectories[0][i, :] for i in range(num_timesteps)]
+    plot_traj_3d([curr_traj], goals, labels=['opt'])
+    import pdb
+    pdb.set_trace()
+
+
+
     Q_diag_ref = jnp.zeros(nx)
     Q_diag_ref = Q_diag_ref.at[:3].set(1)
     Q_ref = jnp.diag(Q_diag_ref)
@@ -218,15 +245,27 @@ def setup_probs(setup_cfg):
     rollout_results_list = []
     u_init_traj = jnp.zeros(nu)
 
-    perturbation = np.zeros(nx)
-    perturbation[0] = 0
-    noise_list = [perturbation for i in range(sim_len)]
+    # perturbation = np.zeros(nx)
+    # perturbation[0] = 0
+
+    # noise_list = [jnp.array(.00 * np.random.normal(size=(nx))) for i in range(sim_len)]
+    noise_list = []
+    for i in range(sim_len):
+        perturb_np = 1 * np.random.normal(size=(nx))
+        perturb_np[:3] = 0
+        perturb_np[6:] = 0
+        flag = np.random.rand()
+        if flag < .1:
+            perturb = jnp.array(perturb_np)
+        else:
+            perturb = jnp.zeros(nx)
+        noise_list.append(perturb)
     for i in range(num_rollouts):
         print('rollout', i)
         ref_traj_dict = ref_traj_dict_lists[i]
         # x_init_traj = x_init_traj_mat[i, :]
         rollout_results = closed_loop_rollout(opt_qp_solver_partial, sim_len, x_init_traj, u_init_traj, quadcopter_dynamics,
-                                          system_constants, ref_traj_dict, opt_budget, noise_list=None)
+                                          system_constants, ref_traj_dict, opt_budget, noise_list=noise_list)
         rollout_results_list.append(rollout_results)
         state_traj_list = rollout_results['state_traj_list']
 
@@ -391,7 +430,7 @@ def opt_qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, cd0, static
     print('factor time', t1 - t0)
 
     # solve
-    z0 = jnp.zeros(m + n) #prev_sol  # jnp.zeros(m + n)
+    z0 = prev_sol #jnp.zeros(m + n) #prev_sol  # jnp.zeros(m + n)
     out = k_steps_eval_osqp(budget, z0, q, factor, P, A, rho=rho_vec,
                             sigma=sigma, supervised=False, z_star=None, jit=True)
     sol = out[0]
@@ -1111,6 +1150,11 @@ def plot_traj_3d(state_traj_list, goals, labels, filename=None, create_gif=True,
         xs = np.array([curr_state_traj[i][0] for i in range(len(curr_state_traj))])
         ys = np.array([curr_state_traj[i][1] for i in range(len(curr_state_traj))])
         zs = np.array([curr_state_traj[i][2] for i in range(len(curr_state_traj))])
+
+        for i in range(len(curr_state_traj)):
+            xyz = np.array([xs[i], ys[i], zs[i]])
+            print('xyz', xyz)
+        
         if curr_state_traj[0].size == 12:
             rolls = np.array([curr_state_traj[i][6] for i in range(len(curr_state_traj))])
             pitchs = np.array([curr_state_traj[i][7] for i in range(len(curr_state_traj))])
@@ -1126,6 +1170,7 @@ def plot_traj_3d(state_traj_list, goals, labels, filename=None, create_gif=True,
                 pitchs[i] = rpy[1]
                 yaws[i] = rpy[2]
                 print('rpy', i, rpy)
+                
 
         frames = []
         propeller_data = []
@@ -1193,6 +1238,7 @@ def plot_traj_3d(state_traj_list, goals, labels, filename=None, create_gif=True,
         x, y, z = goals[i][0], goals[i][1], goals[i][2]
         # ax.scatter(x, y, z, cmap='Reds_r', c=weights[i], label=f"goal {i}")
         ax.scatter(x, y, z, label=f"goal {i}")
+
 
     # plot the propeller data in a single plot
     for i in range(len(propeller_data)):
@@ -1310,7 +1356,7 @@ def make_obstacle_course(goal_bound, num_goals):
     # yaw = np.hstack((yaw, yaw_ini)).astype(float)*deg2rad
     nx = QUADCOPTER_NX
     traj_list = []
-    for i in range(5):
+    for i in range(num_goals):
         ref = jnp.zeros(nx)
 
         ref = ref.at[:3].set(goals[i, :])
@@ -1339,3 +1385,16 @@ def reverse_transform(transformed_x0, transformed_u0, transformed_x_ref):
     x0 = jnp.concatenate(jnp.array([0, 0, 0]), x0[3:])
     x_ref = jnp.concatenate(jnp.array([0, 0, 0]), x0[3:])
     return x0, u0, x_ref
+
+
+def generate_reference_trajectories(num_trajectories, num_timesteps, num_waypoints, x_range, y_range, z_range):
+    trajectories = []
+    for _ in range(num_trajectories):
+        waypoints = np.random.uniform(low=[x_range[0], y_range[0], z_range[0]],
+                                      high=[x_range[1], y_range[1], z_range[1]],
+                                      size=(num_waypoints, 3))
+        tck, _ = splprep(waypoints.T, s=0)
+        u_new = np.linspace(0, 1, num=num_timesteps)
+        trajectory = np.array(splev(u_new, tck)).T
+        trajectories.append(trajectory)
+    return trajectories

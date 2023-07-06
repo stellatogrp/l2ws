@@ -56,6 +56,7 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, u0, dynamics, system_co
     nx, nu = system_constants['nx'], system_constants['nu']
     x_min, x_max = system_constants['x_min'], system_constants['x_max']
     u_min, u_max = system_constants['u_min'], system_constants['u_max']
+    delta_u = system_constants['delta_u']
 
     # noise
     if noise_list is None:
@@ -73,11 +74,13 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, u0, dynamics, system_co
     obstacle_num = 0
     integrator = integrators.rk4(dynamics, dt=dt)
     n = T * (nx + nu)
-    m = T * (2 * nx + 1 * nu)
+    m = T * (2 * nx + 2 * nu)
     # m = T * (2 * nx + 2 * nu)
     prev_sol = jnp.zeros(m + n)
 
     u00 = jnp.array([9.8, 0, 0, 0])
+
+    violations = 0
 
     for j in range(sim_len):
         # Compute the state matrix Ad
@@ -105,18 +108,36 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, u0, dynamics, system_co
         x_ref_list.append(ref_traj)
 
         # implement the first control
+        old_u0 = u0
         u0 = extract_first_control(sol, T, nx, nu, control_num=0)
         for i in range(T):
             print('u', i, extract_first_control(sol, T, nx, nu, control_num=i))
+        
 
         clipped_u0 = jnp.clip(u0, a_min=u_min, a_max=u_max)
         print('u0', clipped_u0)
+        if jnp.linalg.norm(clipped_u0 - u0) > 1e-2:
+            violations += 1
+            print('control val constraint violation', violations, jnp.linalg.norm(clipped_u0 - u0))
+            
+            
+        
+        if jnp.any(old_u0 - u0 > delta_u + 1e-2) or jnp.any(-old_u0 + u0 > delta_u + 1e-2):
+            violations += 1
+            print('control change constraint violation', violations, old_u0 - u0)
+            # import pdb
+            # pdb.set_trace()
+        clipped_delta_u = jnp.clip(u0 - old_u0, a_min=-delta_u, a_max=delta_u)
+        clipped_u0 = clipped_delta_u + old_u0
 
         state_dot = dynamics(x0, clipped_u0, j)
         print('state_dot', state_dot)
 
         # get the next state
         x0 = integrator(x0, clipped_u0, j) + noise_list[j]
+        if jnp.any(x0 > x_max) or jnp.any(x0 < x_min):
+            violations += 1
+            print('box constraint violation', violations)
         print('x0', x0)
         print('expected x0', sol[:nx])
         print('expected x1', sol[nx:2*nx])
@@ -333,15 +354,17 @@ def static_canon_mpc_osqp(x_ref, x0, Ad, Bd, cd, T, nx, nu, x_min, x_max, u_min,
         b_lower = np.hstack(
             [x_min_vec, u_min_vec])
     else:
-        delta_u_tiled = np.tile(delta_u, T)
+        delta_u_tiled = np.tile(delta_u, T - 1)
 
         b_upper = np.hstack(
-            [x_max_vec, u_max_vec, delta_u_tiled])
+            [x_max_vec, u_max_vec, delta_u + u_prev, delta_u_tiled])
         b_lower = np.hstack(
-            [x_min_vec, u_min_vec, -delta_u_tiled])
-
-        b_upper[T * (nx + nu): T * (nx + nu) + nu] += u_prev
-        b_lower[T * (nx + nu): T * (nx + nu) + nu] += u_prev
+            [x_min_vec, u_min_vec, -delta_u + u_prev, -delta_u_tiled])
+        # import pdb
+        # pdb.set_trace()
+        # b_upper[T * (nx + nu): T * (nx + nu) + nu] = delta_u + u_prev
+        # b_lower[T * (nx + nu): T * (nx + nu) + nu] = -delta_u + u_prev
+        
 
     # set beq
     beq = np.zeros(T * nx)

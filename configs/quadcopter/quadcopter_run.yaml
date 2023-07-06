@@ -32,7 +32,7 @@ save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 10
-N_train: 100
+N_train: 400
 N_test: 100
 num_samples: 100
 prediction_variable: w
@@ -61,4 +61,4 @@ save_weights_flag: True
 
 # rollouts
 num_rollouts: 1
-closed_loop_budget: 10
+closed_loop_budget: 15
