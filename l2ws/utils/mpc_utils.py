@@ -94,7 +94,7 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, u0, dynamics, system_co
         print(j)
 
         # solve the qp
-        ref_traj = get_curr_ref_traj(ref_traj_dict, j, obstacle_num)
+        ref_traj = get_curr_ref_traj(ref_traj_dict, j, obstacle_num, T)
 
         print('ref_traj', ref_traj)
         x_dot = dynamics(x0, u0, j)
@@ -199,7 +199,7 @@ def update_obstacle_num(x, ref_traj_dict, j, obstacle_num):
         return dist
 
 
-def get_curr_ref_traj(ref_traj_dict, t, obstacle_num, T=10):
+def get_curr_ref_traj(ref_traj_dict, t, obstacle_num, T):
     if ref_traj_dict['case'] == 'fixed_path':
         return ref_traj_dict['traj_list'][t]
     elif ref_traj_dict['case'] == 'obstacle_course':

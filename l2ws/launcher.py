@@ -758,7 +758,7 @@ class Workspace:
         ref_traj_tensor = self.closed_loop_rollout_dict['ref_traj_tensor']
         budget = self.closed_loop_rollout_dict['closed_loop_budget']
         dt, nx = system_constants['dt'], system_constants['nx']
-        cd0 = system_constants['cd0']
+        cd0, T = system_constants['cd0'], system_constants['T']
 
         Q_ref =  self.closed_loop_rollout_dict['Q_ref']
         obstacle_tol = self.closed_loop_rollout_dict['obstacle_tol']
@@ -770,7 +770,7 @@ class Workspace:
 
         num_goals = ref_traj_tensor.shape[1]
         N_train = self.thetas_train.shape[0]
-        num_train_rollouts = int(N_train / rollout_length)
+        num_train_rollouts = int(N_train / (rollout_length - T))
 
         # do the closed loop rollouts
         rollout_results_list = []
