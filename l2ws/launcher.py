@@ -784,7 +784,8 @@ class Workspace:
             # ref_traj_index = num_train_rollouts + i
             # traj_list = [ref_traj_tensor[ref_traj_index, i, :] for i in range(num_goals)]
             # ref_traj_dict = dict(case='obstacle_course', traj_list=traj_list, Q=Q_ref, tol=obstacle_tol)
-            trajectories = ref_traj_tensor[i, :, :]
+            ref_traj_index = num_train_rollouts + i
+            trajectories = ref_traj_tensor[ref_traj_index, :, :]
             ref_traj_dict = dict(case='loop_path', traj_list=trajectories, Q=Q_ref, tol=obstacle_tol)
 
             # new
