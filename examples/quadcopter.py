@@ -191,13 +191,15 @@ def setup_probs(setup_cfg):
     # create the obstacle courses
     # Example usage
     num_trajectories = 20
-    num_timesteps = 100
-    num_waypoints = 10
-    x_range = [-10, 10]
-    y_range = [-5, 5]
-    z_range = [0, 10]
+    num_timesteps = sim_len
+    num_waypoints = setup_cfg['waypoints']
+    goal_bound = setup_cfg['goal_bound']
+    x_range = [-goal_bound, goal_bound]
+    y_range = [-goal_bound, goal_bound]
+    z_range = [-goal_bound, goal_bound]
 
-    trajectories = generate_reference_trajectories(num_trajectories, num_timesteps, num_waypoints, x_range, y_range, z_range)
+    trajectories = generate_reference_trajectories(num_rollouts, sim_len + T, num_waypoints, x_range, y_range, z_range)
+    
 
     # Print the shape of each trajectory
     for i, trajectory in enumerate(trajectories):
@@ -205,9 +207,9 @@ def setup_probs(setup_cfg):
     # plt.plot(trajectories[i])
     curr_traj = [np.zeros(10), np.zeros(10)]
     goals = [trajectories[0][i, :] for i in range(num_timesteps)]
-    plot_traj_3d([curr_traj], goals, labels=['opt'])
-    import pdb
-    pdb.set_trace()
+    # plot_traj_3d([curr_traj], goals, labels=['opt'])
+    # import pdb
+    # pdb.set_trace()
 
 
 
@@ -216,14 +218,26 @@ def setup_probs(setup_cfg):
     Q_ref = jnp.diag(Q_diag_ref)
     ref_traj_dict_lists = []
 
-    ref_traj_tensor = jnp.zeros((num_rollouts, setup_cfg['num_goals'], nx))
+    if False:
+        ref_traj_tensor = jnp.zeros((num_rollouts, setup_cfg['num_goals'], nx))
+    else:
+        # ref_traj_tensor = jnp.zeros((num_rollouts, setup_cfg['num_goals'], T * nx))
+        ref_traj_tensor = jnp.zeros((num_rollouts, sim_len + T, nx))
     for i in range(num_rollouts):
-        traj_list = make_obstacle_course(setup_cfg['goal_bound'], setup_cfg['num_goals'])
-        ref_traj_dict = dict(case='obstacle_course', traj_list=traj_list, Q=Q_ref, tol=setup_cfg['obstacle_tol'])
-        ref_traj_dict_lists.append(ref_traj_dict)
+        if False:
+            traj_list = make_obstacle_course(setup_cfg['goal_bound'], setup_cfg['num_goals'])
+            ref_traj_dict = dict(case='obstacle_course', traj_list=traj_list, Q=Q_ref, tol=setup_cfg['obstacle_tol'])
+            ref_traj_dict_lists.append(ref_traj_dict)
+            curr_rollout_matrix = jnp.stack(traj_list)
+            ref_traj_tensor = ref_traj_tensor.at[i, :, :].set(curr_rollout_matrix)
+        else:
+            # new
+            ref_traj_dict = dict(case='loop_path', traj_list=trajectories[i], Q=Q_ref, tol=setup_cfg['obstacle_tol'])
+            ref_traj_dict_lists.append(ref_traj_dict)
 
-        curr_rollout_matrix = jnp.stack(traj_list)
-        ref_traj_tensor = ref_traj_tensor.at[i, :, :].set(curr_rollout_matrix)
+            # import pdb
+            # pdb.set_trace()
+            ref_traj_tensor = ref_traj_tensor.at[i, :, :].set(trajectories[i])
 
     # initialize each rollout
     x_init_traj = jnp.zeros(nx)
@@ -255,7 +269,7 @@ def setup_probs(setup_cfg):
         perturb_np[:3] = 0
         perturb_np[6:] = 0
         flag = np.random.rand()
-        if flag < .1:
+        if flag < 0:
             perturb = jnp.array(perturb_np)
         else:
             perturb = jnp.zeros(nx)
@@ -268,6 +282,9 @@ def setup_probs(setup_cfg):
                                           system_constants, ref_traj_dict, opt_budget, noise_list=noise_list)
         rollout_results_list.append(rollout_results)
         state_traj_list = rollout_results['state_traj_list']
+        diffs = rollout_results['diffs']
+
+        print('diff avg', diffs.mean())
 
         # plot and save the rollout results
         if not os.path.exists('rollouts'):
@@ -275,7 +292,7 @@ def setup_probs(setup_cfg):
         traj_list = ref_traj_dict['traj_list']
         # plot_traj_3d([state_traj_list], goals=traj_list, labels=['optimal'], filename=f"rollouts/rollout_{i}.pdf")
         if setup_cfg['save_gif']:
-            plot_traj_3d([state_traj_list], goals=traj_list, labels=['optimal'], filename=f"rollouts/rollout_{i}")
+            plot_traj_3d([state_traj_list], goals=traj_list, goal_bound=goal_bound, labels=['optimal'], filename=f"rollouts/rollout_{i}")
 
     # create theta_mat and q_mat
     # q_mat = jnp.vstack([q_mat_train, q_mat_test])
@@ -398,7 +415,7 @@ def opt_qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, cd0, static
     Ad = jnp.eye(nx) + Ac * dt
     Bd = Bc * dt
 
-    print('Bd', Bd)
+    # print('Bd', Bd)
     # no need to use u0 for the non-learned case
 
     # get the constants for the discrete system
@@ -430,7 +447,7 @@ def opt_qp_solver(Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, cd0, static
     print('factor time', t1 - t0)
 
     # solve
-    z0 = prev_sol #jnp.zeros(m + n) #prev_sol  # jnp.zeros(m + n)
+    z0 = prev_sol #jnp.zeros(m + n) #prev_sol #jnp.zeros(m + n) #prev_sol  # 
     out = k_steps_eval_osqp(budget, z0, q, factor, P, A, rho=rho_vec,
                             sigma=sigma, supervised=False, z_star=None, jit=True)
     sol = out[0]
@@ -1120,7 +1137,7 @@ def inertia_matrix_inverse(quaternion):
     return R @ I_inv @ R.T
 
 
-def plot_traj_3d(state_traj_list, goals, labels, filename=None, create_gif=True, gif_time=1):
+def plot_traj_3d(state_traj_list, goals, labels, goal_bound=1, filename=None, create_gif=True, gif_time=1):
     """
     state_traj_list is a list of lists
     """
@@ -1234,10 +1251,13 @@ def plot_traj_3d(state_traj_list, goals, labels, filename=None, create_gif=True,
 
     # plot the goals
     weights = np.arange(1, len(goals) + 1) / (len(goals) + 1)
-    for i in range(len(goals)):
-        x, y, z = goals[i][0], goals[i][1], goals[i][2]
-        # ax.scatter(x, y, z, cmap='Reds_r', c=weights[i], label=f"goal {i}")
-        ax.scatter(x, y, z, label=f"goal {i}")
+    # for i in range(len(goals)):
+    #     x, y, z = goals[i][0], goals[i][1], goals[i][2]
+    #     ax.scatter(x, y, z, label=f"goal {i}", c='black', s=1)
+    goal_xs = np.array([goals[i][0] for i in range(len(goals))])
+    goal_ys = np.array([goals[i][1] for i in range(len(goals))])
+    goal_zs = np.array([goals[i][2] for i in range(len(goals))])
+    ax.plot(goal_xs, goal_ys, goal_zs)
 
 
     # plot the propeller data in a single plot
@@ -1246,7 +1266,7 @@ def plot_traj_3d(state_traj_list, goals, labels, filename=None, create_gif=True,
             body_x, body_y, body_z = propeller_data[i][j]
             color = 'r' if j <= 1 else 'b'
             ax.plot(body_x, body_y, body_z, color)
-    plt.legend()
+    # plt.legend()
     if filename is None:  
         plt.show()
     else:
@@ -1266,19 +1286,20 @@ def plot_traj_3d(state_traj_list, goals, labels, filename=None, create_gif=True,
         for i in range(len(propeller_data)):
             fig = plt.figure()
             ax = fig.add_subplot(projection='3d')
-            ax.set_xlim([-1.1, 1.1])  # Set limits for the X-axis
-            ax.set_ylim([-1.1, 1.1])  # Set limits for the Y-axis
-            ax.set_zlim([-1.1, 1.1])
+            ax.set_xlim([-1.1 * goal_bound, 1.1 * goal_bound])  # Set limits for the X-axis
+            ax.set_ylim([-1.1 * goal_bound, 1.1 * goal_bound])  # Set limits for the Y-axis
+            ax.set_zlim([-1.1 * goal_bound, 1.1 * goal_bound])
             for j in range(4):
                 body_x, body_y, body_z = propeller_data[i][j]
                 color = 'r' if j <= 1 else 'b'
                 ax.plot(body_x, body_y, body_z, color)
 
             # plot the goals for each one
-            for k in range(len(goals)):
-                x, y, z = goals[k][0], goals[k][1], goals[k][2]
-                # ax.scatter(x, y, z, cmap='Reds_r', c=weights[i], label=f"goal {i}")
-                ax.scatter(x, y, z, label=f"goal {i}")
+            # for k in range(len(goals)):
+            #     x, y, z = goals[k][0], goals[k][1], goals[k][2]
+            #     # ax.scatter(x, y, z, cmap='Reds_r', c=weights[i], label=f"goal {i}")
+            #     ax.scatter(x, y, z, label=f"goal {i}", c='black', s=1)
+            ax.plot(goal_xs, goal_ys, goal_zs)
             frame_name = f"{filename}/frame_{i}.png"
             filenames.append(frame_name)
             plt.savefig(frame_name)
@@ -1390,11 +1411,19 @@ def reverse_transform(transformed_x0, transformed_u0, transformed_x_ref):
 def generate_reference_trajectories(num_trajectories, num_timesteps, num_waypoints, x_range, y_range, z_range):
     trajectories = []
     for _ in range(num_trajectories):
+        # waypoints = np.random.uniform(low=[x_range[0], y_range[0], z_range[0]],
+        #                               high=[x_range[1], y_range[1], z_range[1]],
+        #                               size=(num_waypoints, 3))
         waypoints = np.random.uniform(low=[x_range[0], y_range[0], z_range[0]],
                                       high=[x_range[1], y_range[1], z_range[1]],
-                                      size=(num_waypoints, 3))
+                                      size=(num_waypoints - 1, 3))
+        waypoints = np.concatenate([np.array([[0, 0, 0]]), waypoints], axis=0)
         tck, _ = splprep(waypoints.T, s=0)
         u_new = np.linspace(0, 1, num=num_timesteps)
         trajectory = np.array(splev(u_new, tck)).T
-        trajectories.append(trajectory)
+
+        #
+        full_trajectory = np.zeros((num_timesteps, QUADCOPTER_NX))
+        full_trajectory[:, :3] = trajectory
+        trajectories.append(jnp.array(full_trajectory))
     return trajectories

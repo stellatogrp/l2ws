@@ -81,6 +81,8 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, u0, dynamics, system_co
     u00 = jnp.array([9.8, 0, 0, 0])
 
     violations = 0
+    diffs = np.zeros(sim_len)
+    u0s = np.zeros((sim_len, nu))
 
     for j in range(sim_len):
         # Compute the state matrix Ad
@@ -110,6 +112,7 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, u0, dynamics, system_co
         # implement the first control
         old_u0 = u0
         u0 = extract_first_control(sol, T, nx, nu, control_num=0)
+        u0s[j, :] = u0
         for i in range(T):
             print('u', i, extract_first_control(sol, T, nx, nu, control_num=i))
         
@@ -148,8 +151,10 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, u0, dynamics, system_co
         print('final expected control', sol[(T-1)*nu + T*nx: T*nu + T*nx])
 
         # check if the obstacle number should be updated
-        obstacle_num = update_obstacle_num(x0, ref_traj_dict, j, obstacle_num)
-        print('obstacle_num', obstacle_num)
+        # obstacle_num = update_obstacle_num(x0, ref_traj_dict, j, obstacle_num)
+        diff = update_obstacle_num(x0, ref_traj_dict, j, obstacle_num)
+        diffs[j] = diff
+        # print('obstacle_num', obstacle_num)
 
         state_traj_list.append(x0)
         if obstacle_num == -1:
@@ -162,7 +167,9 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, u0, dynamics, system_co
                            clu_list=q_list,
                            x0_list=x0_list,
                            u0_list=u0_list,
-                           x_ref_list=x_ref_list)
+                           x_ref_list=x_ref_list,
+                           diffs=diffs)
+    print('u0s', u0s)
     return rollout_results
 
 
@@ -183,15 +190,22 @@ def update_obstacle_num(x, ref_traj_dict, j, obstacle_num):
                 obstacle_num = -1
             else:
                 obstacle_num += 1
-    return obstacle_num
+        return obstacle_num
+    if ref_traj_dict['case'] == 'loop_path':
+        curr_ref = ref_traj_dict['traj_list'][j]
+        Q = ref_traj_dict['Q']
+        dist = jnp.sqrt((x - curr_ref).T @ Q @ (x - curr_ref))
+        print('dist', dist)
+        return dist
 
 
-def get_curr_ref_traj(ref_traj_dict, t, obstacle_num):
+def get_curr_ref_traj(ref_traj_dict, t, obstacle_num, T=10):
     if ref_traj_dict['case'] == 'fixed_path':
         return ref_traj_dict['traj_list'][t]
     elif ref_traj_dict['case'] == 'obstacle_course':
         return ref_traj_dict['traj_list'][obstacle_num]
-
+    elif ref_traj_dict['case'] == 'loop_path':
+        return ref_traj_dict['traj_list'][t: t + T]
 
 def simulate_fwd_l2ws(sim_len, l2ws_model, k, noise_vec_list, q_init, x_init, A, Ad, Bd, T, nx, nu, prev_sol=False):
     """
@@ -292,7 +306,14 @@ def static_canon_mpc_osqp(x_ref, x0, Ad, Bd, cd, T, nx, nu, x_min, x_max, u_min,
     )
 
     # Linear objective
-    c = np.hstack([np.kron(np.ones(T - 1), -Q @ x_ref), -QT @ x_ref, np.zeros(T * nu)])
+    if x_ref.size == nx:
+        c = np.hstack([np.kron(np.ones(T - 1), -Q @ x_ref), -QT @ x_ref, np.zeros(T * nu)])
+    else:
+        # x_ref has shape (T, nx)
+        c_vecs = [-Q @ x_ref[i, :] for i in range(T - 1)]
+
+        c = np.hstack(c_vecs + [-QT @ x_ref[T-1, :], np.zeros(T * nu)])
+        # c = np.hstack([np.kron(np.ones(T - 1), -Q @ x_ref), -QT @ x_ref, np.zeros(T * nu)])
 
     # Linear dynamics
     Ax = sparse.kron(sparse.eye(T + 1), -sparse.eye(nx)) + sparse.kron(
