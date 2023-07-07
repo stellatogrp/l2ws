@@ -780,9 +780,14 @@ class Workspace:
             x_init_traj = self.thetas_test[thetas_index, :nx] # assumes theta = (x0, u0, x_ref)
             print('x_init_traj', x_init_traj)
 
-            ref_traj_index = num_train_rollouts + i
-            traj_list = [ref_traj_tensor[ref_traj_index, i, :] for i in range(num_goals)]
-            ref_traj_dict = dict(case='obstacle_course', traj_list=traj_list, Q=Q_ref, tol=obstacle_tol)
+            # old
+            # ref_traj_index = num_train_rollouts + i
+            # traj_list = [ref_traj_tensor[ref_traj_index, i, :] for i in range(num_goals)]
+            # ref_traj_dict = dict(case='obstacle_course', traj_list=traj_list, Q=Q_ref, tol=obstacle_tol)
+            trajectories = ref_traj_tensor[i, :, :]
+            ref_traj_dict = dict(case='loop_path', traj_list=trajectories, Q=Q_ref, tol=obstacle_tol)
+
+            # new
             rollout_results = closed_loop_rollout(qp_solver,
                                 rollout_length,
                                 x_init_traj,
@@ -816,7 +821,7 @@ class Workspace:
         # get the discrete time system Ad, Bd from the continuous time system Ac, Bc
         Ad = jnp.eye(nx) + Ac * dt
         Bd = Bc * dt
-        print('Bd', Bd)
+        # print('Bd', Bd)
         # no need to use u0 for the non-learned case
 
         # get the constants for the discrete system
@@ -827,7 +832,7 @@ class Workspace:
         P, A, c, l, u = out_dict['P'], out_dict['A'], out_dict['c'], out_dict['l'], out_dict['u']
         m, n = A.shape
         q = jnp.concatenate([c, l, u])
-        print('q', q[:30])
+        # print('q', q[:30])
 
         # get factor
         rho_vec, sigma = jnp.ones(m), 1
@@ -850,7 +855,8 @@ class Workspace:
         z_stars = None
 
         # get theta
-        theta = jnp.concatenate([x0, u0, ref_traj[:3]]) # assumes specific form of theta
+        # theta = jnp.concatenate([x0, u0, ref_traj[:3]]) # assumes specific form of theta
+        theta = jnp.concatenate([x0, u0, jnp.ravel(ref_traj[:, :3])])
         print('theta', theta)
 
         # need to transform the input

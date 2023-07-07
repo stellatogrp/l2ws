@@ -301,7 +301,7 @@ def setup_probs(setup_cfg):
 
     # osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=None)
     t0 = time.time()
-    theta_mat, z_stars, q_mat, factors = compile_rollout_results(rollout_results_list)
+    theta_mat, z_stars, q_mat, factors = compile_rollout_results(rollout_results_list, T)
     t1 = time.time()
     print('compile time', t1 - t0)
 
@@ -316,7 +316,7 @@ def setup_probs(setup_cfg):
     save_results_dynamic(output_filename, theta_mat, z_stars, q_mat, factors, ref_traj_tensor=ref_traj_tensor)
 
 
-def compile_rollout_results(rollout_results_list, transform=False):
+def compile_rollout_results(rollout_results_list, T, transform=False):
     """
     handles a list of rollouts and stitches them together
 
@@ -357,20 +357,32 @@ def compile_rollout_results(rollout_results_list, transform=False):
 
     # get theta
     t2 = time.time()
-    theta_mat = jnp.zeros((N, 3 + nx + nu))
-    for i in range(N):
-        theta_mat = theta_mat.at[i, nx: nx + nu].set(u0_list[i])
-        x0 = x0_list[i]
-        x_ref_pos = x_ref_list[i][:3]
-        if transform:
-            x_ref_pos_transform = x_ref_pos - x0[:3]
-            x0_transform = x0.at[:3].set(0)
 
-            theta_mat = theta_mat.at[i, :nx].set(x0_transform)
-            theta_mat = theta_mat.at[i, nx + nu:].set(x_ref_pos_transform)
-        else:
-            theta_mat = theta_mat.at[i, :nx].set(x0)
-            theta_mat = theta_mat.at[i, nx + nu:].set(x_ref_pos)
+    # old
+    # theta_mat = jnp.zeros((N, 3 + nx + nu))
+    # for i in range(N):
+        # theta_mat = theta_mat.at[i, nx: nx + nu].set(u0_list[i])
+        # x0 = x0_list[i]
+        # x_ref_pos = x_ref_list[i][:3]
+        # if transform:
+        #     x_ref_pos_transform = x_ref_pos - x0[:3]
+        #     x0_transform = x0.at[:3].set(0)
+
+        #     theta_mat = theta_mat.at[i, :nx].set(x0_transform)
+        #     theta_mat = theta_mat.at[i, nx + nu:].set(x_ref_pos_transform)
+        # else:
+        #     theta_mat = theta_mat.at[i, :nx].set(x0)
+        #     theta_mat = theta_mat.at[i, nx + nu:].set(x_ref_pos)
+
+    # new
+    theta_mat = jnp.zeros((N, T * 3 + nx + nu))
+    for i in range(N):
+        x0 = x0_list[i]
+        theta_mat = theta_mat.at[i, :nx].set(x0)
+        theta_mat = theta_mat.at[i, nx: nx + nu].set(u0_list[i])
+
+        x_ref_pos = x_ref_list[i][:, :3]
+        theta_mat = theta_mat.at[i, nx + nu:].set(jnp.ravel(x_ref_pos))
     if transform:
         theta_mat = theta_mat[:, 3:]
     t3 = time.time()

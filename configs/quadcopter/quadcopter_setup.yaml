@@ -2,7 +2,7 @@ T: 10
 dt: .05
 rollout_length: 100
 waypoints: 10
-rollout_osqp_iters: 40
+rollout_osqp_iters: 500
 num_rollouts: 5
 R_diag: [.001, .001, .001, .001]
 # Q_diag: [1, 1, 1, 1, 1, 1, 0, 0, 0, .01, .01, .01]
