@@ -134,6 +134,8 @@ class Workspace:
             factor = static_dict['factor']
             A = static_dict['A']
             P = static_dict['P']
+            m, n = A.shape
+            self.m, self.n = m, n
             rho = static_dict['rho']
             input_dict = dict(factor_static_bool=True,
                               supervised=cfg.supervised,
@@ -142,6 +144,8 @@ class Workspace:
                               q_mat_test=self.q_mat_test,
                               A=A,
                               P=P,
+                              m=m,
+                              n=n,
                               factor=factor,
                               train_inputs=self.train_inputs,
                               test_inputs=self.test_inputs,
@@ -572,7 +576,8 @@ class Workspace:
 
         # closed loop control rollouts
         if not train:
-            self.run_closed_loop_rollouts(col)
+            if self.closed_loop_rollout_dict is not None:
+                self.run_closed_loop_rollouts(col)
 
         # solve with scs
         # z0_mat = z_all[:, 0, :]

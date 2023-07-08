@@ -43,7 +43,7 @@ loss_method: 'fixed_k' #'fixed_k' #'constant_sum'
 # share_all: False
 num_clusters: 10
 pretrain_alpha: False
-normalize_inputs: True
+normalize_inputs: False
 normalize_alpha: 'other'
 
 accuracies: [.1, .01, .001, .0001]

@@ -51,7 +51,7 @@ def run(run_cfg):
     factor = jsp.linalg.lu_factor(M)
 
     m, n = A.shape
-    static_dict = dict(factor=factor, P=P, A=A, rho=rho_vec, m=m, n=n)
+    static_dict = dict(factor=factor, P=P, A=A, rho=rho_vec)
 
     # we directly save q now
     static_flag = True

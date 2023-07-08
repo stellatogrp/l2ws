@@ -111,7 +111,7 @@ def direct_osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=No
 
     solve_times = np.zeros(N)
     if z_stars is None:
-        z_stars = jnp.zeros((N, n + m))
+        z_stars = jnp.zeros((N, n + 2 * m))
         objvals = jnp.zeros((N))
         for i in range(N):
             log.info(f"solving problem number {i}")
@@ -133,7 +133,8 @@ def direct_osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=No
             # y_sols = y_sols.at[i, :].set(results.y)
 
             z_stars = z_stars.at[i, :n].set(results.x)
-            z_stars = z_stars.at[i, n:].set(results.y)
+            z_stars = z_stars.at[i, n:n + m].set(results.y)
+            z_stars = z_stars.at[i, n + m:].set(A @ results.x)
             
             # objvals = objvals.at[i].set(prob.value)
 
