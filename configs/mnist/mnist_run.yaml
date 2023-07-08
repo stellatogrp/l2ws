@@ -64,4 +64,4 @@ save_weights_flag: True
 # closed_loop_budget: 10
 
 # visualize
-iterates_visualize: [10, 20]
+iterates_visualize: [10, 20, 30, 40]
