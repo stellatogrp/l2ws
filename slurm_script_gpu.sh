@@ -5,7 +5,7 @@
 #SBATCH --nodes=1                # node count
 #SBATCH --ntasks=1               # total number of tasks across all nodes
 #SBATCH --cpus-per-task=1        # cpu-cores per task (>1 if multi-threaded tasks)
-#SBATCH --mem-per-cpu=300G         # memory per cpu-core (4G is default)
+#SBATCH --mem-per-cpu=50G         # memory per cpu-core (4G is default)
 #SBATCH --array=0             # job array with index values 0, 1, 2, 3, 4
 #SBATCH --time=00:59:00          # total run time limit (HH:MM:SS)
 #SBATCH --mail-type=all          # send email on job start, end and fault
@@ -20,7 +20,7 @@ echo "Executing on the machine:" $(hostname)
 export XLA_PYTHON_CLIENT_MEM_FRACTION='0.90'
 
 
-python l2ws_train_script.py quadcopter cluster
+python l2ws_train_script.py mnist cluster
 # python aggregate_slurm_runs_script.py robust_ls cluster
 
 
