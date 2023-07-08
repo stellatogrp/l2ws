@@ -215,7 +215,8 @@ class Workspace:
                               z_stars_train=self.z_stars_train,
                               z_stars_test=self.z_stars_test,
                               jit=True)
-
+        self.x_stars_train = self.z_stars_train[:, :self.n]
+        self.x_stars_test = self.z_stars_test[:, :self.n]
         self.l2ws_model = OSQPmodel(input_dict)
 
     def create_scs_model(self, cfg):
@@ -312,6 +313,10 @@ class Workspace:
             self.plot_samples(num_plot, self.thetas_train, self.train_inputs, z_stars_train)
             self.z_stars_test = z_stars_test
             self.z_stars_train = z_stars_train
+
+            # if algo == 'osqp':
+            #     self.x_stars_train = z_stars_train[:, :self.n]
+            #     self.x_stars_test = z_stars_test[:, :self.n]
         else:
             if 'x_stars' in jnp_load_obj.keys():
                 x_stars = jnp_load_obj['x_stars']
@@ -567,12 +572,15 @@ class Workspace:
             #     x_primals = u_all[:, :, :self.l2ws_model.n] / tau
             # else:
             #     x_primals = u_all[:, :, :self.l2ws_model.n]
-
-            x_primals = u_all[:, :, :self.l2ws_model.n] / u_all[:, :, -1:]
-            try:
-                self.custom_visualize(x_primals, train, col)
-            except:
-                print('Exception occurred during custom visualization')
+            if isinstance(self.l2ws_model, OSQPmodel):
+                x_primals = z_all[:, :, :self.l2ws_model.n]
+            elif isinstance(self.l2ws_model, SCSmodel):
+                x_primals = u_all[:, :, :self.l2ws_model.n] / u_all[:, :, -1:]
+            self.custom_visualize(x_primals, train, col)
+            # try:
+            #     self.custom_visualize(x_primals, train, col)
+            # except:
+            #     print('Exception occurred during custom visualization')
 
         # closed loop control rollouts
         if not train:
@@ -917,12 +925,14 @@ class Workspace:
 
         # call custom visualize fn
         if train:
-            x_stars = self.l2ws_model.x_stars_train
+            # x_stars = self.l2ws_model.x_stars_train
+            x_stars = self.x_stars_train
             thetas = self.thetas_train
             if 'x_nn_train' in dir(self):
                 x_nn = self.x_nn_train
         else:
-            x_stars = self.l2ws_model.x_stars_test
+            # x_stars = self.l2ws_model.x_stars_test
+            x_stars = self.x_stars_test
             thetas = self.thetas_test
             if 'x_nn_test' in dir(self):
                 x_nn = self.x_nn_test

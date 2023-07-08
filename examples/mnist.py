@@ -56,7 +56,8 @@ def run(run_cfg):
     # we directly save q now
     static_flag = True
     algo = 'osqp'
-    workspace = Workspace(algo, run_cfg, static_flag, static_dict, example)
+    workspace = Workspace(algo, run_cfg, static_flag, static_dict, example, 
+                          custom_visualize_fn=custom_visualize_fn)
 
     # run the workspace
     workspace.run()
@@ -278,37 +279,82 @@ def vectorized2DBlurMatrix(m, n, width=3):
 
 
 
-
-def solve_many_probs_cvxpy(P, A, q_mat):
+def custom_visualize_fn(x_primals, x_stars, x_no_learn, x_nn, thetas, iterates, visual_path):
     """
-    solves many QPs where each problem has a different b vector
-    """
-    P = cp.atoms.affine.wraps.psd_wrap(P)
-    m, n = A.shape
-    N = q_mat.shape[0]
-    x, w = cp.Variable(n), cp.Variable(m)
-    c_param, l_param, u_param = cp.Parameter(n), cp.Parameter(m), cp.Parameter(m)
-    constraints = [A @ x == w, l_param <= w, w <= u_param]
-    # import pdb
-    # pdb.set_trace()
-    prob = cp.Problem(cp.Minimize(.5 * cp.quad_form(x, P) + c_param @ x), constraints)
-    # prob = cp.Problem(cp.Minimize(.5 * cp.sum_squares(np.array(A) @ z - b_param) + lambd * cp.tv(z)))
-    z_stars = jnp.zeros((N, m + n))
-    objvals = jnp.zeros((N))
-    for i in range(N):
-        c_param.value = np.array(q_mat[i, :n])
-        l_param.value = np.array(q_mat[i, n:n + m])
-        u_param.value = np.array(q_mat[i, n + m:])
-        prob.solve(verbose=False)
-        objvals = objvals.at[i].set(prob.value)
+    assume len(iterates) == 1 for now
+        point is to compare no-learning vs learned for after iterates number of steps
 
-        # import pdb
-        # pdb.set_trace()
-        x_star = jnp.array(x.value)
-        w_star = jnp.array(w.value)
-        y_star = jnp.array(constraints[0].dual_value)
-        # z_star = jnp.concatenate([x_star, w_star, y_star])
-        z_star = jnp.concatenate([x_star, y_star])
-        z_stars = z_stars.at[i, :].set(z_star)
-    print('finished solving cvxpy problems')
-    return z_stars, objvals
+    plots
+    1. optimal
+    2. blurred
+    3. no-learning
+    4. nearest neighbor
+    5. learned
+
+    do this for multiple images
+    """
+    # assert len(iterates) == 1
+    # iter_num = iterates[0]
+    num = x_no_learn.shape[0]
+    for i in range(num):
+        # create the folder
+        if not os.path.exists(f"{visual_path}/blur_img_{i}"):
+            os.mkdir(f"{visual_path}/blur_img_{i}")
+            
+        for j in range(len(iterates)):
+            steps = iterates[j]
+
+            f, axarr = plt.subplots(2, 3)
+
+            # get the clean image (optimal solution) from x_stars
+            opt_img = np.reshape(x_stars[i, :784], (28,28))
+            axarr[0, 0].imshow(opt_img, cmap=plt.get_cmap('gray'))
+            axarr[0, 0].set_title('optimal')
+            axarr[0, 0].axis('off')
+
+            # get the blurred image from theta
+            blurred_img = np.reshape(thetas[i, :784], (28,28))
+            axarr[0, 1].imshow(blurred_img, cmap=plt.get_cmap('gray'))
+            axarr[0, 1].set_title('blurred')
+            axarr[0, 1].axis('off')
+
+            # cold-start
+            cold_start_img = np.reshape(x_no_learn[i, steps, :784], (28,28))
+            axarr[1, 0].imshow(cold_start_img, cmap=plt.get_cmap('gray'))
+            axarr[1, 0].set_title('cold-start')
+            axarr[1, 0].axis('off')
+
+            # nearest neighbor
+            nearest_neighbor_img = np.reshape(x_nn[i, steps, :784], (28,28))
+            axarr[1, 1].imshow(nearest_neighbor_img, cmap=plt.get_cmap('gray'))
+            axarr[1, 1].set_title('nearest neighbor')
+            axarr[1, 1].axis('off')
+
+            # learned
+            learned_img = np.reshape(x_primals[i, steps, :784], (28,28))
+            axarr[1, 2].imshow(learned_img, cmap=plt.get_cmap('gray'))
+            axarr[1, 2].set_title('learned')
+            axarr[1, 2].axis('off')
+
+            # plt.legend()
+            plt.savefig(f"{visual_path}/blur_img_{i}/steps_{steps}.pdf")
+
+
+        # titles = ['optimal solution', 'noisy trajectory']
+        # x_true_kalman = get_x_kalman_from_x_primal(x_stars[i, :], T)
+        # traj = [x_true_kalman, y_mat_rotated[i, :].T]
+
+        # for j in range(len(iterates)):
+        #     iter = iterates[j]
+        #     x_no_learn_kalman = get_x_kalman_from_x_primal(x_no_learn[i, iter, :], T)
+        #     x_hat_kalman = get_x_kalman_from_x_primal(x_primals[i, iter, :], T)
+        #     x_nn_kalman = get_x_kalman_from_x_primal(x_nn[i, iter, :], T)
+        #     traj.append(x_no_learn_kalman)
+        #     traj.append(x_nn_kalman)
+        #     traj.append(x_hat_kalman)
+        #     titles.append(f"no learning: ${iter}$ iters")
+        #     titles.append(f"nearest neighbor: ${iter}$ iters")
+        #     titles.append(f"learned: ${iter}$ iters")
+
+        # plot_positions_overlay(traj, titles, filename=f"{visual_path}/positions_{i}_rotated_legend.pdf", legend=True)
+        # plot_positions_overlay(traj, titles, filename=f"{visual_path}/positions_{i}_rotated.pdf", legend=False)
