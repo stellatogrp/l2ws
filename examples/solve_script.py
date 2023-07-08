@@ -8,6 +8,7 @@ from l2ws.scs_problem import SCSinstance
 import pdb
 import cvxpy as cp
 from scipy.sparse import csc_matrix, save_npz, load_npz
+import osqp
 
 
 plt.rcParams.update(
@@ -92,6 +93,95 @@ def load_results_dynamic(output_filename):
     return theta_mat, z_stars, q_mat_sparse, factors
 
 
+
+def direct_osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=None):
+    # def solve_many_probs_cvxpy(A, b_mat, lambd):
+    """
+    solves many lasso problems where each problem has a different b vector
+    """
+    m, n = A.shape
+    N = q_mat.shape[0]
+
+    # P, A
+    osqp_solver = osqp.OSQP()
+    P_sparse, A_sparse = csc_matrix(np.array(P)), csc_matrix(np.array(A))
+    c, l, u = np.zeros(n), np.zeros(m), np.zeros(m)
+    osqp_solver.setup(P=P_sparse, q=c, A=A_sparse, l=l, u=u,
+                        max_iter=2000, verbose=True, eps_abs=1e-5, eps_rel=1e-5)
+
+    solve_times = np.zeros(N)
+    if z_stars is None:
+        z_stars = jnp.zeros((N, n + m))
+        objvals = jnp.zeros((N))
+        for i in range(N):
+            log.info(f"solving problem number {i}")
+
+            # setup c, l, u
+            c, l, u = q_mat[i, :n], q_mat[i, n:n + m], q_mat[i, n + m:]
+            osqp_solver.update(q=np.array(c))
+            osqp_solver.update(l=np.array(l), u=np.array(u))
+
+            # solve with osqp
+            results = osqp_solver.solve()
+
+            # set the solve time in seconds
+            solve_times[i] = results.info.solve_time
+            # solve_iters[i] = results.info.iter
+
+            # set the results
+            # x_sols = x_sols.at[i, :].set(results.x)
+            # y_sols = y_sols.at[i, :].set(results.y)
+
+            z_stars = z_stars.at[i, :n].set(results.x)
+            z_stars = z_stars.at[i, n:].set(results.y)
+            
+            # objvals = objvals.at[i].set(prob.value)
+
+            # x_star = jnp.array(x.value)
+            # y_star = jnp.array(constraints[0].dual_value)
+            # z_star = jnp.concatenate([x_star, y_star])
+            # z_stars = z_stars.at[i, :].set(z_star)
+            # solve_times[i] = prob.solver_stats.solve_time
+
+    # save the data
+    log.info("final saving final data...")
+    t0 = time.time()
+    jnp.savez(
+        output_filename,
+        thetas=jnp.array(theta_mat),
+        z_stars=z_stars,
+        q_mat=q_mat
+    )
+
+    # save solve times
+    df_solve_times = pd.DataFrame(solve_times, columns=['solve_times'])
+    df_solve_times.to_csv('solve_times.csv')
+
+    save_time = time.time()
+    log.info(f"finished saving final data... took {save_time-t0}'")
+
+    # save plot of first 5 solutions
+    for i in range(5):
+        plt.plot(z_stars[i, :])
+    plt.savefig("z_stars.pdf")
+    plt.clf()
+
+    # save plot of first 5 q
+    for i in range(5):
+        plt.plot(q_mat[i, :])
+    plt.savefig("q.pdf")
+    plt.clf()
+
+
+    # save plot of first 5 parameters
+    for i in range(5):
+        plt.plot(theta_mat[i, :])
+    plt.savefig("thetas.pdf")
+    plt.clf()
+
+    return z_stars
+
+
 def osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=None):
     # def solve_many_probs_cvxpy(A, b_mat, lambd):
     """
@@ -99,8 +189,8 @@ def osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=None):
     """
     m, n = A.shape
     N = q_mat.shape[0]
-    # z, b_param = cp.Variable(n), cp.Parameter(m)
-    # prob = cp.Problem(cp.Minimize(.5 * cp.sum_squares(np.array(A) @ z - b_param) + lambd * cp.norm(z, p=1)))
+
+    # setup cvxpy
     x, w = cp.Variable(n), cp.Variable(m)
     c_param, l_param, u_param = cp.Parameter(n), cp.Parameter(m), cp.Parameter(m)
     constraints = [A @ x == w, l_param <= w, w <= u_param]
@@ -112,17 +202,16 @@ def osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=None):
         objvals = jnp.zeros((N))
         for i in range(N):
             log.info(f"solving problem number {i}")
+
+            # solve with cvxpy
             c_param.value = np.array(q_mat[i, :n])
             l_param.value = np.array(q_mat[i, n:n + m])
             u_param.value = np.array(q_mat[i, n + m:])
-            # prob.solve(verbose=True, solver=cp.OSQP, eps_abs=1e-03, eps_rel=1e-03)
             prob.solve(verbose=True, solver=cp.OSQP, eps_abs=1e-03, eps_rel=1e-03)
             objvals = objvals.at[i].set(prob.value)
 
             x_star = jnp.array(x.value)
-            # w_star = jnp.array(w.value)
             y_star = jnp.array(constraints[0].dual_value)
-            # z_star = jnp.concatenate([x_star, w_star, y_star])
             z_star = jnp.concatenate([x_star, y_star])
             z_stars = z_stars.at[i, :].set(z_star)
             solve_times[i] = prob.solver_stats.solve_time

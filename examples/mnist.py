@@ -7,7 +7,7 @@ import cvxpy as cp
 import yaml
 from l2ws.launcher import Workspace
 import os
-from examples.solve_script import osqp_setup_script
+from examples.solve_script import direct_osqp_setup_script
 import scipy.linalg as la
 import urllib.request
 import os
@@ -30,20 +30,33 @@ def run(run_cfg):
 
     # set the seed
     np.random.seed(setup_cfg['seed'])
-    # m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
-    # A = jnp.array(np.random.normal(size=(m_orig, n_orig)))
-    # evals, evecs = jnp.linalg.eigh(A.T @ A)
-    # ista_step =  1 / evals.max()
+
     lambd = setup_cfg['lambd']
+    blur_size = setup_cfg['blur_size']
 
     # static_dict = dict(A=A, lambd=lambd, ista_step=ista_step)
 
-    static_dict = dict(factor=factor, A=A, rho_vec=rho_vec)
+    # get the blur matrix
+    B = vectorized2DBlurMatrix(28, 28, blur_size)
+
+    # get P, A
+    P = B.T @ B
+    m, n = 784, 784
+    A = np.eye(n)
+
+    rho_vec, sigma = jnp.ones(m), 1
+    # rho_vec = rho_vec.at[l == u].set(1000)
+    M = P + sigma * jnp.eye(n) + A.T @ jnp.diag(rho_vec) @ A
+
+    factor = jsp.linalg.lu_factor(M)
+
+    m, n = A.shape
+    static_dict = dict(factor=factor, P=P, A=A, rho=rho_vec, m=m, n=n)
 
     # we directly save q now
     static_flag = True
     algo = 'osqp'
-    workspace = Workspace(algo, run_cfg, static_flag, static_dict, example, traj_length=traj_length)
+    workspace = Workspace(algo, run_cfg, static_flag, static_dict, example)
 
     # run the workspace
     workspace.run()
@@ -76,23 +89,41 @@ def setup_probs(setup_cfg):
 
     # setup the training
 
+    lambd = setup_cfg['lambd']
+    blur_size = setup_cfg['blur_size']
 
     # load the mnist images
     x_train, x_test = get_mnist()
 
     # get the blur matrix
-    A = vectorized2DBlurMatrix(28, 28, 8)
+    B = vectorized2DBlurMatrix(28, 28, blur_size)
+
+    # get P, A
+    P = B.T @ B
+    m, n = 784, 784
+    A = np.eye(n)
+
+    q_mat = jnp.zeros((N, 2 * m + n))
+    q_mat = q_mat.at[:, m + n:].set(jnp.inf)
+
+    theta_mat = jnp.zeros((N, n))
 
     # blur img
-    for i in range(10):
-        blurred_img = np.reshape(A @ x_train[i, :], (28, 28))
+    blurred_imgs = []
+    for i in range(N):
+        blurred_img = jnp.reshape(B @ x_train[i, :], (28, 28))
+        blurred_img_vec = jnp.ravel(blurred_img)
+        q_mat = q_mat.at[i, :n].set(-B.T @ blurred_img_vec + lambd)
+        theta_mat = theta_mat.at[i, :].set(blurred_img_vec)
+        blurred_imgs.append(blurred_img)
 
         # create cvxpy problem with TV regularization
 
         # get P, A, q, l, u with cvxpy osqp canonicalization
-        lambd = 1e-6
+        # lambd = 1e-6
         # P, A, c, l, u = mnist_canon(A, lambd, blurred_img)
-        mnist_canon(A, lambd, blurred_img)
+        # mnist_canon(A, lambd, blurred_img)
+        
 
 
     # blur the images
@@ -102,12 +133,34 @@ def setup_probs(setup_cfg):
 
 
     # create theta_mat and q_mat
-    q_mat = jnp.vstack([q_mat_train, q_mat_test])
-    theta_mat = jnp.vstack([theta_mat_train, theta_mat_test])
+    # q_mat = jnp.vstack([q_mat_train, q_mat_test])
+    # theta_mat = jnp.vstack([theta_mat_train, theta_mat_test])
 
 
     # osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=z_stars)
-    osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=None)
+    P = B.T @ B
+    z_stars = direct_osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=None)
+
+    if not os.path.exists('images'):
+        os.mkdir('images')
+
+    # save blurred images
+    for i in range(5):
+        blurred_img = blurred_imgs[i]
+        f, axarr = plt.subplots(1,3)
+        axarr[0].imshow(blurred_img, cmap=plt.get_cmap('gray'), label='blurred')
+        axarr[0].set_title('blurred')
+
+        sol_img = np.reshape(z_stars[i, :784], (28,28))
+        axarr[1].imshow(sol_img, cmap=plt.get_cmap('gray'), label='solution')
+        axarr[1].set_title('solution')
+
+        orig_img = np.reshape(x_train[i, :], (28, 28))
+        axarr[2].imshow(orig_img, cmap=plt.get_cmap('gray'), label='original')
+        axarr[2].set_title('original')
+
+        # plt.legend()
+        plt.savefig(f"images/blur_img_{i}.pdf")
 
 
 
@@ -156,8 +209,8 @@ def mnist_canon(A, lambd, blurred_img):
 
     # prob = cp.Problem(cp.Minimize(lambd * tv + cp.sum_squares(A @ cp.vec(x) - b))) 
     constraints = [x >= 0]
-    prob = cp.Problem(cp.Minimize(lambd * cp.tv(x) + cp.sum_squares(A @ cp.vec(x) - b)), constraints)
-    data, chain, inverse_data = prob.get_problem_data(cp.SCS)
+    prob = cp.Problem(cp.Minimize(lambd * cp.sum(x) + cp.sum_squares(A @ cp.vec(x) - b)), constraints)
+    data, chain, inverse_data = prob.get_problem_data(cp.OSQP)
 
     # A = np.vstack([data['A'].todense(), data['F'].todense()])
     # u = np.hstack([data['b'], data['G']])
@@ -165,11 +218,11 @@ def mnist_canon(A, lambd, blurred_img):
     # P = data['P'].todense()
     # c = data['q']
 
-    prob.solve(solver=cp.SCS, verbose=True, normalize=False,
-                     scale=1,
-                     rho_x=1,
-                     adaptive_scale=False,
-                     max_iters=200)
+    prob.solve(solver=cp.OSQP, verbose=True, max_iter=10, adaptive_rho=False, eps_abs=1e0) #, normalize=False,
+                    #  scale=1,
+                    #  rho_x=1,
+                    #  adaptive_scale=False,
+                    #  max_iters=50)
                     #  eps_rel=1e-4,
                     #  eps_abs=1e-4)
                     #  max_iters=1000)#, max_iter=50)
@@ -178,14 +231,16 @@ def mnist_canon(A, lambd, blurred_img):
     f, axarr = plt.subplots(1,2)
     axarr[0].imshow(blurred_img, cmap=plt.get_cmap('gray'))
     axarr[1].imshow(img.T, cmap=plt.get_cmap('gray'))
-    plt.show()
+    # plt.show()
 
     # import pdb
     # pdb.set_trace()
 
     # get prob data
     # return jnp.array(P), jnp.array(A), jnp.array(c), jnp.array(l), jnp.array(u)
-    return
+    import pdb
+    pdb.set_trace()
+    return jnp.array(P), jnp.array(A), jnp.array(c), jnp.array(l), jnp.array(u)
 
 # # Create directory to store MNIST dataset
 # if not os.path.exists('mnist_data'):
