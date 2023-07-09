@@ -22,22 +22,33 @@ plt.rcParams.update({
 titles_2_colors = dict(cold_start='black', 
                        nearest_neighbor='magenta', 
                        prev_sol='cyan',
-                       k0=mcolors.TABLEAU_COLORS['tab:brown'],
-                       k5='blue',
-                       k15='red',
-                    #    k15='#FF7F0E',
-                       k30='green',
-                       k60='orange',
-                       k120='gray')
-titles_2_styles = dict(cold_start='--', 
-                       nearest_neighbor='--', 
-                       prev_sol='--',
-                       k0='-',
-                       k5='-',
-                       k15='-',
-                       k30='-',
-                       k60='-',
-                       k120='-')
+                       reg_k0=mcolors.TABLEAU_COLORS['tab:brown'],
+                       reg_k5='blue',
+                       reg_k15='red',
+                       reg_k30='green',
+                       reg_k60='orange',
+                       reg_k120='gray',
+                       obj_k0=mcolors.TABLEAU_COLORS['tab:brown'],
+                       obj_k5='blue',
+                       obj_k15='red',
+                       obj_k30='green',
+                       obj_k60='orange',
+                       obj_k120='gray')
+titles_2_styles = dict(cold_start=':', 
+                       nearest_neighbor=':', 
+                       prev_sol=':',
+                       reg_k0='-',
+                       reg_k5='-',
+                       reg_k15='-',
+                       reg_k30='-',
+                       reg_k60='-',
+                       reg_k120='-',
+                       obj_k0='-.',
+                       obj_k5='-.',
+                       obj_k15='-.',
+                       obj_k30='-.',
+                       obj_k60='-.',
+                       obj_k120='-.')
 
 
 
@@ -106,6 +117,15 @@ def mpc_plot_eval_iters(cfg):
 @hydra.main(config_path='configs/phase_retrieval', config_name='phase_retrieval_plot.yaml')
 def phase_retrieval_plot_eval_iters(cfg):
     example = 'phase_retrieval'
+    # plot_eval_iters(example, cfg, train=False)
+    overlay_training_losses(example, cfg)
+    # plot_eval_iters(example, cfg, train=False)
+    create_journal_results(example, cfg, train=False)
+
+
+@hydra.main(config_path='configs/mnist', config_name='mnist_plot.yaml')
+def mnist_plot_eval_iters(cfg):
+    example = 'mnist'
     # plot_eval_iters(example, cfg, train=False)
     overlay_training_losses(example, cfg)
     # plot_eval_iters(example, cfg, train=False)
@@ -289,8 +309,11 @@ def get_all_data(example, cfg, train=False):
 
     # learned warm-starts
     k_vals = np.zeros(len(learn_datetimes))
+    loss_types = []
     for i in range(len(k_vals)):
         datetime = learn_datetimes[i]
+        loss_type = get_loss_type(orig_cwd, example, datetime)
+        loss_types.append(loss_type)
         k = get_k(orig_cwd, example, datetime)
         k_vals[i] = k
         metric, timings = load_data_per_title(example, k, datetime)
@@ -302,7 +325,12 @@ def get_all_data(example, cfg, train=False):
         k = k_vals[i]
         new_k = k if k >= 2 else 0
         k_vals_new.append(new_k)
-    titles = benchmarks + [f"k{int(k)}" for k in k_vals_new]
+    # titles = benchmarks + [f"k{int(k)}" for k in k_vals_new]
+    titles = benchmarks
+    for i in range(len(loss_types)):
+        loss_type = loss_types[i]
+        k = k_vals_new[i]
+        titles.append(f"{loss_type}_k{int(k)}")
 
     # titles = cfg.loss_overlay_titles
     # for i in range(len(datetimes)):
@@ -564,6 +592,19 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
     else:
         plt.savefig('test_gain_plots.pdf', bbox_inches='tight')
     fig.tight_layout()
+
+
+def get_loss_type(orig_cwd, example, datetime):
+    train_yaml_filename = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/.hydra/config.yaml"
+    with open(train_yaml_filename, "r") as stream:
+        try:
+            out_dict = yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+    # k = int(out_dict['train_unrolls'])
+    loss_type = 'reg' if bool(out_dict['supervised']) else 'obj'
+    return loss_type
+
 
 
 def get_k(orig_cwd, example, datetime):
@@ -964,6 +1005,10 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'mpc/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         mpc_plot_eval_iters()
+    elif sys.argv[1] == 'mnist':
+        sys.argv[1] = base + 'mnist/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        mnist_plot_eval_iters()
     elif sys.argv[1] == 'all':
         sys.argv[1] = base + 'all/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
