@@ -783,7 +783,8 @@ class Workspace:
 
         num_goals = ref_traj_tensor.shape[1]
         N_train = self.thetas_train.shape[0]
-        num_train_rollouts = int(N_train / (rollout_length - T))
+        # num_train_rollouts = int(N_train / (rollout_length - T))
+        num_train_rollouts = int(N_train / (rollout_length))
 
         # do the closed loop rollouts
         rollout_results_list = []

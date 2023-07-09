@@ -25,19 +25,19 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 1
+train_unrolls: 60
 eval_unrolls: 1000
 eval_every_x_epochs: 200
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 10
-N_train: 400
-N_test: 100
-num_samples: 100
+N_train: 10000
+N_test: 1000
+num_samples: 1000
 prediction_variable: w
 angle_anchors: [0]
-supervised: True
+supervised: False
 plot_iterates: [0, 10, 20]
 loss_method: 'fixed_k' #'fixed_k' #'constant_sum'
 # share_all: False
@@ -60,5 +60,5 @@ save_weights_flag: True
 # solve_c_num: 100
 
 # rollouts
-num_rollouts: 1
+num_rollouts: 5
 closed_loop_budget: 15
