@@ -25,15 +25,15 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 5  # this is the k that tells you how many FOM iterations
-eval_unrolls: 1000
-eval_every_x_epochs: 5
+train_unrolls: 120 # this is the k that tells you how many FOM iterations
+eval_unrolls: 500
+eval_every_x_epochs: 10
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
-N_train: 10  # adjust these for larger setups
-N_test: 10
-num_samples: 10
+N_train: 8000  # adjust these for larger setups
+N_test: 1000
+num_samples: 100
 prediction_variable: w
 angle_anchors: [0]
 supervised: True
