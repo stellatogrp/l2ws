@@ -18,6 +18,8 @@ class SCSmodel(L2WSmodel):
         the input_dict is required to contain these keys
         otherwise there is an error
         """
+        self.factors_required = True
+        self.factor_static_bool = input_dict.get('factor_static_bool', True)
         self.algo = 'scs'
         self.factors_required = True
         self.hsde = input_dict.get('hsde', True)
@@ -42,6 +44,7 @@ class SCSmodel(L2WSmodel):
 
         factor = input_dict['static_algo_factor']
         self.factor = factor
+        self.factor_static = factor
 
         # hyperparameters of scs
         self.rho_x = input_dict['rho_x']

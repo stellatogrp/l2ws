@@ -219,39 +219,39 @@ class Workspace:
         self.x_stars_test = self.z_stars_test[:, :self.n]
         self.l2ws_model = OSQPmodel(input_dict)
 
-    def create_scs_model(self, cfg):
-        get_M_q = None
-        if get_M_q is None:
-            q_mat = jnp_load_obj['q_mat']
-
-        if static_flag:
+    def create_scs_model(self, cfg, static_dict):
+        # get_M_q = None
+        # if get_M_q is None:
+        #     q_mat = jnp_load_obj['q_mat']
+        if self.static_flag:
             static_M = static_dict['M']
 
             static_algo_factor = static_dict['algo_factor']
             cones = static_dict['cones_dict']
 
             # call get_q_mat
-            if get_M_q is not None:
-                q_mat = get_M_q(thetas)
+            # if get_M_q is not None:
+            #     q_mat = get_M_q(thetas)
             M_tensor_train, M_tensor_test = None, None
             matrix_invs_train, matrix_invs_test = None, None
 
             # M_plus_I = static_M + jnp.eye(n + m)
             # static_algo_factor = jsp.linalg.lu_factor(M_plus_I)
         else:
+            pass
             # load the algo_factors -- check if factor or inverse
-            M_tensor, q_mat = get_M_q(thetas)
+            # M_tensor, q_mat = get_M_q(thetas)
 
             # load the matrix invs
-            matrix_invs = jnp_load_obj['matrix_invs']
+            # matrix_invs = jnp_load_obj['matrix_invs']
 
-            static_M, static_algo_factor = None, None
+            # static_M, static_algo_factor = None, None
 
-            cones = static_dict['cones_dict']
-            M_tensor_train = M_tensor[:N_train, :, :]
-            M_tensor_test = M_tensor[N_train:N, :, :]
-            matrix_invs_train = matrix_invs[:N_train, :, :]
-            matrix_invs_test = matrix_invs[N_train:N, :, :]
+            # cones = static_dict['cones_dict']
+            # M_tensor_train = M_tensor[:N_train, :, :]
+            # M_tensor_test = M_tensor[N_train:N, :, :]
+            # matrix_invs_train = matrix_invs[:N_train, :, :]
+            # matrix_invs_test = matrix_invs[N_train:N, :, :]
         rho_x = cfg.get('rho_x', 1)
         scale = cfg.get('scale', 1)
         alpha_relax = cfg.get('alpha_relax', 1)
@@ -260,11 +260,14 @@ class Workspace:
         self.cones = static_dict['cones_dict']
 
         # alternate -- load it if available (but this is memory-intensive)
-        q_mat_train = jnp.array(q_mat[:N_train, :])
-        q_mat_test = jnp.array(q_mat[N_train:N, :])
+        # N_train = self.train_inputs.shape[0]
+        # N_test = self.test_inputs.shape[0]
+        # N = N_train + N_test
+        # q_mat_train = jnp.array(q_mat[:N_train, :])
+        # q_mat_test = jnp.array(q_mat[N_train:N, :])
 
         self.M = static_M
-        proj = create_projection_fn(cones, n)
+        proj = create_projection_fn(cones, self.n)
         psd_sizes = get_psd_sizes(cones)
 
         self.psd_size = psd_sizes[0]
@@ -277,8 +280,8 @@ class Workspace:
                       'eval_unrolls': self.eval_unrolls,
                       'z_stars_train': self.z_stars_train,
                       'z_stars_test': self.z_stars_test,
-                      'q_mat_train': q_mat_train,
-                      'q_mat_test': q_mat_test,
+                      'q_mat_train': self.q_mat_train,
+                      'q_mat_test': self.q_mat_test,
                       'M_tensor_train': M_tensor_train,
                       'M_tensor_test': M_tensor_test,
                       'm': self.m,
@@ -288,7 +291,7 @@ class Workspace:
                       'y_stars_test': self.y_stars_test,
                       'x_stars_train': self.x_stars_train,
                       'x_stars_test': self.x_stars_test,
-                      'static_flag': static_flag,
+                      'static_flag': self.static_flag,
                       'static_algo_factor': static_algo_factor,
                       'matrix_invs_train': matrix_invs_train,
                       'matrix_invs_test': matrix_invs_test,
@@ -333,7 +336,7 @@ class Workspace:
                 self.x_stars_test = x_stars[N_train:N, :]
                 self.y_stars_test = y_stars[N_train:N, :]
                 z_stars_test = z_stars[N_train:N, :]
-                m, n = y_stars_train.shape[1], x_stars_train[0, :].size
+                self.m, self.n = y_stars_train.shape[1], x_stars_train[0, :].size
             else:
                 x_stars_train, self.x_stars_test = None, None
                 y_stars_train, self.y_stars_test = None, None
