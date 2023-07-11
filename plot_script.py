@@ -16,8 +16,8 @@ from l2ws.utils.data_utils import recover_last_datetime
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
-    # "font.size": 24,
-    "font.size": 16,
+    "font.size": 24,
+    # "font.size": 16,
 })
 titles_2_colors = dict(cold_start='black', 
                        nearest_neighbor='magenta', 
