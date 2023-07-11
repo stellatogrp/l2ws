@@ -336,6 +336,9 @@ def custom_visualize_fn(x_primals, x_stars, x_no_learn, x_nn, thetas, iterates, 
             axarr[1, 2].set_title('learned')
             axarr[1, 2].axis('off')
 
+            # turn off third plot in top row
+            axarr[0, 2].axis('off')
+
             # plt.legend()
             plt.savefig(f"{visual_path}/blur_img_{i}/steps_{steps}.pdf")
 
