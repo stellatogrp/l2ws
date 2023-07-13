@@ -131,6 +131,16 @@ def mnist_plot_eval_iters(cfg):
     # plot_eval_iters(example, cfg, train=False)
     create_journal_results(example, cfg, train=False)
 
+
+@hydra.main(config_path='configs/quadcopter', config_name='quadcopter_plot.yaml')
+def quadcopter_plot_eval_iters(cfg):
+    example = 'quadcopter'
+    # plot_eval_iters(example, cfg, train=False)
+    overlay_training_losses(example, cfg)
+    # plot_eval_iters(example, cfg, train=False)
+    create_journal_results(example, cfg, train=False)
+
+
 @hydra.main(config_path='configs/all', config_name='plot.yaml')
 def plot_l4dc(cfg):
     orig_cwd = hydra.utils.get_original_cwd()
@@ -544,8 +554,11 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             # title = 'gain to cold-start'
             color = titles_2_colors[title]
             style = titles_2_styles[title]
+            print('start', start)
 
             if j > 0:
+                print('cs', cs.shape)
+                print('curr', np.array(curr_metric[j]))
                 gain = cs / np.array(curr_metric[j])[start:eval_iters + start]
                 axes[i + 1].plot(gain, linestyle=style, color=color)
             else:
@@ -1009,6 +1022,10 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'mnist/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         mnist_plot_eval_iters()
+    elif sys.argv[1] == 'quadcopter':
+        sys.argv[1] = base + 'quadcopter/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        quadcopter_plot_eval_iters()
     elif sys.argv[1] == 'all':
         sys.argv[1] = base + 'all/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
