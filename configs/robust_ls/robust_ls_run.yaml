@@ -1,7 +1,7 @@
 nn_cfg:
   lr: 1e-3
   method: adam
-  intermediate_layer_sizes: [1000, 1000]
+  intermediate_layer_sizes: [500, 500]
   batch_size: 100
   epochs: 1e6
   decay_lr: .1
@@ -25,7 +25,7 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 15
+train_unrolls: 60
 eval_unrolls: 300
 eval_every_x_epochs: 5
 save_every_x_epochs: 1

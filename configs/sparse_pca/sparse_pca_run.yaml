@@ -25,7 +25,7 @@ pretrain:
 data:
   datetime: '' #'2023-04-10/11-17-04'
 
-train_unrolls: 5
+train_unrolls: 60
 eval_unrolls: 500
 eval_every_x_epochs: 1
 save_every_x_epochs: 1
