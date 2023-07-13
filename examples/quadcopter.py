@@ -1277,7 +1277,7 @@ def plot_traj_3d(state_traj_list, goals, labels, goal_bound=1, filename=None, cr
     ax.axes.xaxis.set_ticklabels([])
     ax.axes.yaxis.set_ticklabels([])
     ax.axes.zaxis.set_ticklabels([])
-    ax.plot(goal_xs, goal_ys, goal_zs)
+    ax.plot(goal_xs, goal_ys, goal_zs, 'black')
 
 
     # plot the propeller data in a single plot
@@ -1319,7 +1319,7 @@ def plot_traj_3d(state_traj_list, goals, labels, goal_bound=1, filename=None, cr
             #     x, y, z = goals[k][0], goals[k][1], goals[k][2]
             #     # ax.scatter(x, y, z, cmap='Reds_r', c=weights[i], label=f"goal {i}")
             #     ax.scatter(x, y, z, label=f"goal {i}", c='black', s=1)
-            ax.plot(goal_xs, goal_ys, goal_zs)
+            ax.plot(goal_xs, goal_ys, goal_zs, 'black')
             frame_name = f"{filename}/frame_{i}.png"
             filenames.append(frame_name)
             plt.savefig(frame_name)
