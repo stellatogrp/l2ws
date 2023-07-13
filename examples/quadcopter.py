@@ -1271,6 +1271,12 @@ def plot_traj_3d(state_traj_list, goals, labels, goal_bound=1, filename=None, cr
     goal_ys = np.array([goals[i][1] for i in range(len(goals))])
     goal_zs = np.array([goals[i][2] for i in range(len(goals))])
     ax.plot(goal_xs, goal_ys, goal_zs)
+    ax.set_xlim([-1.1 * goal_bound, 1.1 * goal_bound])  # Set limits for the X-axis
+    ax.set_ylim([-1.1 * goal_bound, 1.1 * goal_bound])  # Set limits for the Y-axis
+    ax.set_zlim([-1.1 * goal_bound, 1.1 * goal_bound])
+    ax.axes.xaxis.set_ticklabels([])
+    ax.axes.yaxis.set_ticklabels([])
+    ax.axes.zaxis.set_ticklabels([])
 
 
     # plot the propeller data in a single plot
