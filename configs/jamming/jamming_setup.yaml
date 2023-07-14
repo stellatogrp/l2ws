@@ -1,0 +1,13 @@
+n: 100
+beta_min: 1
+beta_max: 2
+sigma_min: 1
+sigma_max: 2
+step_size: .005
+solve_acc_abs: 1e-10
+solve_acc_rel: 0
+N_train: 10
+N_test: 10
+seed: 42
+solve: True
+solve_iters: 1000

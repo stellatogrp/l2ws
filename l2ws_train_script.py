@@ -12,6 +12,7 @@ import examples.unconstrained_qp as unconstrained_qp
 import examples.mpc as mpc
 import examples.quadcopter as quadcopter
 import examples.mnist as mnist
+import examples.jamming as jamming
 import hydra
 import pdb
 import yaml
@@ -68,6 +69,19 @@ def main_run_quadcopter(cfg):
         cfg.data.datetime = setup_datetime
     copy_data_file(example, setup_datetime)
     quadcopter.run(cfg)
+
+
+@hydra.main(config_path='configs/jamming', config_name='jamming_run.yaml')
+def main_run_jamming(cfg):
+    orig_cwd = hydra.utils.get_original_cwd()
+    example = 'jamming'
+    setup_datetime = cfg.data.datetime
+    if setup_datetime == '':
+        # get the most recent datetime and update datetimes
+        setup_datetime = recover_last_datetime(orig_cwd, example, 'data_setup')
+        cfg.data.datetime = setup_datetime
+    copy_data_file(example, setup_datetime)
+    jamming.run(cfg)
 
 
 @hydra.main(config_path='configs/mnist', config_name='mnist_run.yaml')
@@ -247,3 +261,7 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'mnist/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_run_mnist()
+    elif sys.argv[1] == 'jamming':
+        sys.argv[1] = base + 'jamming/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_run_jamming()

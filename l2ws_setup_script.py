@@ -12,6 +12,7 @@ import examples.mpc as mpc
 import examples.unconstrained_qp as unconstrained_qp
 import examples.quadcopter as quadcopter
 import examples.mnist as mnist
+import examples.jamming as jamming
 import hydra
 
 
@@ -38,6 +39,11 @@ def main_setup_quadcopter(cfg):
 @hydra.main(config_path='configs/mnist', config_name='mnist_setup.yaml')
 def main_setup_mnist(cfg):
     mnist.setup_probs(cfg)
+
+
+@hydra.main(config_path='configs/jamming', config_name='jamming_setup.yaml')
+def main_setup_jamming(cfg):
+    jamming.setup_probs(cfg)
 
 
 @hydra.main(config_path='configs/robust_kalman', config_name='robust_kalman_setup.yaml')
@@ -140,3 +146,7 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'mnist/data_setup_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_setup_mnist()
+    elif sys.argv[1] == 'jamming':
+        sys.argv[1] = base + 'jamming/data_setup_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_setup_jamming()

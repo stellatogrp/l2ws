@@ -8,6 +8,7 @@ from l2ws.l2ws_model import L2WSmodel
 from l2ws.ista_model import ISTAmodel
 from l2ws.osqp_model import OSQPmodel
 from l2ws.scs_model import SCSmodel
+from l2ws.eg_model import EGmodel
 import jax.numpy as jnp
 import jax.scipy as jsp
 from jax import lax
@@ -106,6 +107,8 @@ class Workspace:
             self.create_osqp_model(cfg, static_dict)
         elif algo == 'scs':
             self.create_scs_model(cfg, static_dict)
+        elif algo == 'extragradient':
+            self.create_extragradient_model(cfg, static_dict)
 
     def create_ista_model(self, cfg, static_dict):
         # get A, lambd, ista_step
@@ -128,6 +131,35 @@ class Workspace:
                           z_stars_test=self.z_stars_test,
                           )
         self.l2ws_model = ISTAmodel(input_dict)
+
+    def create_extragradient_model(self, cfg, static_dict):
+        # get A, lambd, ista_step
+        # A, lambd = static_dict['A'], static_dict['lambd']
+        eg_step = static_dict['eg_step']
+        f = static_dict['f']
+        
+        proj_X, proj_Y = static_dict['proj_X'], static_dict['proj_Y']
+        m, n = static_dict['m'], static_dict['n']
+
+        input_dict = dict(algorithm='extragradient',
+                          f=f,
+                          proj_X=proj_X,
+                          proj_Y=proj_Y,
+                          m=m,
+                          n=n,
+                          supervised=cfg.supervised,
+                          train_unrolls=self.train_unrolls,
+                          jit=True,
+                          train_inputs=self.train_inputs,
+                          test_inputs=self.test_inputs,
+                          q_mat_train=self.q_mat_train,
+                          q_mat_test=self.q_mat_test,
+                          eg_step=eg_step,
+                          nn_cfg=cfg.nn_cfg,
+                          z_stars_train=self.z_stars_train,
+                          z_stars_test=self.z_stars_test,
+                          )
+        self.l2ws_model = EGmodel(input_dict)
 
     def create_osqp_model(self, cfg, static_dict):
         if self.static_flag:
@@ -435,6 +467,11 @@ class Workspace:
 
         if 'q_mat' in jnp_load_obj.keys():
             q_mat = jnp.array(jnp_load_obj['q_mat'])
+            q_mat_train = q_mat[:N_train, :]
+            q_mat_test = q_mat[N_train:N, :]
+            self.q_mat_train, self.q_mat_test = q_mat_train, q_mat_test
+        else:
+            q_mat = jnp.array(jnp_load_obj['thetas'])
             q_mat_train = q_mat[:N_train, :]
             q_mat_test = q_mat[N_train:N, :]
             self.q_mat_train, self.q_mat_test = q_mat_train, q_mat_test
