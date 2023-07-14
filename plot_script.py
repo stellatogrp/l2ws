@@ -132,6 +132,15 @@ def mnist_plot_eval_iters(cfg):
     create_journal_results(example, cfg, train=False)
 
 
+@hydra.main(config_path='configs/jamming', config_name='jamming_plot.yaml')
+def jamming_plot_eval_iters(cfg):
+    example = 'jamming'
+    # plot_eval_iters(example, cfg, train=False)
+    overlay_training_losses(example, cfg)
+    # plot_eval_iters(example, cfg, train=False)
+    create_journal_results(example, cfg, train=False)
+
+
 @hydra.main(config_path='configs/quadcopter', config_name='quadcopter_plot.yaml')
 def quadcopter_plot_eval_iters(cfg):
     example = 'quadcopter'
@@ -271,7 +280,7 @@ def create_journal_results(example, cfg, train=False):
 
 
 def determine_scs_or_osqp(example):
-    if example == 'unconstrained_qp' or example == 'lasso':
+    if example == 'unconstrained_qp' or example == 'lasso' or example == 'jamming':
         return False
     return True
 
@@ -488,6 +497,7 @@ def create_fixed_point_residual_table(metrics_fp, titles, accs):
     df_acc_both.to_csv('accuracies_reduction_both.csv')
 
 
+
 def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
     """
     metrics is a list of lists
@@ -505,77 +515,84 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
     note that we do not explicitly care about the k values
         we will manually create the legend in latex later
     """
-    num_metrics = len(metrics)
-    # fig_width = 6 if num_metrics == 3 else 9
     fig_width = 9
-        
-    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(18, fig_width), sharey=True)
-
-    # scs_osqp_titles = ['fixed point residuals', 'primal residuals', 'dual residuals']
-    # obj_titles = ['fixed point residuals', 'objective suboptimality']
-    # plt_titles = scs_osqp_titles if len(metrics) == 3 else obj_titles
-
+    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(18, 12))#, sharey=True)
     plt_titles = ['fixed point residuals', 'gain to cold-start']
 
+    # for i in range(2):
 
-    # for i in range(num_metrics):
-    for i in range(2):
-        axes[i].set_yscale('log')
-        axes[i].set_xlabel('evaluation iterations')
-        axes[i].set_title(plt_titles[i])
+    # yscale
+    axes[0, 0].set_yscale('log')
+    axes[0, 1].set_yscale('log')
+
+    # x-label
+    axes[0, 0].set_xlabel('evaluation iterations')
+    axes[0, 1].set_xlabel('evaluation iterations')
+    axes[1, 0].set_xlabel('evaluation iterations')
+    axes[1, 1].set_xlabel('evaluation iterations')
+
+    # titles
+    axes[0, 0].set_title('fixed point residuals with objective losses')
+    axes[0, 1].set_title('fixed point residuals with regression losses')
+    axes[1, 0].set_title('gain to cold-start with objective losses')
+    axes[1, 1].set_title('gain to cold-start with regression losses')
+    # axes[i].set_title(plt_titles[i])
 
     if len(metrics) == 3:
         start = 1
     else:
         start = 0
 
-    # for i in range(num_metrics):
     # plot the fixed point residual
     for i in range(1):
         curr_metric = metrics[i]
         for j in range(len(curr_metric)):
-        # for j in range(1):
             title = titles[j]
             color = titles_2_colors[title]
             style = titles_2_styles[title]
-            axes[i].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, color=color)
-            if vert_lines:
-                if title[0] == 'k':
-                    k = int(title[1:])
-                    # axes[i].vlines(k, 0, 1000, color=color)
-                    axes[i].axvline(k, color=color)
+            if title[:3] != 'reg':
+                axes[0, 0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, color=color)
+                # if vert_lines:
+                #     if title[0] == 'k':
+                #         k = int(title[1:])
+                #         axes[i].axvline(k, color=color)
+            if title[:3] != 'obj':
+                axes[0, 1].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, color=color)
+                # if vert_lines:
+                #     if title[0] == 'k':
+                #         k = int(title[1:])
+                #         axes[i].axvline(k, color=color)
 
     # plot the gain
     for i in range(1):
         curr_metric = metrics[i]
         for j in range(len(curr_metric)):
-        # for j in range(1):
             title = titles[j]
-            # title = 'gain to cold-start'
             color = titles_2_colors[title]
             style = titles_2_styles[title]
-            print('start', start)
-
             if j > 0:
-                print('cs', cs.shape)
-                print('curr', np.array(curr_metric[j]))
                 gain = cs / np.array(curr_metric[j])[start:eval_iters + start]
-                axes[i + 1].plot(gain, linestyle=style, color=color)
+                if title[:3] != 'reg':
+                    axes[1, 0].plot(gain, linestyle=style, color=color)
+                if title[:3] != 'obj':
+                    axes[1, 1].plot(gain, linestyle=style, color=color)
             else:
                 cs = np.array(curr_metric[j])[start:eval_iters + start]
 
-            if vert_lines:
-                if title[0] == 'k':
-                    k = int(title[1:])
-                    # plt.vlines(k, 0, 1000, color=color)
-                    plt.axvline(k, color=color)
-
+            # if vert_lines:
+            #     if title[0] == 'k':
+            #         k = int(title[1:])
+            #         plt.axvline(k, color=color)
+    fig.tight_layout()
     if vert_lines:
         plt.savefig('all_metric_plots_vert.pdf', bbox_inches='tight')
     else:
         plt.savefig('all_metric_plots.pdf', bbox_inches='tight')
-    fig.tight_layout()
+    
     plt.clf()
+
+
+
 
     # now plot the gain on a non-log plot
     # plot the gain
@@ -1026,6 +1043,10 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'quadcopter/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         quadcopter_plot_eval_iters()
+    elif sys.argv[1] == 'jamming':
+        sys.argv[1] = base + 'jamming/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        jamming_plot_eval_iters()
     elif sys.argv[1] == 'all':
         sys.argv[1] = base + 'all/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
