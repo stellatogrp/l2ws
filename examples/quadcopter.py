@@ -129,7 +129,7 @@ def run(run_cfg):
     static_canon_mpc_osqp_partial = partial(static_canon_mpc_osqp, T=T, nx=nx, nu=nu,
                                         x_min=x_min, x_max=x_max, u_min=u_min,
                                         u_max=u_max, Q=Q, QT=QT, R=R, delta_u=delta_u)
-    plot_traj_3d_partial = partial(plot_traj_3d, goal_bound=setup_cfg['goal_bound'])
+    plot_traj_3d_partial = partial(plot_traj_3d, T=T, goal_bound=setup_cfg['goal_bound'])
     closed_loop_rollout_dict = dict(rollout_length=rollout_length, 
                                     num_rollouts=run_cfg['num_rollouts'],
                                     closed_loop_budget=run_cfg['closed_loop_budget'],
@@ -1150,7 +1150,7 @@ def inertia_matrix_inverse(quaternion):
     return R @ I_inv @ R.T
 
 
-def plot_traj_3d(state_traj_list, goals, labels, goal_bound=1, filename=None, create_gif=True, gif_time=1):
+def plot_traj_3d(state_traj_list, goals, labels, T=10, goal_bound=1, filename=None, create_gif=True, gif_time=1):
     """
     state_traj_list is a list of lists
     """
@@ -1277,8 +1277,7 @@ def plot_traj_3d(state_traj_list, goals, labels, goal_bound=1, filename=None, cr
     ax.axes.xaxis.set_ticklabels([])
     ax.axes.yaxis.set_ticklabels([])
     ax.axes.zaxis.set_ticklabels([])
-    ax.plot(goal_xs, goal_ys, goal_zs, 'black')
-
+    ax.plot(goal_xs[:-T], goal_ys[:-T], goal_zs[:-T], 'black')
 
     # plot the propeller data in a single plot
     for i in range(len(propeller_data)):
@@ -1319,7 +1318,7 @@ def plot_traj_3d(state_traj_list, goals, labels, goal_bound=1, filename=None, cr
             #     x, y, z = goals[k][0], goals[k][1], goals[k][2]
             #     # ax.scatter(x, y, z, cmap='Reds_r', c=weights[i], label=f"goal {i}")
             #     ax.scatter(x, y, z, label=f"goal {i}", c='black', s=1)
-            ax.plot(goal_xs, goal_ys, goal_zs, 'black')
+            ax.plot(goal_xs[:-T], goal_ys[:-T], goal_zs[:-T], 'black')
             frame_name = f"{filename}/frame_{i}.png"
             filenames.append(frame_name)
             plt.savefig(frame_name)
