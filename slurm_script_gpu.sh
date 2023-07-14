@@ -20,7 +20,7 @@ echo "Executing on the machine:" $(hostname)
 export XLA_PYTHON_CLIENT_MEM_FRACTION='0.90'
 
 
-python l2ws_train_script.py quadcopter cluster
+python l2ws_train_script.py jamming cluster
 # python aggregate_slurm_runs_script.py robust_ls cluster
 
 
