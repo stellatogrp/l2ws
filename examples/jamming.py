@@ -93,6 +93,8 @@ def setup_probs(setup_cfg):
     #                         supervised=False, z_star=None, jit=True)
     z_stars = jnp.zeros((N, 2 * n))
     for i in range(N):
+        if i % 100 == 0:
+            print('solving ith prob', i)
         z_final, iter_losses, z_all, obj_diffs = k_steps_eval_extragrad(k, z0,
                                                                         theta_mat[i, :],
                                                                         f, proj_X, proj_Y, n, eg_step,
