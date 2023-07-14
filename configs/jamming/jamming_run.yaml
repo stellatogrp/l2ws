@@ -12,7 +12,7 @@ plateau_decay:
   min_lr: 1e-7
   decay_factor: 5
   avg_window_size: 5 # in epochs
-  tolerance: 1e-8 #1e-3
+  tolerance: 1e-4 #1e-3
   patience: 1
 
 
