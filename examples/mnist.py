@@ -278,8 +278,7 @@ def vectorized2DBlurMatrix(m, n, width=3):
     return np.kron(Brows, Bcols)
 
 
-
-def custom_visualize_fn(x_primals, x_stars, x_no_learn, x_nn, thetas, iterates, visual_path):
+def custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn, thetas, iterates, visual_path, num=20, quantiles=[.01, .05, .1, .2, .5, .8, .9, .95, .99]):
     """
     assume len(iterates) == 1 for now
         point is to compare no-learning vs learned for after iterates number of steps
@@ -295,69 +294,90 @@ def custom_visualize_fn(x_primals, x_stars, x_no_learn, x_nn, thetas, iterates, 
     """
     # assert len(iterates) == 1
     # iter_num = iterates[0]
-    num = x_no_learn.shape[0]
-    for i in range(num):
+    # num = x_no_learn.shape[0]
+    lim = np.min([num, z_no_learn.shape[0]])
+    for i in range(lim):
         # create the folder
-        if not os.path.exists(f"{visual_path}/blur_img_{i}"):
-            os.mkdir(f"{visual_path}/blur_img_{i}")
+        if not os.path.exists(f"{visual_path}/first_few/"):
+            os.mkdir(f"{visual_path}/first_few/")
+        if not os.path.exists(f"{visual_path}/first_few/blur_img_{i}"):
+            os.mkdir(f"{visual_path}/first_few/blur_img_{i}")
             
         for j in range(len(iterates)):
             steps = iterates[j]
+            filename = f"{visual_path}/first_few/blur_img_{i}/steps_{steps}.pdf"
+            x_star = z_stars[i, :784]
+            blurred_img_vec = thetas[i, :784]
+            x_no_learn = z_no_learn[i, steps, :784]
+            x_nn = z_nn[i, steps, :784]
+            x_learn = z_all[i, steps, :784]
+            plot_mnist_img(x_star, blurred_img_vec, x_no_learn, x_nn, x_learn, filename)
 
-            f, axarr = plt.subplots(2, 3)
+    # plot the quantiles
+    # first get the nn distances, a vector of length (N) 
+    distances = np.linalg.norm(z_stars - z_nn[:, 0, :], axis=1)
+    import pdb
+    pdb.set_trace()
+    argsort_dist = np.argsort(distances)
+    for i in range(len(quantiles)):
+        quantile = quantiles[i]
+        if not os.path.exists(f"{visual_path}/quantiles/"):
+            os.mkdir(f"{visual_path}/quantiles/")
+        if not os.path.exists(f"{visual_path}/quantiles/quantile_{quantile}"):
+            os.mkdir(f"{visual_path}/quantiles/quantile_{quantile}")
 
-            # get the clean image (optimal solution) from x_stars
-            opt_img = np.reshape(x_stars[i, :784], (28,28))
-            axarr[0, 0].imshow(opt_img, cmap=plt.get_cmap('gray'))
-            axarr[0, 0].set_title('optimal')
-            axarr[0, 0].axis('off')
+        # find the test index that corresponds to the specific quantile
+        quantile_index = int(quantile * distances.size)
+        index = argsort_dist[quantile_index]
 
-            # get the blurred image from theta
-            blurred_img = np.reshape(thetas[i, :784], (28,28))
-            axarr[0, 1].imshow(blurred_img, cmap=plt.get_cmap('gray'))
-            axarr[0, 1].set_title('blurred')
-            axarr[0, 1].axis('off')
-
-            # cold-start
-            cold_start_img = np.reshape(x_no_learn[i, steps, :784], (28,28))
-            axarr[1, 0].imshow(cold_start_img, cmap=plt.get_cmap('gray'))
-            axarr[1, 0].set_title('cold-start')
-            axarr[1, 0].axis('off')
-
-            # nearest neighbor
-            nearest_neighbor_img = np.reshape(x_nn[i, steps, :784], (28,28))
-            axarr[1, 1].imshow(nearest_neighbor_img, cmap=plt.get_cmap('gray'))
-            axarr[1, 1].set_title('nearest neighbor')
-            axarr[1, 1].axis('off')
-
-            # learned
-            learned_img = np.reshape(x_primals[i, steps, :784], (28,28))
-            axarr[1, 2].imshow(learned_img, cmap=plt.get_cmap('gray'))
-            axarr[1, 2].set_title('learned')
-            axarr[1, 2].axis('off')
-
-            # turn off third plot in top row
-            axarr[0, 2].axis('off')
-
-            # plt.legend()
-            plt.savefig(f"{visual_path}/blur_img_{i}/steps_{steps}.pdf")
+        for j in range(len(iterates)):
+            steps = iterates[j]
+            filename = f"{visual_path}/quantiles/quantile_{quantile}/steps_{steps}.pdf"
+            x_star = z_stars[index, :784]
+            blurred_img_vec = thetas[index, :784]
+            x_no_learn = z_no_learn[index, steps, :784]
+            x_nn = z_nn[index, steps, :784]
+            x_learn = z_all[index, steps, :784]
+            plot_mnist_img(x_star, blurred_img_vec, x_no_learn, x_nn, x_learn, filename)
 
 
-        # titles = ['optimal solution', 'noisy trajectory']
-        # x_true_kalman = get_x_kalman_from_x_primal(x_stars[i, :], T)
-        # traj = [x_true_kalman, y_mat_rotated[i, :].T]
+def plot_mnist_img(x_star, blurred_img_vec, x_no_learn, x_nn, x_learn, filename):
+    f, axarr = plt.subplots(2, 3)
 
-        # for j in range(len(iterates)):
-        #     iter = iterates[j]
-        #     x_no_learn_kalman = get_x_kalman_from_x_primal(x_no_learn[i, iter, :], T)
-        #     x_hat_kalman = get_x_kalman_from_x_primal(x_primals[i, iter, :], T)
-        #     x_nn_kalman = get_x_kalman_from_x_primal(x_nn[i, iter, :], T)
-        #     traj.append(x_no_learn_kalman)
-        #     traj.append(x_nn_kalman)
-        #     traj.append(x_hat_kalman)
-        #     titles.append(f"no learning: ${iter}$ iters")
-        #     titles.append(f"nearest neighbor: ${iter}$ iters")
-        #     titles.append(f"learned: ${iter}$ iters")
+    # get the clean image (optimal solution) from x_stars
+    opt_img = np.reshape(x_star, (28,28))
+    axarr[0, 0].imshow(opt_img, cmap=plt.get_cmap('gray'))
+    axarr[0, 0].set_title('optimal')
+    axarr[0, 0].axis('off')
 
-        # plot_positions_overlay(traj, titles, filename=f"{visual_path}/positions_{i}_rotated_legend.pdf", legend=True)
-        # plot_positions_overlay(traj, titles, filename=f"{visual_path}/positions_{i}_rotated.pdf", legend=False)
+    # get the blurred image from theta
+    blurred_img = np.reshape(blurred_img_vec, (28,28))
+    axarr[0, 1].imshow(blurred_img, cmap=plt.get_cmap('gray'))
+    axarr[0, 1].set_title('blurred')
+    axarr[0, 1].axis('off')
+
+    # cold-start
+    cold_start_img = np.reshape(x_no_learn, (28,28))
+    axarr[1, 0].imshow(cold_start_img, cmap=plt.get_cmap('gray'))
+    axarr[1, 0].set_title('cold-start')
+    axarr[1, 0].axis('off')
+
+    # nearest neighbor
+    nearest_neighbor_img = np.reshape(x_nn, (28,28))
+    axarr[1, 1].imshow(nearest_neighbor_img, cmap=plt.get_cmap('gray'))
+    axarr[1, 1].set_title('nearest neighbor')
+    axarr[1, 1].axis('off')
+
+    # learned
+    learned_img = np.reshape(x_learn, (28,28))
+    axarr[1, 2].imshow(learned_img, cmap=plt.get_cmap('gray'))
+    axarr[1, 2].set_title('learned')
+    axarr[1, 2].axis('off')
+
+    # turn off third plot in top row
+    axarr[0, 2].axis('off')
+
+    # plt.legend()
+    # plt.savefig(f"{visual_path}/blur_img_{i}/steps_{steps}.pdf")
+    plt.savefig(filename)
+    plt.clf()
