@@ -26,7 +26,7 @@ data:
   datetime: ''
 
 train_unrolls: 5
-eval_unrolls: 1000
+eval_unrolls: 2000
 eval_every_x_epochs: 200
 save_every_x_epochs: 1
 test_every_x_epochs: 1

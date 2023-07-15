@@ -516,7 +516,7 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
         we will manually create the legend in latex later
     """
     fig_width = 9
-    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(18, 12))#, sharey=True)
+    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(18, 12), sharey='row') #, sharey=True)
     plt_titles = ['fixed point residuals', 'gain to cold-start']
 
     # for i in range(2):
@@ -570,14 +570,17 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             title = titles[j]
             color = titles_2_colors[title]
             style = titles_2_styles[title]
-            if j > 0:
-                gain = cs / np.array(curr_metric[j])[start:eval_iters + start]
-                if title[:3] != 'reg':
-                    axes[1, 0].plot(gain, linestyle=style, color=color)
-                if title[:3] != 'obj':
-                    axes[1, 1].plot(gain, linestyle=style, color=color)
-            else:
+            # if j > 0:
+            #     gain = cs / np.array(curr_metric[j])[start:eval_iters + start]
+            # else:
+            #     cs = np.array(curr_metric[j])[start:eval_iters + start]
+            if j == 0:
                 cs = np.array(curr_metric[j])[start:eval_iters + start]
+            gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], a_min=0, a_max=200)
+            if title[:3] != 'reg':
+                axes[1, 0].plot(gain, linestyle=style, color=color)
+            if title[:3] != 'obj':
+                axes[1, 1].plot(gain, linestyle=style, color=color)
 
             # if vert_lines:
             #     if title[0] == 'k':

@@ -43,6 +43,7 @@ class Workspace:
         static_dict holds the data that doesn't change from problem to problem
         example is the string (e.g. 'robust_kalman')
         '''
+        self.algo = algo
         self.static_flag = static_flag
         self.example = example
         self.eval_unrolls = cfg.eval_unrolls
@@ -190,9 +191,12 @@ class Workspace:
         else:
             self.m, self.n = static_dict['m'], static_dict['n']
             m, n = self.m, self.n
+            print('m, n', m, n)
             rho_vec = jnp.ones(m)
             l0 = self.q_mat_train[0, n: n + m]
             u0 = self.q_mat_train[0, n + m: n + 2 * m]
+            print('l0', l0)
+            print('u0', u0)
             rho_vec = rho_vec.at[l0 == u0].set(1000)
 
             t0 = time.time()
@@ -470,7 +474,7 @@ class Workspace:
             q_mat_train = q_mat[:N_train, :]
             q_mat_test = q_mat[N_train:N, :]
             self.q_mat_train, self.q_mat_test = q_mat_train, q_mat_test
-        else:
+        elif self.algo == 'extragradient':
             q_mat = jnp.array(jnp_load_obj['thetas'])
             q_mat_train = q_mat[:N_train, :]
             q_mat_test = q_mat[N_train:N, :]
