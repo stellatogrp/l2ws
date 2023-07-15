@@ -14,6 +14,7 @@ import os
 import gzip
 import matplotlib.pyplot as plt
 import hydra
+from emnist import extract_training_samples
 
 
 def run(run_cfg):
@@ -69,6 +70,7 @@ def setup_probs(setup_cfg):
     N_train, N_test = cfg.N_train, cfg.N_test
     N = N_train + N_test
     lambd = cfg.lambd
+    emnist = cfg.get('emnist', True)
 
     # np.random.seed(setup_cfg['seed'])
     # m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
@@ -94,7 +96,7 @@ def setup_probs(setup_cfg):
     blur_size = setup_cfg['blur_size']
 
     # load the mnist images
-    x_train, x_test = get_mnist()
+    x_train, x_test = get_mnist(emnist=emnist)
 
     # get the blur matrix
     B = vectorized2DBlurMatrix(28, 28, blur_size)
@@ -105,7 +107,7 @@ def setup_probs(setup_cfg):
     A = np.eye(n)
 
     q_mat = jnp.zeros((N, 2 * m + n))
-    q_mat = q_mat.at[:, m + n:].set(jnp.inf)
+    q_mat = q_mat.at[:, m + n:].set(jnp.inf) #q_mat.at[:, m + n:].set(1)
 
     theta_mat = jnp.zeros((N, n))
 
@@ -180,18 +182,24 @@ def load_mnist(path, kind='train'):
     return images, labels
 
 
-def get_mnist():
+def get_mnist(emnist=True):
     orig_cwd = hydra.utils.get_original_cwd()
+    if emnist:
+        images, labels = extract_training_samples('letters')
+        images = images[:20000, :, :]
+        x_train = np.reshape(images, (images.shape[0], 784)) / 255
+        x_test = None
 
-    # Load MNIST dataset
-    # x_train, y_train = load_mnist('mnist_data', kind='train')
-    # x_test, y_test = load_mnist('mnist_data', kind='t10k')
-    x_train, y_train = load_mnist(f"{orig_cwd}/examples/mnist_data", kind='train')
-    x_test, y_test = load_mnist(f"{orig_cwd}/examples/mnist_data", kind='t10k')
+    else:
+        # Load MNIST dataset
+        # x_train, y_train = load_mnist('mnist_data', kind='train')
+        # x_test, y_test = load_mnist('mnist_data', kind='t10k')
+        x_train, y_train = load_mnist(f"{orig_cwd}/examples/mnist_data", kind='train')
+        x_test, y_test = load_mnist(f"{orig_cwd}/examples/mnist_data", kind='t10k')
 
-    # Normalize pixel values
-    x_train = x_train.astype('float32') / 255
-    x_test = x_test.astype('float32') / 255
+        # Normalize pixel values
+        x_train = x_train.astype('float32') / 255
+        x_test = x_test.astype('float32') / 255
     return x_train, x_test
 
 
@@ -209,7 +217,7 @@ def mnist_canon(A, lambd, blurred_img):
     #         tv += cp.abs(x[i, j + 1] - x[i, j]) + cp.abs(x[i + 1, j] - x[i, j])
 
     # prob = cp.Problem(cp.Minimize(lambd * tv + cp.sum_squares(A @ cp.vec(x) - b))) 
-    constraints = [x >= 0]
+    constraints = [x >= 0, x <= 1]
     prob = cp.Problem(cp.Minimize(lambd * cp.sum(x) + cp.sum_squares(A @ cp.vec(x) - b)), constraints)
     data, chain, inverse_data = prob.get_problem_data(cp.OSQP)
 
@@ -315,9 +323,11 @@ def custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn, thetas, iterates, visu
 
     # plot the quantiles
     # first get the nn distances, a vector of length (N) 
-    distances = np.linalg.norm(z_stars - z_nn[:, 0, :], axis=1)
-    import pdb
-    pdb.set_trace()
+    lim = z_nn.shape[0]
+    distances = np.linalg.norm(z_stars[:lim, :] - z_nn[:, 0, :], axis=1)
+    # distances = np.linalg.norm(z_stars - z_nn[:, 0, :], axis=1)
+    # import pdb
+    # pdb.set_trace()
     argsort_dist = np.argsort(distances)
     for i in range(len(quantiles)):
         quantile = quantiles[i]
