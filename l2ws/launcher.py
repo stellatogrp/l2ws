@@ -611,20 +611,12 @@ class Workspace:
 
         # custom visualize
         if self.has_custom_visualization:
-            # if self.l2ws_model.hsde:
-            #     tau = u_all[:, :, -1:]
-            #     x_primals = u_all[:, :, :self.l2ws_model.n] / tau
-            # else:
-            #     x_primals = u_all[:, :, :self.l2ws_model.n]
-            if isinstance(self.l2ws_model, OSQPmodel):
-                x_primals = z_all[:, :, :self.l2ws_model.n]
-            elif isinstance(self.l2ws_model, SCSmodel):
-                x_primals = u_all[:, :, :self.l2ws_model.n] / u_all[:, :, -1:]
-            self.custom_visualize(x_primals, train, col)
-            # try:
-            #     self.custom_visualize(x_primals, train, col)
-            # except:
-            #     print('Exception occurred during custom visualization')
+            # if isinstance(self.l2ws_model, OSQPmodel):
+            #     x_primals = z_all[:, :, :self.l2ws_model.n]
+            # elif isinstance(self.l2ws_model, SCSmodel):
+            #     x_primals = u_all[:, :, :self.l2ws_model.n] / u_all[:, :, -1:]
+            # self.custom_visualize(x_primals, train, col)
+            self.custom_visualize(z_all, train, col)
 
         # closed loop control rollouts
         if not train:
@@ -953,9 +945,56 @@ class Workspace:
         # w1 = sol[T*nx + nu:T*nx + 2*nu]
 
         return sol, P, A, factor, q
+    
+
+    # def custom_visualize(self, x_primals, train, col):
+    #     """
+    #     x_primals has shape [N, eval_iters]
+    #     """
+    #     visualize_path = 'visualize_train' if train else 'visualize_test'
+
+    #     if not os.path.exists(visualize_path):
+    #         os.mkdir(visualize_path)
+    #     if not os.path.exists(f"{visualize_path}/{col}"):
+    #         os.mkdir(f"{visualize_path}/{col}")
+
+    #     visual_path = f"{visualize_path}/{col}"
+
+    #     # call custom visualize fn
+    #     if train:
+    #         # x_stars = self.l2ws_model.x_stars_train
+    #         x_stars = self.x_stars_train
+    #         thetas = self.thetas_train
+    #         if 'x_nn_train' in dir(self):
+    #             x_nn = self.x_nn_train
+    #     else:
+    #         # x_stars = self.l2ws_model.x_stars_test
+    #         x_stars = self.x_stars_test
+    #         thetas = self.thetas_test
+    #         if 'x_nn_test' in dir(self):
+    #             x_nn = self.x_nn_test
+
+    #     if col == 'no_train':
+    #         if train:
+    #             self.x_no_learn_train = x_primals[:self.vis_num, :, :]
+    #         else:
+    #             self.x_no_learn_test = x_primals[:self.vis_num, :, :]
+    #     elif col == 'nearest_neighbor':
+    #         if train:
+    #             self.x_nn_train = x_primals[:self.vis_num, :, :]
+    #         else:
+    #             self.x_nn_test = x_primals[:self.vis_num, :, :]
+    #     if train:
+    #         x_no_learn = self.x_no_learn_train[:self.vis_num, :, :]
+    #     else:
+    #         x_no_learn = self.x_no_learn_test[:self.vis_num, :, :]
+
+    #     if col != 'nearest_neighbor' and col != 'no_train':
+    #         self.custom_visualize_fn(x_primals, x_stars, x_no_learn, x_nn,
+    #                                  thetas, self.iterates_visualize, visual_path)
 
 
-    def custom_visualize(self, x_primals, train, col):
+    def custom_visualize(self, z_all, train, col):
         """
         x_primals has shape [N, eval_iters]
         """
@@ -970,40 +1009,35 @@ class Workspace:
 
         # call custom visualize fn
         if train:
-            # x_stars = self.l2ws_model.x_stars_train
-            x_stars = self.x_stars_train
+            z_stars = self.z_stars_train
             thetas = self.thetas_train
-            if 'x_nn_train' in dir(self):
-                x_nn = self.x_nn_train
+            if 'z_nn_train' in dir(self):
+                z_nn = self.z_nn_train
         else:
-            # x_stars = self.l2ws_model.x_stars_test
-            x_stars = self.x_stars_test
+            z_stars = self.z_stars_test
             thetas = self.thetas_test
-            if 'x_nn_test' in dir(self):
-                x_nn = self.x_nn_test
+            if 'z_nn_test' in dir(self):
+                z_nn = self.z_nn_test
 
         if col == 'no_train':
             if train:
-                self.x_no_learn_train = x_primals[:self.vis_num, :, :]
+                self.z_no_learn_train = z_all #[:self.vis_num, :, :]
             else:
-                self.x_no_learn_test = x_primals[:self.vis_num, :, :]
+                self.z_no_learn_test = z_all # x_primals[:self.vis_num, :, :]
         elif col == 'nearest_neighbor':
             if train:
-                self.x_nn_train = x_primals[:self.vis_num, :, :]
+                self.z_nn_train = z_all #x_primals[:self.vis_num, :, :]
             else:
-                self.x_nn_test = x_primals[:self.vis_num, :, :]
+                self.z_nn_test = z_all #x_primals[:self.vis_num, :, :]
         if train:
-            x_no_learn = self.x_no_learn_train[:self.vis_num, :, :]
+            z_no_learn = self.z_no_learn_train
         else:
-            x_no_learn = self.x_no_learn_test[:self.vis_num, :, :]
+            z_no_learn = self.z_no_learn_test
 
         if col != 'nearest_neighbor' and col != 'no_train':
-            self.custom_visualize_fn(x_primals, x_stars, x_no_learn, x_nn,
+            self.custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn,
                                      thetas, self.iterates_visualize, visual_path)
 
-        # save x_primals to csv (TODO)
-        # x_primals_df = pd.DataFrame(x_primals[:5, :])
-        # x_primals_df.to_csv(f"{visualize_path}/{col}/x_primals.csv")
 
     def run(self):
         # setup logging and dataframes
