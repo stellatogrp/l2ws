@@ -576,7 +576,7 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             #     cs = np.array(curr_metric[j])[start:eval_iters + start]
             if j == 0:
                 cs = np.array(curr_metric[j])[start:eval_iters + start]
-            gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], a_min=0, a_max=200)
+            gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], a_min=0, a_max=150)
             if title[:3] != 'reg':
                 axes[1, 0].plot(gain, linestyle=style, color=color)
             if title[:3] != 'obj':

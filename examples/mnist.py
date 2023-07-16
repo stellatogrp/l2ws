@@ -286,7 +286,8 @@ def vectorized2DBlurMatrix(m, n, width=3):
     return np.kron(Brows, Bcols)
 
 
-def custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn, thetas, iterates, visual_path, num=20, quantiles=[.01, .05, .1, .2, .5, .8, .9, .95, .99]):
+def custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn, thetas, iterates, visual_path, num=20, 
+                        quantiles=[.01, .05, .1, .2, .25, .3, .35, .4, .45, .45, .5, .55, .6, .65, .7, .75, .8, .85, .9, .95, .99]):
     """
     assume len(iterates) == 1 for now
         point is to compare no-learning vs learned for after iterates number of steps
@@ -324,7 +325,7 @@ def custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn, thetas, iterates, visu
     # plot the quantiles
     # first get the nn distances, a vector of length (N) 
     lim = z_nn.shape[0]
-    distances = np.linalg.norm(z_stars[:lim, :] - z_nn[:, 0, :], axis=1)
+    distances = np.linalg.norm(z_stars[:lim, :] - z_nn[:, 0, :], axis=1) / np.linalg.norm(z_nn[:, 0, :], axis=1)
     # distances = np.linalg.norm(z_stars - z_nn[:, 0, :], axis=1)
     # import pdb
     # pdb.set_trace()

@@ -104,10 +104,10 @@ def direct_osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=No
 
     # P, A
     osqp_solver = osqp.OSQP()
-    P_sparse, A_sparse = 100 * csc_matrix(np.array(P)), csc_matrix(np.array(A))
+    P_sparse, A_sparse = csc_matrix(np.array(P)), csc_matrix(np.array(A))
     c, l, u = np.zeros(n), np.zeros(m), np.zeros(m)
     osqp_solver.setup(P=P_sparse, q=c, A=A_sparse, l=l, u=u,
-                        max_iter=20, verbose=True, eps_abs=1e-5, eps_rel=1e-5)
+                        max_iter=2000, verbose=True, eps_abs=1e-5, eps_rel=1e-5)
 
     solve_times = np.zeros(N)
     if z_stars is None:
