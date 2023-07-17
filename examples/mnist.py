@@ -326,7 +326,7 @@ def custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn, thetas, iterates, visu
     # first get the nn distances, a vector of length (N) 
     lim = z_nn.shape[0]
     # distances = np.linalg.norm(z_stars[:lim, :] - z_nn[:, 0, :], axis=1) / np.linalg.norm(z_nn[:, 0, :], axis=1)
-    distances = np.linalg.norm(z_stars - z_nn[:, 0, :], axis=1)
+    distances = np.linalg.norm(z_stars[:lim, :] - z_nn[:, 0, :], axis=1)
     mult_percentiles = [.1, .5, .9, .99]
     mult_percentiles_indices = []
 
