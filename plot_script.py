@@ -690,107 +690,132 @@ def overlay_training_losses(example, cfg):
     retrieve the training + test loss values held in 
     train_test_results.csv
     '''
-    all_train_losses = []
-    all_test_losses = []
-    for i in range(len(datetimes)):
-        datetime = datetimes[i]
-        train_losses, test_losses = get_loss_data(example, datetime)
-        all_train_losses.append(train_losses)
-        all_test_losses.append(test_losses)
-
-    # titles = cfg.loss_overlay_titles
+    # all_train_losses = []
+    # all_test_losses = []
     # for i in range(len(datetimes)):
-    #     plt.plot(all_train_losses[i], label=f"train: {titles[i]}")
-    #     plt.plot(all_test_losses[i], label=f"test: {titles[i]}")
-    # plt.yscale('log')
-    # plt.xlabel('epochs')
-    # plt.ylabel('fixed point residual average')
-    # plt.legend()
-    # plt.savefig('losses_over_epochs.pdf', bbox_inches='tight')
-    # plt.clf()
-
-    # for i in range(len(datetimes)):
-    #     plt.plot(all_train_losses[i], label=f"train: {titles[i]}")
-    # plt.yscale('log')
-    # plt.xlabel('epochs')
-    # plt.ylabel('fixed point residual average')
-    # plt.legend()
-    # plt.savefig('train_losses_over_epochs.pdf', bbox_inches='tight')
-    # plt.clf()
+    #     datetime = datetimes[i]
+    #     train_losses, test_losses = get_loss_data(example, datetime)
+    #     all_train_losses.append(train_losses)
+    #     all_test_losses.append(test_losses)
 
     """"
     now create table like
-
     k                   5       15      50  
     train reduction
     test reduction
     reduction gap
     """
-    relative_loss_df = pd.DataFrame()
-    relative_loss_df['rows'] = ['relative_train_loss', 'relative_test_loss', 'relative_gap']
-    k_values = []
-    # rel_gen_gaps = []
-    gain_gaps = []
-    gain_ratios = []
-    rel_tr_losses = []
-    rel_te_losses = []
-    for i in range(len(datetimes)):
-        tr_losses = all_train_losses[i]
-        te_losses = all_test_losses[i]
-        orig_loss = te_losses[0]
-        print(f"tr_losses", tr_losses)
-        print(f"te_losses", te_losses)
-        print(f"orig_loss: {orig_loss}")
+    # relative_loss_df = pd.DataFrame()
+    # relative_loss_df['rows'] = ['relative_train_loss', 'relative_test_loss', 'relative_gap']
+    # k_values = []
+    # # gain_gaps = []
+    # gain_ratios = []
+    # # rel_tr_losses = []
+    # # rel_te_losses = []
+    # for i in range(len(datetimes)):
+    #     tr_losses = all_train_losses[i]
+    #     te_losses = all_test_losses[i]
+    #     orig_loss = te_losses[0]
+    #     print(f"tr_losses", tr_losses)
+    #     print(f"te_losses", te_losses)
+    #     print(f"orig_loss: {orig_loss}")
         
-        train_gain = orig_loss / tr_losses[-1:].mean()
-        test_gain = orig_loss / te_losses.iloc[-1]
-        gain_gap = train_gain - test_gain
-        gain_ratio = test_gain / train_gain
-        # rel_train_loss = tr_losses[-1:].mean() / orig_loss
-        # rel_test_loss = te_losses.iloc[-1] / orig_loss
-        # rel_gap = rel_test_loss - rel_train_loss 
+    #     train_gain = orig_loss / tr_losses[-1:].mean()
+    #     test_gain = orig_loss / te_losses.iloc[-1]
+    #     gain_gap = train_gain - test_gain
+    #     gain_ratio = test_gain / train_gain
+
+    #     k = get_k(orig_cwd, example, datetimes[i])
+    #     print('k_val', k)
+    #     k_values.append(k)
+    #     col = f"k = {k}"
+
+    #     row = np.array([train_gain, test_gain, gain_gap])
+    #     gain_gaps.append(gain_gap)
+    #     gain_ratios.append(gain_ratio)
+    #     rel_tr_losses.append(train_gain)
+    #     rel_te_losses.append(test_gain)
+    #     print(f"row: {row}")
+    #     relative_loss_df[col] = np.round(row, decimals=3)
+    # relative_loss_df.to_csv('relative_losses.csv')
+
+
+    gain_ratios = []
+    for i in range(len(datetimes)):
+        datetime = datetimes[i]
         k = get_k(orig_cwd, example, datetimes[i])
-        print('k_val', k)
-        k_values.append(k)
-        col = f"k = {k}"
-
-        # row = np.array([rel_train_loss, rel_test_loss, rel_gap])
-        # rel_gen_gaps.append(rel_gap)
-        # rel_tr_losses.append(rel_train_loss)
-        # rel_te_losses.append(rel_test_loss)
-
-        row = np.array([train_gain, test_gain, gain_gap])
-        gain_gaps.append(gain_gap)
+        title = k
+        metric_train, timings_train = load_data_per_title(example, title, datetime, train=True)
+        fp_res_train = metric_train[0]
+        metric_test, timings_test = load_data_per_title(example, title, datetime, train=False)
+        fp_res_test = metric_test[0]
+        gain_ratio = fp_res_test[k] / fp_res_train[k]
+        # gain_ratios[i] = gain_ratio
         gain_ratios.append(gain_ratio)
-        rel_tr_losses.append(train_gain)
-        rel_te_losses.append(test_gain)
-        print(f"row: {row}")
-        relative_loss_df[col] = np.round(row, decimals=3)
-    relative_loss_df.to_csv('relative_losses.csv')
 
+    k_vals_obj,  gain_ratios_obj, k_vals_reg, gain_ratios_reg = [], [], [], []
+    for i in range(len(datetimes)):
+        datetime = datetimes[i]
+        k = get_k(orig_cwd, example, datetimes[i])
+        loss_type = get_loss_type(orig_cwd, example, datetime)
+        gain_ratio = gain_ratios[i]
+        if loss_type == 'obj':
+            k_vals_obj.append(k)
+            gain_ratios_obj.append(gain_ratio)
+        elif loss_type == 'reg':
+            k_vals_reg.append(k)
+            gain_ratios_reg.append(gain_ratio)
+    create_train_test_plots(k_vals_obj,  gain_ratios_obj, k_vals_reg, gain_ratios_reg)
+
+    # # now give a plot for the generalization
+    # plt.plot(np.array(k_values), np.array(gain_gaps))
+    # plt.xlabel('k')
+    # plt.ylabel('gain gap')
+    # plt.savefig('gain_gaps.pdf')
+    # plt.clf()
+
+    # plt.plot(np.array(k_values), np.array(gain_ratios))
+    # plt.xlabel('k')
+    # plt.ylabel('gain ratio')
+    # plt.savefig('gain_ratios.pdf')
+    # plt.clf()
+
+    # # plot the relative train and test final losses
+    # # now give a plot for the generalization
+    # plt.plot(np.array(k_values), np.array(rel_tr_losses), label='train')
+    # plt.plot(np.array(k_values), np.array(rel_te_losses), label='test')
+    # plt.xlabel('k')
+    # plt.ylabel('relative final losses')
+    # plt.legend()
+    # plt.savefig('relative_final_losses.pdf')
+    # plt.clf()
+
+
+def create_train_test_plots(k_vals_obj,  gain_ratios_obj, k_vals_reg, gain_ratios_reg):
     # now give a plot for the generalization
-    # plt.plot(np.array(k_values), np.array(rel_gen_gaps))
-    plt.plot(np.array(k_values), np.array(gain_gaps))
-    plt.xlabel('k')
-    plt.ylabel('gain gap')
-    plt.savefig('gain_gaps.pdf')
-    plt.clf()
-
-    plt.plot(np.array(k_values), np.array(gain_ratios))
+    plt.plot(np.array(k_vals_obj), np.array(gain_ratios_obj), label='obj')
+    plt.plot(np.array(k_vals_reg), np.array(gain_ratios_reg), label='reg')
     plt.xlabel('k')
     plt.ylabel('gain ratio')
+    plt.legend()
     plt.savefig('gain_ratios.pdf')
     plt.clf()
 
+    # plt.plot(np.array(k_values), np.array(gain_ratios))
+    # plt.xlabel('k')
+    # plt.ylabel('gain ratio')
+    # plt.savefig('gain_ratios.pdf')
+    # plt.clf()
+
     # plot the relative train and test final losses
     # now give a plot for the generalization
-    plt.plot(np.array(k_values), np.array(rel_tr_losses), label='train')
-    plt.plot(np.array(k_values), np.array(rel_te_losses), label='test')
-    plt.xlabel('k')
-    plt.ylabel('relative final losses')
-    plt.legend()
-    plt.savefig('relative_final_losses.pdf')
-    plt.clf()
+    # plt.plot(np.array(k_values), np.array(rel_tr_losses), label='train')
+    # plt.plot(np.array(k_values), np.array(rel_te_losses), label='test')
+    # plt.xlabel('k')
+    # plt.ylabel('relative final losses')
+    # plt.legend()
+    # plt.savefig('relative_final_losses.pdf')
+    # plt.clf()
 
 
 
