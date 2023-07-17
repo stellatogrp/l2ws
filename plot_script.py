@@ -798,7 +798,7 @@ def create_train_test_plots(k_vals_obj,  gain_ratios_obj, k_vals_reg, gain_ratio
     plt.xlabel('k')
     plt.ylabel('gain ratio')
     plt.legend()
-    plt.savefig('gain_ratios.pdf')
+    plt.savefig('gain_ratios.pdf', bbox_inches='tight')
     plt.clf()
 
     # plt.plot(np.array(k_values), np.array(gain_ratios))
