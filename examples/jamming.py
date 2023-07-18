@@ -87,7 +87,7 @@ def setup_probs(setup_cfg):
     proj_X = projection_simplex
     proj_Y = projection_simplex
     
-    z0 = jnp.ones(2 * n)
+    z0 = -jnp.ones(2 * n)
     f = jamming_obj
     # z_final, iter_losses = k_steps_train_extragrad(k, z0, theta_mat[0, :], f, proj_X, proj_Y, n, eg_step,
     #                         supervised=False, z_star=None, jit=True)
