@@ -1280,10 +1280,12 @@ class Workspace:
         loss = np.array([curr_out[0] for curr_out in full_eval_out]).mean()
         time_per_prob = np.array([curr_out[2] for curr_out in full_eval_out]).mean()
         out = self.stack_tuples([curr_out[1] for curr_out in full_eval_out])
+        import pdb
+        pdb.set_trace()
 
         flattened_eval_out = (loss, out, time_per_prob)
         return flattened_eval_out
-
+    
     def stack_tuples(self, tuples_list):
         result = []
         num_tuples = len(tuples_list)
@@ -1298,9 +1300,29 @@ class Workspace:
                 result.append(jnp.vstack(stacked_entry))
             elif tuples_list[j][i].ndim == 1:
                 result.append(jnp.hstack(stacked_entry))
-            elif tuples_list[j][i].ndim == 3 and i == 0:
+            # elif tuples_list[j][i].ndim == 3 and i == 0:
+            #     result.append(jnp.vstack(stacked_entry))
+            elif tuples_list[j][i].ndim == 3:
                 result.append(jnp.vstack(stacked_entry))
         return result
+
+    # def stack_tuples(self, tuples_list):
+    #     result = []
+    #     num_tuples = len(tuples_list)
+    #     tuple_length = len(tuples_list[0])
+
+    #     for i in range(tuple_length):
+    #         stacked_entry = []
+    #         for j in range(num_tuples):
+    #             stacked_entry.append(tuples_list[j][i])
+    #         # result.append(tuple(stacked_entry))
+    #         if tuples_list[j][i].ndim == 2:
+    #             result.append(jnp.vstack(stacked_entry))
+    #         elif tuples_list[j][i].ndim == 1:
+    #             result.append(jnp.hstack(stacked_entry))
+    #         elif tuples_list[j][i].ndim == 3 and i == 0:
+    #             result.append(jnp.vstack(stacked_entry))
+    #     return result
 
     def get_inputs_for_eval(self, fixed_ws, num, train, col):
         if fixed_ws:
