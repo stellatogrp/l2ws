@@ -1270,18 +1270,18 @@ class Workspace:
             end = (i + 1) * batch_size
             curr_inputs = inputs[start: end]
             curr_q_mat = q_mat[start: end]
+
+            curr_factors = (factors[0][start:end, :, :], factors[1][start:end, :])
             if z_stars is not None:
                 curr_z_stars = z_stars[start: end]
             else:
                 curr_z_stars = None
             eval_out = self.l2ws_model.evaluate(
-                self.eval_unrolls, curr_inputs, curr_q_mat, curr_z_stars, fixed_ws, factors=factors, tag=tag)
+                self.eval_unrolls, curr_inputs, curr_q_mat, curr_z_stars, fixed_ws, factors=curr_factors, tag=tag)
             full_eval_out.append(eval_out)
         loss = np.array([curr_out[0] for curr_out in full_eval_out]).mean()
         time_per_prob = np.array([curr_out[2] for curr_out in full_eval_out]).mean()
         out = self.stack_tuples([curr_out[1] for curr_out in full_eval_out])
-        import pdb
-        pdb.set_trace()
 
         flattened_eval_out = (loss, out, time_per_prob)
         return flattened_eval_out
