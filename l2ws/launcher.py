@@ -49,8 +49,14 @@ class Workspace:
         self.eval_unrolls = cfg.eval_unrolls
         self.eval_every_x_epochs = cfg.eval_every_x_epochs
         self.save_every_x_epochs = cfg.save_every_x_epochs
-        self.num_samples = cfg.num_samples
-        self.eval_batch_size = cfg.get('eval_batch_size', self.num_samples)
+        self.num_samples = cfg.get('num_samples', 10)
+
+        self.num_samples_test = cfg.get('num_samples_test', self.num_samples)
+        self.num_samples_train = cfg.get('num_samples_train', self.num_samples_test)
+
+        self.eval_batch_size_test = cfg.get('eval_batch_size_test', self.num_samples_test)
+        self.eval_batch_size_train = cfg.get('eval_batch_size_train', self.num_samples_train)
+
         self.pretrain_cfg = cfg.pretrain
         self.key_count = 0
         self.save_weights_flag = cfg.get('save_weights_flag', False)
@@ -542,7 +548,8 @@ class Workspace:
         fixed_ws = col == 'nearest_neighbor' or col == 'prev_sol'
 
         # do the actual evaluation (most important step in thie method)
-        eval_out = self.evaluate_only(fixed_ws, num, train, col, self.eval_batch_size)
+        eval_batch_size = self.eval_batch_size_train if train else self.eval_batch_size_test
+        eval_out = self.evaluate_only(fixed_ws, num, train, col, eval_batch_size)
 
         # extract information from the evaluation
         loss_train, out_train, train_time = eval_out
@@ -1211,9 +1218,9 @@ class Workspace:
 
     def eval_iters_train_and_test(self, col, pretrain_on):
         self.evaluate_iters(
-            self.num_samples, col, train=True, plot_pretrain=pretrain_on)
+            self.num_samples_train, col, train=True, plot_pretrain=pretrain_on)
         self.evaluate_iters(
-            self.num_samples, col, train=False, plot_pretrain=pretrain_on)
+            self.num_samples_test, col, train=False, plot_pretrain=pretrain_on)
 
     def write_train_results(self, loop_size, prev_batches, epoch_train_losses,
                             time_train_per_epoch):
@@ -1457,9 +1464,9 @@ class Workspace:
                                                   batches=10)
         train_pretrain_losses, test_pretrain_losses = pretrain_out
         self.evaluate_iters(
-            self.num_samples, 'pretrain', train=True, plot_pretrain=pretrain_on)
+            self.num_samples_train, 'pretrain', train=True, plot_pretrain=pretrain_on)
         self.evaluate_iters(
-            self.num_samples, 'pretrain', train=False, plot_pretrain=pretrain_on)
+            self.num_samples_test, 'pretrain', train=False, plot_pretrain=pretrain_on)
         plt.plot(train_pretrain_losses, label='train')
         plt.plot(test_pretrain_losses, label='test')
         plt.yscale('log')
@@ -1480,9 +1487,9 @@ class Workspace:
                                                 batches=self.pretrain_cfg.pretrain_batches)
         train_pretrain_losses, test_pretrain_losses = pretrain_out
         self.evaluate_iters(
-            self.num_samples, 'pretrain', train=True, plot_pretrain=pretrain_on)
+            self.num_samples_train, 'pretrain', train=True, plot_pretrain=pretrain_on)
         self.evaluate_iters(
-            self.num_samples, 'pretrain', train=False, plot_pretrain=pretrain_on)
+            self.num_samples_test, 'pretrain', train=False, plot_pretrain=pretrain_on)
         plt.plot(train_pretrain_losses, label='train')
         plt.plot(test_pretrain_losses, label='test')
         plt.yscale('log')
