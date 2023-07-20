@@ -25,6 +25,7 @@ pretrain:
 data:
   datetime: ''
 
+eval_batch_size: 2
 train_unrolls: 1
 eval_unrolls: 100
 eval_every_x_epochs: 10
