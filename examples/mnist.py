@@ -372,41 +372,57 @@ def custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn, thetas, iterates, visu
 
 def plot_mult_mnist_img(x_stars, blurred_img_vecs, x_no_learns, x_nns, x_learns, filename):
     num = x_stars.shape[0]
-    f, axarr = plt.subplots(num, 5)
+    f, axarr = plt.subplots(num, 5 + 1)
 
-    axarr[0, 0].set_title('optimal\n')
-    axarr[0, 1].set_title('blurred\n')
-    axarr[0, 2].set_title('cold-start\n')
-    axarr[0, 3].set_title('nearest \n neighbor')
-    axarr[0, 4].set_title('learned\n')
+    start = 1
+    axarr[0, 0].set_title('percentile\n')
+    axarr[0, 0 + start].set_title('optimal\n')
+    axarr[0, 1 + start].set_title('blurred\n')
+    axarr[0, 2 + start].set_title('cold-start\n')
+    axarr[0, 3 + start].set_title('nearest \n neighbor')
+    axarr[0, 4 + start].set_title('learned\n')
+
+    axarr[0, 0].text(.5, .5, r'$10^{\rm{th}}$', ha='center', va='center')#, rotation=0) #, size='large')
+    axarr[1, 0].text(.5, .5, r'$50^{\rm{th}}$', ha='center', va='center') #, rotation=0)
+    axarr[2, 0].text(.5, .5, r'$90^{\rm{th}}$', ha='center', va='center') #, rotation=0)
+    axarr[3, 0].text(.5, .5, r'$99^{\rm{th}}$', ha='center', va='center') #, rotation=0)
+
+    import matplotlib.ticker as ticker
 
     # import pdb
     # pdb.set_trace()
     for i in range(num):
         # get the clean image (optimal solution) from x_stars
         opt_img = np.reshape(x_stars[i, :], (28,28))
-        axarr[i, 0].imshow(opt_img, cmap=plt.get_cmap('gray'))
+        axarr[i, start + 0].imshow(opt_img, cmap=plt.get_cmap('gray'))
         axarr[i, 0].axis('off')
+        # axarr[i, 0].tick_params(axis='both', which='both', length=0)
+        # axarr[i, 0].axes.xaxis.set_ticklabels([])
+        # axarr[i, 0].axes.yaxis.set_ticklabels([])
+        # axarr[i, 0].xticks('off')
+        # axarr[i, 0].yticks('off')
 
         # get the blurred image from theta
         blurred_img = np.reshape(blurred_img_vecs[i, :], (28,28))
-        axarr[i, 1].imshow(blurred_img, cmap=plt.get_cmap('gray'))
+        axarr[i, start + 1].imshow(blurred_img, cmap=plt.get_cmap('gray'))
         axarr[i, 1].axis('off')
 
         # cold-start
         cold_start_img = np.reshape(x_no_learns[i, :], (28,28))
-        axarr[i, 2].imshow(cold_start_img, cmap=plt.get_cmap('gray'))
+        axarr[i, start + 2].imshow(cold_start_img, cmap=plt.get_cmap('gray'))
         axarr[i, 2].axis('off')
 
         # nearest neighbor
         nearest_neighbor_img = np.reshape(x_nns[i, :], (28,28))
-        axarr[i, 3].imshow(nearest_neighbor_img, cmap=plt.get_cmap('gray'))
+        axarr[i, start + 3].imshow(nearest_neighbor_img, cmap=plt.get_cmap('gray'))
         axarr[i, 3].axis('off')
 
         # learned
         learned_img = np.reshape(x_learns[i, :], (28,28))
-        axarr[i, 4].imshow(learned_img, cmap=plt.get_cmap('gray'))
+        axarr[i, start + 4].imshow(learned_img, cmap=plt.get_cmap('gray'))
         axarr[i, 4].axis('off')
+
+        axarr[i, 5].axis('off')
 
     plt.tight_layout()
     plt.savefig(filename, bbox_inches='tight')
