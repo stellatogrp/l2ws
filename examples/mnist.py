@@ -102,12 +102,13 @@ def setup_probs(setup_cfg):
     B = vectorized2DBlurMatrix(28, 28, blur_size)
 
     # get P, A
-    P = B.T @ B
+    obj_const = cfg.get('obj_const', 1)
+    P = B.T @ B * obj_const
     m, n = 784, 784
     A = np.eye(n)
 
     q_mat = jnp.zeros((N, 2 * m + n))
-    q_mat = q_mat.at[:, m + n:].set(jnp.inf) #q_mat.at[:, m + n:].set(1)
+    q_mat = q_mat.at[:, m + n:].set(1) #q_mat.at[:, m + n:].set(jnp.inf) #
 
     theta_mat = jnp.zeros((N, n))
 
@@ -116,7 +117,7 @@ def setup_probs(setup_cfg):
     for i in range(N):
         blurred_img = jnp.reshape(B @ x_train[i, :], (28, 28))
         blurred_img_vec = jnp.ravel(blurred_img)
-        q_mat = q_mat.at[i, :n].set(-B.T @ blurred_img_vec + lambd)
+        q_mat = q_mat.at[i, :n].set((-B.T @ blurred_img_vec + lambd) * obj_const)
         theta_mat = theta_mat.at[i, :].set(blurred_img_vec)
         blurred_imgs.append(blurred_img)
 

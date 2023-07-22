@@ -3,7 +3,7 @@ n_orig: 25
 lambd: 1
 solve_acc_abs: 1e-10
 solve_acc_rel: 0
-N_train: 10000
-N_test: 100
+N_train: 10
+N_test: 10
 seed: 42
 solve: True
