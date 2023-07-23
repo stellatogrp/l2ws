@@ -25,15 +25,15 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 1
+train_unrolls: 15
 eval_unrolls: 500
 eval_every_x_epochs: 20
 save_every_x_epochs: 1
 test_every_x_epochs: 10
 write_csv_every_x_batches: 1
-N_train: 100
-N_test: 10
-num_samples: 10
+N_train: 800
+N_test: 200
+num_samples: 200
 angle_anchors: [0]
 supervised: True
 plot_iterates: [0, 10, 20]

@@ -57,19 +57,124 @@ def simulate(T, gamma, dt, sigma, p):
     return y, x_true, w_true, v
 
 
-def sample_theta(N, T, sigma, p, gamma, dt, w_noise_var, y_noise_var, B_const=1):
+def shifted_sol(z_star, T, m, n):
+    return z_star
+    # nx = 4
+    # nu = 2
+    # # shifted_z_star = jnp.zeros(z_star.size)
+
+    # x_star = z_star[:n]
+    # y_star = z_star[n:]
+
+    # shifted_x_star = jnp.zeros(n)
+    # shifted_y_star = jnp.zeros(m)
+
+    # # indices markers
+    # end_state = nx * T
+    # end_dyn_cons = nx * T
+    # end_state_cons = 2 * nx * T
+    # end = T * (2 * nx + nu)
+
+    # # get primal vars
+    # shifted_states = x_star[nx:end_state]
+    # shifted_controls = x_star[end_state + nu:]
+
+    # # insert into shifted x_star
+    # shifted_x_star = shifted_x_star.at[:end_state - nx].set(shifted_states)
+    # shifted_x_star = shifted_x_star.at[end_state:-nu].set(shifted_controls)
+
+    # # get dual vars
+    # shifted_dyn_cons = y_star[nx:end_dyn_cons]
+    # shifted_state_cons = y_star[end_dyn_cons + nx:end_state_cons]
+    # shifted_control_cons = y_star[end_state_cons + nu: end]
+
+    # # insert into shifted y_star
+    # shifted_y_star = shifted_y_star.at[:end_dyn_cons - nx].set(shifted_dyn_cons)
+    # shifted_y_star = shifted_y_star.at[end_dyn_cons:end_state_cons - nx].set(shifted_state_cons)
+    # # shifted_y_star = shifted_y_star.at[end_state_cons:-nu].set(shifted_control_cons)
+
+    # shifted_y_star = shifted_y_star.at[end_state_cons:end - nu].set(shifted_control_cons)
+
+    # # concatentate primal and dual
+    # shifted_z_star = jnp.concatenate([shifted_x_star, shifted_y_star])
+
+    # return shifted_z_star
+
+
+def single_rollout_theta(rollout_length, T, sigma, p, gamma, dt, w_noise_var, y_noise_var, B_const=1):
+    N = rollout_length
+    w_traj = w_noise_var * np.random.randn(2, T + rollout_length)
+    # w = w_noise_var * np.random.randn(rollout_length, 2, T)
+    v = y_noise_var * np.random.randn(rollout_length, 2, T)
+
+    for j in range(N):
+        inds = np.random.rand(T) <= p
+        outlier_v = sigma * np.random.randn(2, T)[:, inds]
+        # weird indexing to avoid transpose
+        v[j:j+1, :, inds] = outlier_v
+
+    # simulate_fwd_batch = vmap(simulate_x_fwd, in_axes=(0, 0, None, None, None, None), out_axes=(0, 0))
+
+    # get the true X's to have shape (4, T + rollout_length)
+    x_traj = simulate_x_fwd(w_traj, rollout_length + T, gamma, dt, B_const)
+
+    # this translates to rollout_length problems
+    # now get y_mat
+    y_mat = np.zeros((rollout_length, 2, T))
+    x_trues = np.zeros((rollout_length, 2, T))
+    w_trues = np.zeros((rollout_length, 2, T))
+    # pos_indices = np.array([0,])
+    for i in range(rollout_length):
+        curr_x_traj = x_traj[:2, i:i + T]
+        y = curr_x_traj + v[i, :, :]
+        y_mat[i, :, :] = y
+        x_trues[i, :, :] = curr_x_traj
+
+        curr_w_traj = w_traj[:, i:i + T]
+        w_trues[i, :, :] = curr_w_traj
+
+    # y_mat, x_trues = simulate_fwd_batch(w, v, T, gamma, dt, B_const)
+    # y_mat, x_trues = simulate_fwd_batch(w, v, rollout_length, gamma, dt, B_const)
+
+    # get the rotation angle
+    # y_mat has shape (N, 2, T)
+    find_rotation_angle_vmap = vmap(find_rotation_angle, in_axes=(0,), out_axes=(0))
+
+    angles = find_rotation_angle_vmap(y_mat[:, :, -1])
+
+    # rotation_vmap = vmap(rotate_vector, in_axes=(0, 0), out_axes=(0))
+    clockwise = True
+    y_mat_rotated = rotation_vmap(y_mat, angles, clockwise)
+
+    thetas = jnp.zeros((N, 2*T))
+    for i in range(N):
+        theta = jnp.ravel(y_mat_rotated[i, :, :].T)
+        thetas = thetas.at[i, :].set(theta)
+
+    # w_trues = w
+    state_pos = jnp.array([0, 1])
+    x_states = x_trues[:, state_pos, :]
+    x_trues_rotated = rotation_vmap(x_states, angles, clockwise)
+    w_trues_rotated = rotation_vmap(w_trues, angles, clockwise)
+
+    return thetas, y_mat, x_trues, w_trues, y_mat_rotated, x_trues_rotated, w_trues_rotated, angles
+
+
+def sample_theta(num_rollouts, rollout_length, T, sigma, p, gamma, dt, w_noise_var, y_noise_var, B_const=1):
+    '''
+    v is independent of the rollouts / control setup, but w isn't
+    add outliers to v if we want to
+        np.random.seed(0)
+        inds = np.random.rand(T) <= p
+        v[:, inds] = sigma * np.random.randn(2, T)[:, inds]
+    '''
+    N = num_rollouts * rollout_length
+
     # generate random input and noise vectors
-    w = w_noise_var * np.random.randn(N, 2, T)
+    # w = w_noise_var * np.random.randn(N, 2, T)
+    # v = y_noise_var * np.random.randn(N, 2, T)
+    w_inits = w_noise_var * np.random.randn(num_rollouts, 2, T)
     v = y_noise_var * np.random.randn(N, 2, T)
-    # w = np.random.randn(scale=noise_var, size=(N, 2, T))
-    # v = np.random.randn(scale=noise_var, size=(N, 2, T))
-
-    # x = np.zeros((4, T + 1))
-    # x[:, 0] = [0, 0, 0, 0]
-    # y = np.zeros((2, T))
-
-    # add outliers to v
-    # np.random.seed(0)
 
     for j in range(N):
         inds = np.random.rand(T) <= p
@@ -78,12 +183,8 @@ def sample_theta(N, T, sigma, p, gamma, dt, w_noise_var, y_noise_var, B_const=1)
         # weird indexing to avoid transpose
         v[j:j+1, :, inds] = outlier_v
 
-    # w_flat = np.ravel(w)
-    # v_flat = np.ravel(v)
-    # theta = np.concatenate([w_flat, v_flat])
     simulate_fwd_batch = vmap(simulate_fwd, in_axes=(0, 0, None, None, None, None), out_axes=(0, 0))
 
-    # y_mat = simulate_fwd(w, v, T, gamma, dt)
     y_mat, x_trues = simulate_fwd_batch(w, v, T, gamma, dt, B_const)
 
     # get the rotation angle
@@ -411,32 +512,29 @@ partial(jit, static_argnums=(2, 3, 4))
 
 
 def simulate_fwd(w_mat, v_mat, T, gamma, dt, B_const):
-    # def simulate(T, gamma, dt, sigma, p):
     A, B, C = robust_kalman_setup(gamma, dt, B_const)
 
-    # generate random input and noise vectors
-    # w = np.random.randn(2, T)
-    # v = np.random.randn(2, T)
-
     x = jnp.zeros((4, T + 1))
-    # x[:, 0] = [0, 0, 0, 0]
     y_mat = jnp.zeros((2, T))
-
-    # add outliers to v
-    # np.random.seed(0)
-    # inds = np.random.rand(T) <= p
-    # v[:, inds] = sigma * np.random.randn(2, T)[:, inds]
 
     # simulate the system forward in time
     for t in range(T):
         y_mat = y_mat.at[:, t].set(C.dot(x[:, t]) + v_mat[:, t])
         x = x.at[:, t + 1].set(A.dot(x[:, t]) + B.dot(w_mat[:, t]))
 
-    # x_true = x.copy()
-    # w_true = w_mat.copy()
-    # return y, x_true, w_true, v_mat
-
     return y_mat, x
+
+
+def simulate_x_fwd(w_mat, T, gamma, dt, B_const):
+    A, B, C = robust_kalman_setup(gamma, dt, B_const)
+
+    x_mat = jnp.zeros((4, T + 1))
+
+    # simulate the system forward in time
+    for t in range(T):
+        x_mat = x_mat.at[:, t + 1].set(A.dot(x_mat[:, t]) + B.dot(w_mat[:, t]))
+
+    return x_mat
 
 
 def get_x_w_true(theta, T, gamma, dt):
@@ -601,8 +699,15 @@ def run(run_cfg):
     custom_visualize_fn_partial = partial(custom_visualize_fn, T=setup_cfg['T'])
     algo = 'scs'
 
+    A = static_dict['A_sparse']
+    m, n = A.shape
+    partial_shifted_sol_fn = partial(shifted_sol, T=setup_cfg['T'],  m=m, n=n)
+    batch_shifted_sol_fn = vmap(partial_shifted_sol_fn, in_axes=(0), out_axes=(0))
+
     workspace = Workspace(algo, run_cfg, static_flag, static_dict, example,
-                          custom_visualize_fn=custom_visualize_fn_partial)
+                          custom_visualize_fn=custom_visualize_fn_partial,
+                          shifted_sol_fn=batch_shifted_sol_fn,
+                          traj_length=setup_cfg['rollout_length'])
 
     """
     run the workspace
@@ -613,8 +718,9 @@ def run(run_cfg):
 def setup_probs(setup_cfg):
     print("entered robust kalman setup", flush=True)
     cfg = setup_cfg
-    N_train, N_test = cfg.N_train, cfg.N_test
-    N = N_train + N_test
+    # N_train, N_test = cfg.N_train, cfg.N_test
+    # N = N_train + N_test
+    N = cfg.num_rollouts * cfg.rollout_length
 
     """
     - canonicalize according to whether we have states or not
@@ -663,28 +769,34 @@ def setup_probs(setup_cfg):
                      acceleration_lookback=0,
                      eps_abs=tol_abs,
                      eps_rel=tol_rel)
-    solve_times = np.zeros(N)
-    x_stars = jnp.zeros((N, n))
-    y_stars = jnp.zeros((N, m))
-    s_stars = jnp.zeros((N, m))
-    q_mat = jnp.zeros((N, m + n))
+    # solve_times = np.zeros(N)
+    # x_stars = jnp.zeros((N, n))
+    # y_stars = jnp.zeros((N, m))
+    # s_stars = jnp.zeros((N, m))
+    # q_mat = jnp.zeros((N, m + n))
 
     """
     sample theta and get y for each problem
     """
-    out = sample_theta(N, cfg.T, cfg.sigma, cfg.p, cfg.gamma, cfg.dt,
-                       cfg.w_noise_var, cfg.y_noise_var, cfg.B_const)
-    thetas_np, y_mat, x_trues, w_trues, y_mat_rotated, x_trues_rotated, w_trues_rot, angles = out
+    outs = []
+    for i in range(cfg.num_rollouts):
+        out = single_rollout_theta(cfg.rollout_length, cfg.T, cfg.sigma, cfg.p, 
+                                cfg.gamma, cfg.dt, cfg.w_noise_var, cfg.y_noise_var, cfg.B_const)
+        outs.append(out)
+    thetas_np, y_mat, x_trues, w_trues, y_mat_rotated, x_trues_rotated, w_trues_rot, angles = compile_outs(outs)
+    
+    # out = sample_theta(N, cfg.T, cfg.sigma, cfg.p, cfg.gamma, cfg.dt,
+    #                    cfg.w_noise_var, cfg.y_noise_var, cfg.B_const)
+    # thetas_np, y_mat, x_trues, w_trues, y_mat_rotated, x_trues_rotated, w_trues_rot, angles = out
     thetas = jnp.array(thetas_np)
 
     batch_q = vmap(single_q, in_axes=(0, None, None, None, None, None), out_axes=(0))
-
     q_mat = batch_q(thetas, cfg.mu, cfg.rho, cfg.T, cfg.gamma, cfg.dt)
 
-    scs_instances = []
+    # scs_instances = []
 
 
-    setup_script(q_mat, thetas, solver, data, cones_dict, output_filename, solve=True)
+    x_stars, y_stars, s_stars = setup_script(q_mat, thetas, solver, data, cones_dict, output_filename, solve=True)
 
     time_limit = cfg.dt * cfg.T
     ts, delt = np.linspace(0, time_limit, cfg.T-1, endpoint=True, retstep=True)
@@ -712,6 +824,18 @@ def setup_probs(setup_cfg):
         plot_positions_overlay([x_trues_rotated[i, :, :-1], x_kalman, y_mat_rotated[i, :, :]],
                                ['True', 'KF recovery', 'Noisy'],
                                filename=f"positions_plots/positions_{i}_rotated.pdf")
+        
+def compile_outs(outs):
+    thetas_np = np.stack([item for rollout_result in outs for item in rollout_result[0]])
+    y_mat = np.stack([item for rollout_result in outs for item in rollout_result[1]])
+    x_trues = np.stack([item for rollout_result in outs for item in rollout_result[2]])
+    w_trues = np.stack([item for rollout_result in outs for item in rollout_result[3]])
+    y_mat_rotated = np.stack([item for rollout_result in outs for item in rollout_result[4]])
+    x_trues_rotated = np.stack([item for rollout_result in outs for item in rollout_result[5]])
+    w_trues_rot = np.stack([item for rollout_result in outs for item in rollout_result[6]])
+    angles = np.stack([item for rollout_result in outs for item in rollout_result[7]])
+
+    return thetas_np, y_mat, x_trues, w_trues, y_mat_rotated, x_trues_rotated, w_trues_rot, angles
 
 
 def custom_visualize_fn(x_primals, x_stars, x_no_learn, x_nn, thetas, iterates, visual_path, T):

@@ -623,7 +623,9 @@ class Workspace:
             # elif isinstance(self.l2ws_model, SCSmodel):
             #     x_primals = u_all[:, :, :self.l2ws_model.n] / u_all[:, :, -1:]
             # self.custom_visualize(x_primals, train, col)
-            self.custom_visualize(z_all, train, col)
+
+            # self.custom_visualize(z_all, train, col)
+            self.custom_visualize(z_plot, train, col)
 
         # closed loop control rollouts
         if not train:
@@ -1257,12 +1259,16 @@ class Workspace:
             non_first_indices = jnp.mod(jnp.arange(num), self.traj_length) != 0
             q_mat = q_mat_full[non_first_indices, :]
             z_stars = z_stars[non_first_indices, :]
-            factors = (factors[0][non_first_indices, :, :], factors[1][non_first_indices, :])
+            if factors is not None:
+                factors = (factors[0][non_first_indices, :, :], factors[1][non_first_indices, :])
         else:
             q_mat = self.l2ws_model.q_mat_train[:num,
                                                 :] if train else self.l2ws_model.q_mat_test[:num, :]
 
         inputs = self.get_inputs_for_eval(fixed_ws, num, train, col)
+        # if inputs.shape[0] 
+        # import pdb
+        # pdb.set_trace()
 
         # do the batching
         num_batches = int(num / batch_size)
@@ -1345,7 +1351,6 @@ class Workspace:
                     num), self.traj_length) != self.traj_length - 1
                 # inputs = inputs[non_last_indices, :]
                 # inputs = self.shifted_sol_fn(inputs)
-
                 inputs = self.shifted_sol_fn(self.z_stars_test[:num, :][non_last_indices, :])
         else:
             if train:

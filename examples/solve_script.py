@@ -389,3 +389,5 @@ def setup_script(q_mat, theta_mat, solver, data, cones_dict, output_filename, so
         plt.plot(theta_mat[i, :])
     plt.savefig("thetas.pdf")
     plt.clf()
+
+    return x_stars, y_stars, s_stars
