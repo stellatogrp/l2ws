@@ -135,6 +135,8 @@ def direct_osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=No
             z_stars = z_stars.at[i, :n].set(results.x)
             z_stars = z_stars.at[i, n:n + m].set(results.y)
             z_stars = z_stars.at[i, n + m:].set(A @ results.x)
+            # import pdb
+            # pdb.set_trace()
             
             # objvals = objvals.at[i].set(prob.value)
 
@@ -387,3 +389,5 @@ def setup_script(q_mat, theta_mat, solver, data, cones_dict, output_filename, so
         plt.plot(theta_mat[i, :])
     plt.savefig("thetas.pdf")
     plt.clf()
+
+    return x_stars, y_stars, s_stars

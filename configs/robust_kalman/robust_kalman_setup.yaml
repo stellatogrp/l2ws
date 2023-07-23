@@ -1,3 +1,5 @@
+rollout_length: 200
+num_rollouts: 5
 T: 50
 mu: 2
 rho: 2
@@ -7,8 +9,8 @@ solve_acc_rel: 0
 dt: .5 #.5
 sigma: 20
 p: 1e-8
-N_train: 100
-N_test: 20
+# N_train: 100
+# N_test: 20
 w_noise_var: .1
 y_noise_var: .1
 B_const: 1

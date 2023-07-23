@@ -1,7 +1,7 @@
 nn_cfg:
-  lr: 1e-4
+  lr: 1e-3
   method: adam
-  intermediate_layer_sizes: [1000, 1000]
+  intermediate_layer_sizes: [500, 500]
   batch_size: 100
   epochs: 1e6
   decay_lr: .1
@@ -25,15 +25,15 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 60
+train_unrolls: 15
 eval_unrolls: 500
 eval_every_x_epochs: 20
 save_every_x_epochs: 1
 test_every_x_epochs: 10
 write_csv_every_x_batches: 1
-N_train: 10000
-N_test: 100
-num_samples: 100
+N_train: 800
+N_test: 200
+num_samples: 200
 angle_anchors: [0]
 supervised: True
 plot_iterates: [0, 10, 20]
