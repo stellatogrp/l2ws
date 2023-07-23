@@ -18,6 +18,7 @@ import pandas as pd
 import matplotlib.colors as mc
 import colorsys
 from l2ws.algo_steps import get_scaled_vec_and_factor
+from examples.solve_script import setup_script
 
 
 plt.rcParams.update(
@@ -643,12 +644,6 @@ def setup_probs(setup_cfg):
     """
     save output to output_filename
     """
-    # save to outputs/mm-dd-ss/... file
-    # if "SLURM_ARRAY_TASK_ID" in os.environ.keys():
-    #     slurm_idx = os.environ["SLURM_ARRAY_TASK_ID"]
-    #     output_filename = f"{os.getcwd()}/data_setup_slurm_{slurm_idx}"
-    # else:
-    #     output_filename = f"{os.getcwd()}/data_setup_slurm"
     output_filename = f"{os.getcwd()}/data_setup"
     """
     create scs solver object
@@ -688,82 +683,8 @@ def setup_probs(setup_cfg):
 
     scs_instances = []
 
-    for i in range(N):
-        log.info(f"solving problem number {i}")
-        print(f"solving problem number {i}")
 
-        # update
-        b = np.array(q_mat[i, n:])
-        c = np.array(q_mat[i, :n])
-
-        # manual canon
-        manual_canon_dict = {
-            "P": P_sparse,
-            "A": A_sparse,
-            "b": b,
-            "c": c,
-            "cones": cones_dict,
-        }
-        scs_instance = SCSinstance(manual_canon_dict, solver, manual_canon=True)
-
-        scs_instances.append(scs_instance)
-        x_stars = x_stars.at[i, :].set(scs_instance.x_star)
-        y_stars = y_stars.at[i, :].set(scs_instance.y_star)
-        s_stars = s_stars.at[i, :].set(scs_instance.s_star)
-        q_mat = q_mat.at[i, :].set(scs_instance.q)
-        solve_times[i] = scs_instance.solve_time
-
-        if i % 1000:
-            log.info(f"saving data... iteration {i}")
-            jnp.savez(
-                output_filename,
-                thetas=thetas,
-                x_stars=x_stars,
-                y_stars=y_stars,
-                s_stars=s_stars,
-                q_mat=q_mat
-            )
-
-    # resave the data??
-    # print('saving final data...', flush=True)
-    log.info("saving final data...")
-    jnp.savez(
-        output_filename,
-        thetas=thetas,
-        x_stars=x_stars,
-        y_stars=y_stars,
-        s_stars=s_stars,
-        q_mat=q_mat
-    )
-
-    # save solve times
-    df_solve_times = pd.DataFrame(solve_times, columns=['solve_times'])
-    df_solve_times.to_csv('solve_times.csv')
-
-    # save angles
-    df_angles = pd.DataFrame(angles, columns=['angles'])
-    df_angles.to_csv('angles.csv')
-
-    # print(f"finished saving final data... took {save_time-t0}'", flush=True)
-    save_time = time.time()
-    log.info(f"finished saving final data... took {save_time-t0}'")
-
-    # save plot of first 5 solutions
-    for i in range(5):
-        plt.plot(x_stars[i, :])
-    plt.savefig("x_stars.pdf")
-    plt.clf()
-
-    for i in range(5):
-        plt.plot(y_stars[i, :])
-    plt.savefig("y_stars.pdf")
-    plt.clf()
-
-    # save plot of first 5 parameters
-    for i in range(5):
-        plt.plot(thetas[i, :])
-    plt.savefig("thetas.pdf")
-    plt.clf()
+    setup_script(q_mat, thetas, solver, data, cones_dict, output_filename, solve=True)
 
     time_limit = cfg.dt * cfg.T
     ts, delt = np.linspace(0, time_limit, cfg.T-1, endpoint=True, retstep=True)
