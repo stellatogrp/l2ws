@@ -838,13 +838,13 @@ def compile_outs(outs):
     return thetas_np, y_mat, x_trues, w_trues, y_mat_rotated, x_trues_rotated, w_trues_rot, angles
 
 
-def custom_visualize_fn(x_primals, x_stars, x_no_learn, x_nn, thetas, iterates, visual_path, T):
+def custom_visualize_fn(x_primals, x_stars, x_no_learn, x_nn, thetas, iterates, visual_path, T, num=20):
     """
     assume len(iterates) == 1 for now
         point is to compare no-learning vs learned for 20 iterations
     """
     assert len(iterates) == 1
-    num = x_no_learn.shape[0]
+    num = np.min([x_no_learn.shape[0], num])
     y_mat_rotated = jnp.reshape(thetas[:num, :], (num, T, 2))
     for i in range(num):
         titles = ['optimal solution', 'noisy trajectory']

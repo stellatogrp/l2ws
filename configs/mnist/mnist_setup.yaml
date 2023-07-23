@@ -1,22 +1,12 @@
 solve_acc_abs: 1e-4
 solve_acc_rel: 0
-<<<<<<< HEAD
-lambd: 1e-5
-N_train: 10000
-N_test: 1000
-=======
 lambd: 1e-1
 N_train: 1000
 N_test: 20
->>>>>>> df0f5a9c31b06341f93e4b38f32c889a241efcf4
 seed: 42
 solve: True
 noise_std_dev: 0.0
 blur_size: 8
 emnist: True
-<<<<<<< HEAD
-obj_const: 100
-=======
 obj_const: 1
 A_scale: 1
->>>>>>> df0f5a9c31b06341f93e4b38f32c889a241efcf4

@@ -1,5 +1,5 @@
-rollout_length: 200
-num_rollouts: 5
+rollout_length: 100
+num_rollouts: 110
 T: 50
 mu: 2
 rho: 2

@@ -25,14 +25,14 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 15
+train_unrolls: 1
 eval_unrolls: 500
-eval_every_x_epochs: 20
+eval_every_x_epochs: 200
 save_every_x_epochs: 1
 test_every_x_epochs: 10
 write_csv_every_x_batches: 1
-N_train: 800
-N_test: 200
+N_train: 10000
+N_test: 1000
 num_samples: 200
 angle_anchors: [0]
 supervised: True
@@ -45,7 +45,7 @@ normalize_inputs: True
 normalize_alpha: 'other'
 epochs_jit: 10
 accuracies: [1, .1, .01, .001, .0001]
-iterates_visualize: [10]
+iterates_visualize: [5]
 
 rho_x: 1
 scale: 1
