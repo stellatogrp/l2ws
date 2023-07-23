@@ -41,9 +41,19 @@ def run(run_cfg):
     B = vectorized2DBlurMatrix(28, 28, blur_size)
 
     # get P, A
-    P = B.T @ B
+    P = B.T @ B * setup_cfg['obj_const']
     m, n = 784, 784
     A = np.eye(n)
+    A = setup_cfg['A_scale'] * A
+
+    # M = np.zeros((m +n, m + n))
+    # M[:n, :n] = P
+    # M[:n, n:] = .1 * A.T
+    # M[:n, n:] = .1 * A
+    # U, S, VT = np.linalg.svd(M)
+    # import pdb
+    # pdb.set_trace()
+
 
     rho_vec, sigma = jnp.ones(m), 1
     # rho_vec = rho_vec.at[l == u].set(1000)
@@ -106,11 +116,17 @@ def setup_probs(setup_cfg):
     P = B.T @ B * obj_const
     m, n = 784, 784
     A = np.eye(n)
+    A_scale = cfg.get('A_scale', 1)
+    A = A * A_scale
 
     q_mat = jnp.zeros((N, 2 * m + n))
-    q_mat = q_mat.at[:, m + n:].set(1) #q_mat.at[:, m + n:].set(jnp.inf) #
+    q_mat = q_mat.at[:, m + n:].set(1 * A_scale) #q_mat.at[:, m + n:].set(jnp.inf) #
 
     theta_mat = jnp.zeros((N, n))
+
+    # trial
+    noisy_img = np.reshape(x_train[0, :], (28, 28)) + .1 * np.random.normal(size=(28, 28))
+    mnist_canon(np.eye(784), lambd, noisy_img)
 
     # blur img
     blurred_imgs = []
@@ -142,8 +158,9 @@ def setup_probs(setup_cfg):
 
 
     # osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=z_stars)
-    P = B.T @ B
+    # P = B.T @ B
     z_stars = direct_osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=None)
+    
 
     if not os.path.exists('images'):
         os.mkdir('images')
@@ -219,8 +236,11 @@ def mnist_canon(A, lambd, blurred_img):
 
     # prob = cp.Problem(cp.Minimize(lambd * tv + cp.sum_squares(A @ cp.vec(x) - b))) 
     constraints = [x >= 0, x <= 1]
-    prob = cp.Problem(cp.Minimize(lambd * cp.sum(x) + cp.sum_squares(A @ cp.vec(x) - b)), constraints)
-    data, chain, inverse_data = prob.get_problem_data(cp.OSQP)
+    # prob = cp.Problem(cp.Minimize(lambd * cp.sum(x) + cp.sum_squares(A @ cp.vec(x) - b)), constraints)
+    # import pdb
+    # pdb.set_trace
+    prob = cp.Problem(cp.Minimize(lambd * cp.tv(x) + cp.sum_squares(cp.vec(x) - b)), constraints)
+    data, chain, inverse_data = prob.get_problem_data(cp.SCS)
 
     # A = np.vstack([data['A'].todense(), data['F'].todense()])
     # u = np.hstack([data['b'], data['G']])
@@ -228,11 +248,14 @@ def mnist_canon(A, lambd, blurred_img):
     # P = data['P'].todense()
     # c = data['q']
 
-    prob.solve(solver=cp.OSQP, verbose=True, max_iter=10, adaptive_rho=False, eps_abs=1e0) #, normalize=False,
-                    #  scale=1,
-                    #  rho_x=1,
-                    #  adaptive_scale=False,
-                    #  max_iters=50)
+    # prob.solve(solver=cp.OSQP, verbose=True, max_iters=100, adaptive_rho=False, eps_abs=1e0) 
+    prob.solve(solver=cp.SCS,
+               normalize=False,
+                     scale=1,
+                     rho_x=1,
+                     adaptive_scale=False,
+                     max_iters=500,
+                     verbose=True)
                     #  eps_rel=1e-4,
                     #  eps_abs=1e-4)
                     #  max_iters=1000)#, max_iter=50)
@@ -241,7 +264,7 @@ def mnist_canon(A, lambd, blurred_img):
     f, axarr = plt.subplots(1,2)
     axarr[0].imshow(blurred_img, cmap=plt.get_cmap('gray'))
     axarr[1].imshow(img.T, cmap=plt.get_cmap('gray'))
-    # plt.show()
+    plt.show()
 
     # import pdb
     # pdb.set_trace()

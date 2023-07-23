@@ -135,6 +135,8 @@ def direct_osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=No
             z_stars = z_stars.at[i, :n].set(results.x)
             z_stars = z_stars.at[i, n:n + m].set(results.y)
             z_stars = z_stars.at[i, n + m:].set(A @ results.x)
+            # import pdb
+            # pdb.set_trace()
             
             # objvals = objvals.at[i].set(prob.value)
 
