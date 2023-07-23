@@ -41,7 +41,7 @@ def run(run_cfg):
     B = vectorized2DBlurMatrix(28, 28, blur_size)
 
     # get P, A
-    P = B.T @ B
+    P = B.T @ B * setup_cfg['obj_const']
     m, n = 784, 784
     A = np.eye(n)
 
