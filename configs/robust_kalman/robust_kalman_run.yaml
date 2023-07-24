@@ -31,8 +31,8 @@ eval_every_x_epochs: 200
 save_every_x_epochs: 1
 test_every_x_epochs: 10
 write_csv_every_x_batches: 1
-N_train: 10000
-N_test: 1000
+N_train: 200
+N_test: 200
 num_samples: 200
 angle_anchors: [0]
 supervised: True

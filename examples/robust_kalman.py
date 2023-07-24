@@ -838,13 +838,13 @@ def compile_outs(outs):
     return thetas_np, y_mat, x_trues, w_trues, y_mat_rotated, x_trues_rotated, w_trues_rot, angles
 
 
-def custom_visualize_fn(x_primals, x_stars, x_no_learn, x_nn, thetas, iterates, visual_path, T, num=20):
+def custom_visualize_fn(x_primals, x_stars, x_prev_sol, x_nn, thetas, iterates, visual_path, T, num=20):
     """
     assume len(iterates) == 1 for now
         point is to compare no-learning vs learned for 20 iterations
     """
     assert len(iterates) == 1
-    num = np.min([x_no_learn.shape[0], num])
+    num = np.min([x_prev_sol.shape[0], num])
     y_mat_rotated = jnp.reshape(thetas[:num, :], (num, T, 2))
     for i in range(num):
         titles = ['optimal solution', 'noisy trajectory']
@@ -853,13 +853,14 @@ def custom_visualize_fn(x_primals, x_stars, x_no_learn, x_nn, thetas, iterates, 
 
         for j in range(len(iterates)):
             iter = iterates[j]
-            x_no_learn_kalman = get_x_kalman_from_x_primal(x_no_learn[i, iter, :], T)
+            x_prev_sol_kalman = get_x_kalman_from_x_primal(x_prev_sol[i, iter, :], T)
             x_hat_kalman = get_x_kalman_from_x_primal(x_primals[i, iter, :], T)
             x_nn_kalman = get_x_kalman_from_x_primal(x_nn[i, iter, :], T)
-            traj.append(x_no_learn_kalman)
+            traj.append(x_prev_sol_kalman)
             traj.append(x_nn_kalman)
             traj.append(x_hat_kalman)
-            titles.append(f"no learning: ${iter}$ iters")
+            # titles.append(f"no learning: ${iter}$ iters")
+            titles.append(f"prev_sol: ${iter}$ iters")
             titles.append(f"nearest neighbor: ${iter}$ iters")
             titles.append(f"learned: ${iter}$ iters")
 

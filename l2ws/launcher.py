@@ -1027,6 +1027,8 @@ class Workspace:
             thetas = self.thetas_test
             if 'z_nn_test' in dir(self):
                 z_nn = self.z_nn_test
+            if 'z_prev_sol_test' in dir(self):
+                z_prev_sol = self.z_prev_sol_test
 
         if col == 'no_train':
             if train:
@@ -1038,14 +1040,24 @@ class Workspace:
                 self.z_nn_train = z_all #x_primals[:self.vis_num, :, :]
             else:
                 self.z_nn_test = z_all #x_primals[:self.vis_num, :, :]
+        elif col == 'prev_sol':
+            if train:
+                self.z_prev_sol_train = z_all #x_primals[:self.vis_num, :, :]
+            else:
+                self.z_prev_sol_test = z_all #x_primals[:self.vis_num, :, :]
         if train:
             z_no_learn = self.z_no_learn_train
         else:
             z_no_learn = self.z_no_learn_test
 
-        if col != 'nearest_neighbor' and col != 'no_train':
-            self.custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn,
-                                     thetas, self.iterates_visualize, visual_path)
+        if train:
+            if col != 'nearest_neighbor' and col != 'no_train' and col != 'prev_sol':
+                self.custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn,
+                                        thetas, self.iterates_visualize, visual_path)
+        else:
+            if col != 'nearest_neighbor' and col != 'no_train' and col != 'prev_sol':
+                self.custom_visualize_fn(z_all, z_stars, z_prev_sol, z_nn,
+                                        thetas, self.iterates_visualize, visual_path)
 
 
     def run(self):
