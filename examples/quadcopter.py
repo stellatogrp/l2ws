@@ -263,8 +263,14 @@ def setup_probs(setup_cfg):
     # perturbation = np.zeros(nx)
     # perturbation[0] = 0
 
-    # noise_list = [jnp.array(.00 * np.random.normal(size=(nx))) for i in range(sim_len)]
+    # noise_list = [jnp.array(.1 * np.random.normal(size=(nx))) for i in range(sim_len)]
     noise_list = []
+    # noise_list = [1 * jnp.array(.05 * np.random.normal(size=(nx))) for i in range(sim_len)]
+    # noise_list[50] = jnp.array(.5 * np.random.normal(size=(nx)))
+    # noise_list = [0 * jnp.array(.05 * np.random.normal(size=(nx))) for i in range(sim_len)]
+    # for i in range(sim_len):
+    #     if i == 33 or i == 67:
+    #         noise_list[i] = jnp.array(.5 * np.random.normal(size=(nx)))
     for i in range(sim_len):
         perturb_np = 1 * np.random.normal(size=(nx))
         perturb_np[:3] = 0
