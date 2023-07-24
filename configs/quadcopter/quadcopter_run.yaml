@@ -1,7 +1,7 @@
 nn_cfg:
-  lr: 1e-4
+  lr: 1e-3
   method: adam
-  intermediate_layer_sizes: [100, 500]
+  intermediate_layer_sizes: [500, 500]
   batch_size: 100
   epochs: 1e6
   decay_lr: .1
@@ -26,16 +26,16 @@ data:
   datetime: ''
 
 eval_batch_size_test: 100
-train_unrolls: 1
+train_unrolls: 15
 eval_unrolls: 500
 eval_every_x_epochs: 200
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 10
-N_train: 100
-N_test: 100
-num_samples_test: 100
+N_train: 10000
+N_test: 200
+num_samples_test: 200
 num_samples_train: 100
 prediction_variable: w
 angle_anchors: [0]
@@ -64,5 +64,5 @@ save_weights_flag: True
 # solve_c_num: 100
 
 # rollouts
-num_rollouts: 1
+num_rollouts: 0
 closed_loop_budget: 15

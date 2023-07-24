@@ -3,7 +3,7 @@ dt: 0.04
 rollout_length: 100
 waypoints: 10 #10
 rollout_osqp_iters: 500
-num_rollouts: 2
+num_rollouts: 110
 R_diag:
 - 0.01
 - 0.01
