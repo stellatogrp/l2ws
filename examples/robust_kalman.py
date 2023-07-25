@@ -439,8 +439,11 @@ def plot_positions_overlay(traj, labels, num_dots=2, grayscales=[.8, .3, 1.0, 0.
     # save with legend
     if legend:
         plt.legend()
-    plt.xlabel('x position')
-    plt.ylabel('y position')
+    # plt.xlabel('x position')
+    # plt.ylabel('y position')
+    # plt.axis('off')
+    plt.xticks([])
+    plt.yticks([])
     if filename:
         plt.savefig(filename, bbox_inches='tight')
     else:

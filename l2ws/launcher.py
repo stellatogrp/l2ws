@@ -69,7 +69,7 @@ class Workspace:
 
         # custom visualization
         self.init_custom_visualization(cfg, custom_visualize_fn)
-        self.vis_num = 20
+        self.vis_num = cfg.get('vis_num', 20)
 
         # from the run cfg retrieve the following via the data cfg
         N_train, N_test = cfg.N_train, cfg.N_test
@@ -1057,7 +1057,7 @@ class Workspace:
         else:
             if col != 'nearest_neighbor' and col != 'no_train' and col != 'prev_sol':
                 self.custom_visualize_fn(z_all, z_stars, z_prev_sol, z_nn,
-                                        thetas, self.iterates_visualize, visual_path)
+                                        thetas, self.iterates_visualize, visual_path, num=self.vis_num)
 
 
     def run(self):
