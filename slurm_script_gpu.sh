@@ -17,10 +17,12 @@ echo "My SLURM_ARRAY_TASK_ID is $SLURM_ARRAY_TASK_ID"
 echo "Executing on the machine:" $(hostname)
 
 # os.environ['XLA_PYTHON_CLIENT_PREALLOCATE']='true'
-export XLA_PYTHON_CLIENT_MEM_FRACTION='0.90'
+export XLA_PYTHON_CLIENT_MEM_FRACTION='0.80'
+# XLA_PYTHON_CLIENT_ALLOCATOR=platform
+# export xla_force_host_platform_device_count=1
 
 
-python l2ws_train_script.py robust_kalman cluster
+python l2ws_train_script.py sparse_pca cluster
 # python aggregate_slurm_runs_script.py robust_ls cluster
 
 

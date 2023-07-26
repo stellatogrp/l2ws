@@ -25,19 +25,18 @@ pretrain:
 data:
   datetime: '' #'2023-04-10/11-17-04'
 
-train_unrolls: 60
-eval_unrolls: 500
+
+eval_unrolls: 1000
 eval_every_x_epochs: 1
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 2
 N_train: 10000
-N_test: 10
-num_samples: 10
+N_test: 1000
+# num_samples: 1000
 prediction_variable: w
 angle_anchors: [0]
-supervised: True
 plot_iterates: [0, 10, 20]
 loss_method: 'fixed_k' #'fixed_k' #'constant_sum'
 share_all: False
@@ -53,6 +52,13 @@ alpha_relax: 1
 skip_startup: True
 solve_c_num: 1000
 save_weights_flag: True
-load_weights_datetime: '2023-06-05/10-59-27'
+load_weights_datetime: '2023-06-14/23-25-13' #'2023-06-05/10-59-27'
+train_unrolls: 15
+supervised: True
+num_samples_test: 1000
+num_samples_train: 100
+eval_batch_size_test: 200
+eval_batch_size_train: 100
+
 # obj: ['2023-06-05/10-59-27', '2023-06-04/22-30-33', '2023-06-04/21-53-52', '2023-06-04/21-50-00', '2023-06-04/22-23-46', 
-# reg: '2023-06-05/20-11-22', '2023-06-14/23-19-14', '2023-06-14/23-50-40', '2023-06-14/23-25-13', '2023-07-11/16-25-13', '2023-07-11/18-59-59']
+# reg: '2023-06-14/23-19-14', '2023-06-14/23-50-40', '2023-06-14/23-25-13', '2023-07-11/16-25-13', '2023-07-11/18-59-59']
