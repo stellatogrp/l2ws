@@ -28,6 +28,7 @@ plt.rcParams.update({
     "font.family": "serif",   # For talks, use sans-serif
     "font.size": 16,
 })
+import gc
 config.update("jax_enable_x64", True)
 
 
@@ -554,7 +555,7 @@ class Workspace:
         # extract information from the evaluation
         loss_train, out_train, train_time = eval_out
         iter_losses_mean = out_train[1].mean(axis=0)
-        angles = out_train[3]
+        # angles = out_train[3]
         # iter_losses_mean = out_train[2].mean(axis=0)
         # angles = out_train[3]
         # primal_residuals = out_train[4].mean(axis=0)
@@ -608,8 +609,7 @@ class Workspace:
             z_plot = z_all[:, :, :-1] / z_all[:, :, -1:]
         else:
             z_plot = z_all
-        # import pdb
-        # pdb.set_trace()
+
         self.plot_warm_starts(None, z_plot, train, col)
 
         # plot the alpha coefficients
@@ -1291,19 +1291,34 @@ class Workspace:
             return eval_out
 
         for i in range(num_batches):
+            print('evaluating batch num', i)
             start = i * batch_size
             end = (i + 1) * batch_size
             curr_inputs = inputs[start: end]
             curr_q_mat = q_mat[start: end]
 
-            curr_factors = (factors[0][start:end, :, :], factors[1][start:end, :])
+            if factors is not None:
+                curr_factors = (factors[0][start:end, :, :], factors[1][start:end, :])
+            else:
+                curr_factors = None
             if z_stars is not None:
                 curr_z_stars = z_stars[start: end]
             else:
                 curr_z_stars = None
             eval_out = self.l2ws_model.evaluate(
                 self.eval_unrolls, curr_inputs, curr_q_mat, curr_z_stars, fixed_ws, factors=curr_factors, tag=tag)
-            full_eval_out.append(eval_out)
+            # full_eval_out.append(eval_out)
+            # eval_out_cpu = tuple(item.copy_to_host() for item in eval_out)
+            # full_eval_out.append(eval_out_cpu)
+            eval_out1_list = [eval_out[1][i] for i in range(len(eval_out[1]))]
+            eval_out1_list[2] = eval_out1_list[2][:, :25, :]
+            eval_out1_list[6] = eval_out1_list[6][:, :25, :]
+            eval_out_cpu = (eval_out[0], tuple(eval_out1_list), eval_out[2])
+            full_eval_out.append(eval_out_cpu)
+            del eval_out
+            del eval_out_cpu
+            del eval_out1_list
+            gc.collect()
         loss = np.array([curr_out[0] for curr_out in full_eval_out]).mean()
         time_per_prob = np.array([curr_out[2] for curr_out in full_eval_out]).mean()
         out = self.stack_tuples([curr_out[1] for curr_out in full_eval_out])
