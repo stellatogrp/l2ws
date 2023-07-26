@@ -58,47 +58,81 @@ def simulate(T, gamma, dt, sigma, p):
 
 
 def shifted_sol(z_star, T, m, n):
-    return z_star
-    # nx = 4
-    # nu = 2
-    # # shifted_z_star = jnp.zeros(z_star.size)
+    """
+    variables
+    (x_t, w_t, s_t, v_t,  u_t, z_t) in (nx + nu + no + 3)
+    (nx,  nu,  1,   no,   no, 1, 1)
+    min sum_{i=0}^{T-1} ||w_t||_2^2 + mu (u_t+rho*z_t^2)
+        s.t. x_{t+1} = Ax_t + Bw_t  t=0,...,T-2 (dyn)
+             y_t = Cx_t + v_t       t=0,...,T-1 (obs)
+             u_t + z_t = s_t        t=0,...,T-1 (aux)
+             z_t <= rho             t=0,...,T-1 (z ineq)
+             u_t >= 0               t=0,...,T-1 (u ineq)
+             ||v_t||_2 <= s_t       t=0,...,T-1 (socp)
+    vars: 
+        (x_0, ..., x_{T-1}) (nx)
+        (w_0, ..., w_{T-2}) (nu)
+        (v_0, ..., v_{T-1}) (no)
+        (u_0, ..., u_{T-1}) (1)
+        (s_0, ..., s_{T-1}) (1)
+        (z_0, ..., z_{T-1}) (1)
 
-    # x_star = z_star[:n]
-    # y_star = z_star[n:]
+    data: (y_0, ..., y_{T-1})
+    """
+    # return z_star
+    nx = 4
+    nu = 2
+    no = 2
+    # shifted_z_star = jnp.zeros(z_star.size)
 
-    # shifted_x_star = jnp.zeros(n)
-    # shifted_y_star = jnp.zeros(m)
+    x_star = z_star[:n]
+    y_star = z_star[n:-1]
 
-    # # indices markers
-    # end_state = nx * T
-    # end_dyn_cons = nx * T
-    # end_state_cons = 2 * nx * T
-    # end = T * (2 * nx + nu)
+    shifted_x_star = jnp.zeros(n)
+    shifted_y_star = jnp.zeros(m)
 
-    # # get primal vars
-    # shifted_states = x_star[nx:end_state]
-    # shifted_controls = x_star[end_state + nu:]
+    # indices markers
+    w_start = nx * T
+    s_start = w_start + nu * T
+    v_start = s_start + T
+    u_start = v_start + no * T
+    z_start = u_start + T
+    # end_x = nx * T
+    # end_w = end_x + nu * (T - 1)
+    # end_v = end_w + 2 * (T)
+    # assert end_v == n
+    end_dyn_cons = nx * T
+    end_state_cons = 2 * nx * T
+    end = T * (2 * nx + nu)
 
-    # # insert into shifted x_star
-    # shifted_x_star = shifted_x_star.at[:end_state - nx].set(shifted_states)
-    # shifted_x_star = shifted_x_star.at[end_state:-nu].set(shifted_controls)
+    # get primal vars
+    shifted_x = x_star[nx:w_start]
+    shifted_w = x_star[w_start + nu: s_start]
+    shifted_s = x_star[s_start + 1: v_start]
+    shifted_v = x_star[v_start + no: u_start]
+    shifted_u = x_star[u_start + 1: z_start]
+    shifted_z = x_star[z_start + 1:]
 
-    # # get dual vars
-    # shifted_dyn_cons = y_star[nx:end_dyn_cons]
-    # shifted_state_cons = y_star[end_dyn_cons + nx:end_state_cons]
-    # shifted_control_cons = y_star[end_state_cons + nu: end]
+    # insert into shifted x_star
+    shifted_x_star = shifted_x_star.at[:w_start - nx].set(shifted_x)
+    shifted_x_star = shifted_x_star.at[end_state:-nu].set(shifted_controls)
 
-    # # insert into shifted y_star
-    # shifted_y_star = shifted_y_star.at[:end_dyn_cons - nx].set(shifted_dyn_cons)
-    # shifted_y_star = shifted_y_star.at[end_dyn_cons:end_state_cons - nx].set(shifted_state_cons)
-    # # shifted_y_star = shifted_y_star.at[end_state_cons:-nu].set(shifted_control_cons)
+    # get dual vars
+    shifted_dyn_cons = y_star[nx:end_dyn_cons]
+    shifted_state_cons = y_star[end_dyn_cons + nx:end_state_cons]
+    shifted_control_cons = y_star[end_state_cons + nu: end]
 
-    # shifted_y_star = shifted_y_star.at[end_state_cons:end - nu].set(shifted_control_cons)
+    # insert into shifted y_star
+    shifted_y_star = shifted_y_star.at[:end_dyn_cons - nx].set(shifted_dyn_cons)
+    shifted_y_star = shifted_y_star.at[end_dyn_cons:end_state_cons - nx].set(shifted_state_cons)
+    # shifted_y_star = shifted_y_star.at[end_state_cons:-nu].set(shifted_control_cons)
 
-    # # concatentate primal and dual
-    # shifted_z_star = jnp.concatenate([shifted_x_star, shifted_y_star])
+    shifted_y_star = shifted_y_star.at[end_state_cons:end - nu].set(shifted_control_cons)
 
-    # return shifted_z_star
+    # concatentate primal and dual
+    shifted_z_star = jnp.concatenate([shifted_x_star, shifted_y_star])
+
+    return shifted_z_star
 
 
 def single_rollout_theta(rollout_length, T, sigma, p, gamma, dt, w_noise_var, y_noise_var, B_const=1):
