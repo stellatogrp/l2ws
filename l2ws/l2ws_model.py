@@ -153,11 +153,11 @@ class L2WSmodel(object):
         params, state = results
         return state.value, params, state
 
-    def evaluate(self, k, inputs, b, z_stars, fixed_ws, factors=None, tag='test'):
+    def evaluate(self, k, inputs, b, z_stars, fixed_ws, factors=None, tag='test', light=False):
         if self.factors_required and not self.factor_static_bool:
             return self.dynamic_eval(k, inputs, b, z_stars, factors=factors, tag=tag, fixed_ws=fixed_ws)
         else:
-            return self.static_eval(k, inputs, b, z_stars, tag=tag, fixed_ws=fixed_ws)
+            return self.static_eval(k, inputs, b, z_stars, tag=tag, fixed_ws=fixed_ws, light=light)
 
     def short_test_eval(self):
         # z_stars_test = self.z_stars_test if self.supervised else None
@@ -194,19 +194,43 @@ class L2WSmodel(object):
 
         return loss, out, time_per_prob
 
-    def static_eval(self, k, inputs, b, z_stars, tag='test', fixed_ws=False):
-        if fixed_ws:
-            curr_loss_fn = self.loss_fn_fixed_ws
+    def static_eval(self, k, inputs, b, z_stars, tag='test', fixed_ws=False, light=False):
+        # if fixed_ws:
+        #     if light:
+        #         curr_loss_fn = self.loss_fn_fixed_ws
+        #     else:
+        #         curr_loss_fn = self.loss_fn_fixed_ws_light
+        # else:
+        #     if light:
+        #         curr_loss_fn = self.loss_fn_eval
+        #     else:
+        #         curr_loss_fn = self.loss_fn_train
+        if light:
+            if fixed_ws:
+                curr_loss_fn = self.loss_fn_fixed_ws_light
+            else:
+                curr_loss_fn = self.loss_fn_train
+            num_probs, _ = inputs.shape
+
+            test_time0 = time.time()
+
+            loss, out = curr_loss_fn(self.params, inputs, b, k, z_stars)
+            time_per_prob = (time.time() - test_time0)/num_probs
+
+            return loss, out, time_per_prob
         else:
-            curr_loss_fn = self.loss_fn_eval
-        num_probs, _ = inputs.shape
+            if fixed_ws:
+                curr_loss_fn = self.loss_fn_eval
+            else:
+                curr_loss_fn = self.loss_fn_fixed_ws
+            num_probs, _ = inputs.shape
 
-        test_time0 = time.time()
+            test_time0 = time.time()
 
-        loss, out = curr_loss_fn(self.params, inputs, b, k, z_stars)
-        time_per_prob = (time.time() - test_time0)/num_probs
+            loss, out = curr_loss_fn(self.params, inputs, b, k, z_stars)
+            time_per_prob = (time.time() - test_time0)/num_probs
 
-        return loss, out, time_per_prob
+            return loss, out, time_per_prob
 
 
     def initialize_neural_network(self, input_dict):
@@ -296,6 +320,9 @@ class L2WSmodel(object):
 
         # end-to-end added fixed warm start eval - bypasses neural network
         self.loss_fn_fixed_ws = e2e_loss_fn(bypass_nn=True, diff_required=False)
+
+        # end-to-end loss fn for evaluation of fixed ws - meant for light mode
+        self.loss_fn_fixed_ws_light = e2e_loss_fn(bypass_nn=True, diff_required=True)
 
     def init_train_tracking(self):
         self.epoch = 0
