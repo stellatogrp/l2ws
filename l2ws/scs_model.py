@@ -53,6 +53,7 @@ class SCSmodel(L2WSmodel):
 
         # not a hyperparameter, but used for scale knob
         self.zero_cone_size = input_dict['zero_cone_size']
+        lightweight = input_dict.get('lightweight', False)
 
         self.output_size = self.n + self.m
         self.out_axes_length = 8
@@ -70,7 +71,8 @@ class SCSmodel(L2WSmodel):
                                        rho_x=self.rho_x, scale=self.scale,
                                        alpha=self.alpha_relax,
                                        jit=self.jit,
-                                       hsde=True)
+                                       hsde=True,
+                                       lightweight=lightweight)
 
     def setup_optimal_solutions(self, dict):
         if dict.get('x_stars_train', None) is not None:

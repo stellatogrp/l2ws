@@ -347,7 +347,8 @@ class Workspace:
                       'scale': scale,
                       'alpha_relax': alpha_relax,
                       'zero_cone_size': cones['z'],
-                      'cones': cones
+                      'cones': cones,
+                      'lightweight': cfg.get('lightweight', False)
                       }
         self.l2ws_model = SCSmodel(input_dict)
 

@@ -350,8 +350,6 @@ def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, scale_vec,
     # primal and dual residuals
     if not lightweight:
         x, y, s = extract_sol(u, v, n, hsde)
-        # import pdb
-        # pdb.set_trace()
         pr = jnp.linalg.norm(A @ x + s - b)
         dr = jnp.linalg.norm(A.T @ y + P @ x + c)
         primal_residuals = primal_residuals.at[i].set(pr)
@@ -526,7 +524,7 @@ def k_steps_eval_gd(k, z0, q, A, gd_step, supervised, z_star, jit):
 
 
 def k_steps_eval_scs(k, z0, q, factor, proj, P, A, supervised, z_star, jit, hsde, zero_cone_size,
-                     rho_x=1, scale=1, alpha=1.0):
+                     rho_x=1, scale=1, alpha=1.0, lightweight=False):
     """
     if k = 500 we store u_1, ..., u_500 and z_0, z_1, ..., z_500
         which is why we have all_z_plus_1
@@ -580,6 +578,8 @@ def k_steps_eval_scs(k, z0, q, factor, proj, P, A, supervised, z_star, jit, hsde
     all_z_plus_1 = all_z_plus_1.at[1:, :].set(all_z)
 
     # return z_final, iter_losses, primal_residuals, dual_residuals, all_z_plus_1, all_u, all_v
+    if lightweight:
+        return z_final, iter_losses, all_z_plus_1[:10, :], primal_residuals, dual_residuals, all_u[:10, :], all_v[:10, :]
     return z_final, iter_losses, all_z_plus_1, primal_residuals, dual_residuals, all_u, all_v
 
 
