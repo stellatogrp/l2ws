@@ -38,9 +38,12 @@ test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 10
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 N_train: 10000
 N_test: 1000
 =======
+=======
+>>>>>>> Stashed changes
 N_train: 100
 N_test: 20
 num_samples: 10
