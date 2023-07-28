@@ -131,9 +131,9 @@ def setup_probs(setup_cfg):
     # blur img
     blurred_imgs = []
     for i in range(N):
-        noise = cfg['noise_std_dev'] * jnp.array(np.random.normal(size=(784)))
-        blurred_img = jnp.reshape(B @ x_train[i, :], (28, 28))
-        blurred_img_vec = jnp.ravel(blurred_img) + noise
+        noise = cfg['noise_std_dev'] * jnp.array(np.random.normal(size=(28, 28)))
+        blurred_img = jnp.reshape(B @ x_train[i, :], (28, 28)) + noise
+        blurred_img_vec = jnp.ravel(blurred_img) 
         q_mat = q_mat.at[i, :n].set((-B.T @ blurred_img_vec + lambd) * obj_const)
         theta_mat = theta_mat.at[i, :].set(blurred_img_vec)
         blurred_imgs.append(blurred_img)

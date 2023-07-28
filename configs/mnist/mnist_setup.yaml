@@ -1,11 +1,11 @@
 solve_acc_abs: 1e-4
 solve_acc_rel: 0
 lambd: 1e-3
-N_train: 100
+N_train: 1000
 N_test: 20
 seed: 42
 solve: True
-noise_std_dev: 0.001
+noise_std_dev: 0.002
 blur_size: 8
 emnist: True
 obj_const: 1
