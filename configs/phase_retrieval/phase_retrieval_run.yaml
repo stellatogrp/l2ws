@@ -25,18 +25,18 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 60 # this is the k that tells you how many FOM iterations
-eval_unrolls: 500
+
+
 eval_every_x_epochs: 10
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 N_train: 10000  # adjust these for larger setups
-N_test: 100
-num_samples: 100
+N_test: 10
+num_samples: 10
 prediction_variable: w
 angle_anchors: [0]
-supervised: False
+
 plot_iterates: [0, 10, 100]
 loss_method: 'fixed_k' #'fixed_k' #'constant_sum'
 share_all: False  # this is the shared solution approach
@@ -51,5 +51,10 @@ rho_x: 1
 scale: 1
 alpha_relax: 1
 skip_startup: False  # can be used to skip the eval for no learn and NN 
-# solve_c_num: 50
+solve_c_num: 10
 save_weights_flag: True
+eval_unrolls: 10000
+train_unrolls: 1 # this is the k that tells you how many FOM iterations
+supervised: False
+load_weights_datetime: '2023-07-10/21-01-41'
+# output_datetimes: ['2023-07-10/21-01-41', '2023-07-10/21-58-27', '2023-07-10/21-56-15', '2023-07-10/22-18-28', '2023-07-10/22-26-36', '2023-07-10/22-31-47', '2023-07-10/23-13-58', '2023-07-10/23-16-59', '2023-07-10/23-29-20', '2023-07-10/23-33-13']

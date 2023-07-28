@@ -79,7 +79,7 @@ def shifted_sol(z_star, T, m, n):
 
     data: (y_0, ..., y_{T-1})
     """
-    # return z_star
+    return z_star
     nx = 4
     nu = 2
     no = 2

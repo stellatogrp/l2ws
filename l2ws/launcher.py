@@ -626,7 +626,8 @@ class Workspace:
             # self.custom_visualize(x_primals, train, col)
 
             # self.custom_visualize(z_all, train, col)
-            self.custom_visualize(z_plot, train, col)
+            if self.vis_num > 0:
+                self.custom_visualize(z_plot, train, col)
 
         # closed loop control rollouts
         if not train:

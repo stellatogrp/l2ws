@@ -25,20 +25,16 @@ pretrain:
 data:
   datetime: ''
 
-eval_batch_size: 100
-train_unrolls: 10
-eval_unrolls: 1000
+
 eval_every_x_epochs: 200
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 10
-N_train: 1000
-N_test: 20
-num_samples: 10
+N_train: 10000
+N_test: 1000
 prediction_variable: w
 angle_anchors: [0]
-supervised: True
 plot_iterates: [0, 10, 20]
 loss_method: 'fixed_k' #'fixed_k' #'constant_sum'
 # share_all: False
@@ -51,10 +47,16 @@ accuracies: [.1, .01, .001, .0001]
 rho_x: 1
 scale: 1
 alpha_relax: 1
+
+supervised: True
 skip_startup: False
 save_weights_flag: True
+train_unrolls: 60
+num_samples: 100
+eval_batch_size: 100
+eval_unrolls: 1000
 # load_weights_datetime: '2023-07-16/15-58-19'
-# load_weights_datetime: '2023-07-08/21-14-58'
+load_weights_datetime: '2023-07-28/02-06-06'
 
 # solving in C
 # rel_tols: [1e-1, 1e-2, 1e-3, 1e-4, 1e-5]
@@ -66,4 +68,5 @@ save_weights_flag: True
 # closed_loop_budget: 10
 
 # visualize
-iterates_visualize: [10, 20, 50, 90] #[10, 20, 50, 100, 200, 500]
+iterates_visualize: [] #[10, 20, 50, 90] #[10, 20, 50, 100, 200, 500]
+vis_num: 0
