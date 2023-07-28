@@ -25,14 +25,26 @@ pretrain:
 data:
   datetime: ''
 
+<<<<<<< Updated upstream
 
+=======
+eval_batch_size: 100
+train_unrolls: 1
+eval_unrolls: 1000
+>>>>>>> Stashed changes
 eval_every_x_epochs: 200
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 10
+<<<<<<< Updated upstream
 N_train: 10000
 N_test: 1000
+=======
+N_train: 100
+N_test: 20
+num_samples: 10
+>>>>>>> Stashed changes
 prediction_variable: w
 angle_anchors: [0]
 plot_iterates: [0, 10, 20]
