@@ -125,8 +125,8 @@ def setup_probs(setup_cfg):
     theta_mat = jnp.zeros((N, n))
 
     # trial
-    # noisy_img = np.reshape(x_train[0, :], (28, 28)) + .1 * np.random.normal(size=(28, 28))
-    # mnist_canon(np.eye(784), lambd, noisy_img)
+    noisy_img =  np.reshape(B @ x_train[0, :], (28, 28)) + .00 * np.random.normal(size=(28, 28))
+    mnist_canon(B, lambd, noisy_img)
 
     # blur img
     blurred_imgs = []
@@ -222,6 +222,49 @@ def get_mnist(emnist=True):
     return x_train, x_test
 
 
+def tv(value, *args):
+    from cvxpy.atoms.affine.reshape import reshape
+    from cvxpy.atoms.affine.sum import sum
+    from cvxpy.atoms.affine.vstack import vstack
+    from cvxpy.atoms.norm import norm
+    from cvxpy.expressions.expression import Expression
+    """Total variation of a vector, matrix, or list of matrices.
+
+    Uses L1 norm of discrete gradients for vectors and
+    L2 norm of discrete gradients for matrices.
+
+    Parameters
+    ----------
+    value : Expression or numeric constant
+        The value to take the total variation of.
+    args : Matrix constants/expressions
+        Additional matrices extending the third dimension of value.
+
+    Returns
+    -------
+    Expression
+        An Expression representing the total variation.
+    """
+    value = Expression.cast_to_const(value)
+    if value.ndim == 0:
+        raise ValueError("tv cannot take a scalar argument.")
+    # L1 norm for vectors.
+    elif value.ndim == 1:
+        return norm(value[1:] - value[0:value.shape[0]-1], 1)
+    # L2 norm for matrices.
+    else:
+        rows, cols = value.shape
+        args = map(Expression.cast_to_const, args)
+        values = [value] + list(args)
+        diffs = []
+        for mat in values:
+            diffs += [
+                mat[0:rows-1, 1:cols] - mat[0:rows-1, 0:cols-1],
+                mat[1:rows, 0:cols-1] - mat[0:rows-1, 0:cols-1],
+            ]
+        length = diffs[0].shape[0]*diffs[1].shape[1]
+        stacked = vstack([reshape(diff, (1, length)) for diff in diffs])
+        return sum(norm(stacked, p=1, axis=0))
 
 
 def mnist_canon(A, lambd, blurred_img):
@@ -240,8 +283,10 @@ def mnist_canon(A, lambd, blurred_img):
     # prob = cp.Problem(cp.Minimize(lambd * cp.sum(x) + cp.sum_squares(A @ cp.vec(x) - b)), constraints)
     # import pdb
     # pdb.set_trace
-    prob = cp.Problem(cp.Minimize(lambd * cp.tv(x) + cp.sum_squares(cp.vec(x) - b)), constraints)
-    data, chain, inverse_data = prob.get_problem_data(cp.SCS)
+    prob = cp.Problem(cp.Minimize(lambd * tv(x) + cp.sum_squares(A @ cp.vec(x) - b)), constraints)
+    data, chain, inverse_data = prob.get_problem_data(cp.OSQP)
+    import pdb
+    pdb.set_trace()
 
     # A = np.vstack([data['A'].todense(), data['F'].todense()])
     # u = np.hstack([data['b'], data['G']])
@@ -249,14 +294,14 @@ def mnist_canon(A, lambd, blurred_img):
     # P = data['P'].todense()
     # c = data['q']
 
-    # prob.solve(solver=cp.OSQP, verbose=True, max_iters=100, adaptive_rho=False, eps_abs=1e0) 
-    prob.solve(solver=cp.SCS,
-               normalize=False,
-                     scale=1,
-                     rho_x=1,
-                     adaptive_scale=False,
-                     max_iters=500,
-                     verbose=True)
+    prob.solve(solver=cp.OSQP, verbose=True)#, adaptive_rho=False, eps_abs=1e0) 
+    # prob.solve(solver=cp.SCS,
+    #            normalize=False,
+    #                  scale=1,
+    #                  rho_x=1,
+    #                  adaptive_scale=False,
+    #                  max_iters=500,
+    #                  verbose=True)
                     #  eps_rel=1e-4,
                     #  eps_abs=1e-4)
                     #  max_iters=1000)#, max_iter=50)
