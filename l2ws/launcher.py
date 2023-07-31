@@ -1287,7 +1287,7 @@ class Workspace:
         # do the batching
         num_batches = int(num / batch_size)
         full_eval_out = []
-        if num_batches == 1:
+        if num_batches <= 1:
             eval_out = self.l2ws_model.evaluate(
                 self.eval_unrolls, inputs, q_mat, z_stars, fixed_ws, factors=factors, tag=tag)
             return eval_out
@@ -1321,6 +1321,8 @@ class Workspace:
             del eval_out_cpu
             del eval_out1_list
             gc.collect()
+        import pdb
+        pdb.set_trace()
         loss = np.array([curr_out[0] for curr_out in full_eval_out]).mean()
         time_per_prob = np.array([curr_out[2] for curr_out in full_eval_out]).mean()
         out = self.stack_tuples([curr_out[1] for curr_out in full_eval_out])

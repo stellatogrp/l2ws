@@ -7,6 +7,7 @@ from jax import vmap, jit
 import osqp
 import numpy as np
 from scipy.sparse import csc_matrix
+from scipy import sparse
 
 
 class OSQPmodel(L2WSmodel):
@@ -92,21 +93,27 @@ class OSQPmodel(L2WSmodel):
                                      supervised=supervised, z_star=z_star, jit=self.jit)
         return k_steps_eval_osqp_dynamic
 
-    def solve_c(self, z0_mat, q_mat, rel_tol, abs_tol, max_iter=10000):
+    def solve_c(self, z0_mat, q_mat, rel_tol, abs_tol, max_iter=40000):
         # assume M doesn't change across problems
         # static problem data
         m, n = self.m, self.n
-        P, A = self.P, self.A
+        nc2 = int(n * (n + 1) / 2)
 
-        # set the solver
-        # b_zeros, c_zeros = np.zeros(m), np.zeros(n)
+        if self.factor_static_bool:
+            P, A = self.P, self.A
+        else:
+            P, A = np.ones((n, n)), np.zeros((m, n))
+        P_sparse, A_sparse = csc_matrix(np.array(P)), csc_matrix(np.array(A))
+
 
         osqp_solver = osqp.OSQP()
-        P_sparse, A_sparse = csc_matrix(np.array(P)), csc_matrix(np.array(A))
+        
 
         # q = q_mat[0, :]
         c, l, u = np.zeros(n), np.zeros(m), np.zeros(m)
-        osqp_solver.setup(P=P_sparse, q=c, A=A_sparse, l=l, u=u, alpha=self.alpha, rho=self.rho, sigma=self.sigma, polish=False,
+        
+        rho = 1
+        osqp_solver.setup(P=P_sparse, q=c, A=A_sparse, l=l, u=u, alpha=self.alpha, rho=rho, sigma=self.sigma, polish=False,
                           adaptive_rho=False, scaling=0, max_iter=max_iter, verbose=True, eps_abs=abs_tol, eps_rel=rel_tol)
 
         num = z0_mat.shape[0]
@@ -115,10 +122,26 @@ class OSQPmodel(L2WSmodel):
         x_sols = jnp.zeros((num, n))
         y_sols = jnp.zeros((num, m))
         for i in range(num):
-            # set c, l, u
-            c, l, u = q_mat[i, :n], q_mat[i, n:n + m], q_mat[i, n + m:]
-            osqp_solver.update(q=np.array(c))
-            osqp_solver.update(l=np.array(l), u=np.array(u))
+            if not self.factor_static_bool:
+                P = unvec_symm(q_mat[i, 2 * m + n: 2 * m + n + nc2], n)
+                A = jnp.reshape(q_mat[i, 2 * m + n + nc2:], (m, n))
+                c, l, u = np.array(q_mat[i, :n]), np.array(q_mat[i, n:n + m]),  np.array(q_mat[i, n + m:n + 2 * m])
+                
+                P_sparse, A_sparse = csc_matrix(np.array(P)), csc_matrix(np.array(A))
+                # Px = sparse.triu(P_sparse).data
+                # import pdb
+                # pdb.set_trace()
+                osqp_solver = osqp.OSQP()
+                osqp_solver.setup(P=P_sparse, q=c, A=A_sparse, l=l, u=u, alpha=self.alpha, rho=rho, sigma=self.sigma, polish=False,
+                          adaptive_rho=False, scaling=0, max_iter=max_iter, verbose=True, eps_abs=abs_tol, eps_rel=rel_tol)
+                # osqp_solver.update(Px=P_sparse, Ax=csc_matrix(np.array(A)))
+            else:
+                # set c, l, u
+                c, l, u = q_mat[i, :n], q_mat[i, n:n + m], q_mat[i, n + m:n + 2 * m]
+                osqp_solver.update(q=np.array(c))
+                osqp_solver.update(l=np.array(l), u=np.array(u))
+
+            
 
             # set the warm start
             # x, y, s = self.get_xys_from_z(z0_mat[i, :])
@@ -132,7 +155,7 @@ class OSQPmodel(L2WSmodel):
             # sol = solver.solve(warm_start=True, x=np.array(x), y=np.array(y), s=np.array(s))
 
             # set the solve time in seconds
-            solve_times[i] = results.info.solve_time
+            solve_times[i] = results.info.solve_time * 1000
             solve_iters[i] = results.info.iter
 
             # set the results

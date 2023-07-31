@@ -33,10 +33,10 @@ save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 10
-N_train: 10000
-N_test: 200
-num_samples_test: 200
-num_samples_train: 100
+N_train: 20
+N_test: 20
+num_samples_test: 20
+num_samples_train: 20
 prediction_variable: w
 angle_anchors: [0]
 supervised: True
@@ -59,9 +59,9 @@ save_weights_flag: True
 # solve_c_num: 1000
 
 # solving in C
-# rel_tols: [1e-1, 1e-2, 1e-3, 1e-4, 1e-5]
-# abs_tols: [1e-1, 1e-2, 1e-3, 1e-4, 1e-5]
-# solve_c_num: 100
+rel_tols: [1e-1, 1e-2, 1e-3, 1e-4, 1e-5]
+abs_tols: [1e-1, 1e-2, 1e-3, 1e-4, 1e-5]
+solve_c_num: 10
 
 # rollouts
 num_rollouts: 0
