@@ -1,7 +1,7 @@
 nn_cfg:
   lr: 1e-3
   method: adam
-  intermediate_layer_sizes: [500, 500]
+  intermediate_layer_sizes: [100, 500]
   batch_size: 100
   epochs: 1e6
   decay_lr: .1
@@ -25,21 +25,15 @@ pretrain:
 data:
   datetime: ''
 
-eval_batch_size_test: 100
-train_unrolls: 15
-eval_unrolls: 500
+
 eval_every_x_epochs: 200
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 10
-N_train: 20
-N_test: 20
-num_samples_test: 20
-num_samples_train: 20
+
 prediction_variable: w
 angle_anchors: [0]
-supervised: True
 plot_iterates: [0, 10, 20]
 loss_method: 'fixed_k' #'fixed_k' #'constant_sum'
 # share_all: False
@@ -52,16 +46,30 @@ accuracies: [.1, .01, .001, .0001]
 rho_x: 1
 scale: 1
 alpha_relax: 1
-skip_startup: False
 save_weights_flag: True
-# load_weights_datetime: '2023-07-23/20-00-49'
+
+skip_startup: True
+num_samples_test: 1000
+num_samples_train: 100
+eval_batch_size_test: 100
+eval_unrolls: 15000
+N_train: 10000
+N_test: 1000
+train_unrolls: 30
+supervised: False
+load_weights_datetime: '2023-07-09/15-38-54'
 # '2023-07-09/14-14-53'
 # solve_c_num: 1000
+
+# output_datetimes: 
+# reg:['2023-07-09/14-14-53', '2023-07-09/14-27-54', '2023-07-09/14-32-59', '2023-07-09/14-33-59', '2023-07-09/14-35-29', 
+# obj: '2023-07-09/15-06-38', '2023-07-09/15-23-01', '2023-07-09/15-35-15', '2023-07-09/15-38-54', '2023-07-09/15-40-50']
+# 120: '2023-07-09/14-42-55',
 
 # solving in C
 rel_tols: [1e-1, 1e-2, 1e-3, 1e-4, 1e-5]
 abs_tols: [1e-1, 1e-2, 1e-3, 1e-4, 1e-5]
-solve_c_num: 10
+solve_c_num: 1000
 
 # rollouts
 num_rollouts: 0

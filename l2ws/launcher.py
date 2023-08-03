@@ -646,6 +646,7 @@ class Workspace:
 
         if self.save_weights_flag:
             self.save_weights()
+        gc.collect()
 
         return out_train
 
@@ -1111,7 +1112,7 @@ class Workspace:
 
         for epoch_batch in range(num_epochs_jit):
             epoch = int(epoch_batch * self.epochs_jit)
-            if test_zero or epoch % self.eval_every_x_epochs == 0 and epoch > 0:
+            if (test_zero and epoch == 0) or (epoch % self.eval_every_x_epochs == 0 and epoch > 0):
                 self.eval_iters_train_and_test(f"train_epoch_{epoch}", self.pretrain_on)
             # if epoch > self.l2ws_model.dont_decay_until:
             #     self.l2ws_model.decay_upon_plateau()
@@ -1314,15 +1315,14 @@ class Workspace:
             # full_eval_out.append(eval_out_cpu)
             eval_out1_list = [eval_out[1][i] for i in range(len(eval_out[1]))]
             eval_out1_list[2] = eval_out1_list[2][:, :25, :]
-            eval_out1_list[6] = eval_out1_list[6][:, :25, :]
+            if isinstance(self.l2ws_model, SCSmodel):
+                eval_out1_list[6] = eval_out1_list[6][:, :25, :]
             eval_out_cpu = (eval_out[0], tuple(eval_out1_list), eval_out[2])
             full_eval_out.append(eval_out_cpu)
             del eval_out
             del eval_out_cpu
             del eval_out1_list
             gc.collect()
-        import pdb
-        pdb.set_trace()
         loss = np.array([curr_out[0] for curr_out in full_eval_out]).mean()
         time_per_prob = np.array([curr_out[2] for curr_out in full_eval_out]).mean()
         out = self.stack_tuples([curr_out[1] for curr_out in full_eval_out])

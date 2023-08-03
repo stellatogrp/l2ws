@@ -531,12 +531,20 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
     axes[1, 0].set_xlabel('evaluation iterations')
     axes[1, 1].set_xlabel('evaluation iterations')
 
+    # y-label
+    axes[0, 0].set_ylabel('fixed point residual')
+    axes[1, 0].set_ylabel('gain to cold-start')
+
+    axes[0, 0].set_title('fixed point residual-based losses')
+    axes[0, 1].set_title('regression-based losses')
+    axes[1, 0].set_title('fixed point residual-based losses')
+    axes[1, 1].set_title('regression-based losses')
+
     # titles
-    axes[0, 0].set_title('fixed point residuals with objective losses')
-    axes[0, 1].set_title('fixed point residuals with regression losses')
-    axes[1, 0].set_title('gain to cold-start with objective losses')
-    axes[1, 1].set_title('gain to cold-start with regression losses')
-    # axes[i].set_title(plt_titles[i])
+    # axes[0, 0].set_title('fixed point residuals with fixed point residual-based losses')
+    # axes[0, 1].set_title('fixed point residuals with regression-based losses')
+    # axes[1, 0].set_title('gain to cold-start with fixed point residual-based losses')
+    # axes[1, 1].set_title('gain to cold-start with regression-based losses')
 
     if len(metrics) == 3:
         start = 1
@@ -576,7 +584,7 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             #     cs = np.array(curr_metric[j])[start:eval_iters + start]
             if j == 0:
                 cs = np.array(curr_metric[j])[start:eval_iters + start]
-            gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], a_min=0, a_max=150)
+            gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], a_min=0, a_max=1500)
             if title[:3] != 'reg':
                 axes[1, 0].plot(gain, linestyle=style, color=color)
             if title[:3] != 'obj':
@@ -749,7 +757,7 @@ def overlay_training_losses(example, cfg):
         fp_res_train = metric_train[0]
         metric_test, timings_test = load_data_per_title(example, title, datetime, train=False)
         fp_res_test = metric_test[0]
-        gain_ratio = fp_res_test[k] / fp_res_train[k]
+        gain_ratio = fp_res_test[k - 1] / fp_res_train[k - 1]
         # gain_ratios[i] = gain_ratio
         gain_ratios.append(gain_ratio)
 
