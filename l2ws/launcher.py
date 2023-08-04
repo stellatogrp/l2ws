@@ -1130,6 +1130,8 @@ class Workspace:
             self.l2ws_model.epoch += self.epochs_jit
             self.l2ws_model.params, self.l2ws_model.state = params, state
 
+            
+
             prev_batches = len(self.l2ws_model.tr_losses_batch)
             self.l2ws_model.tr_losses_batch = self.l2ws_model.tr_losses_batch + \
                 list(epoch_train_losses)
@@ -1159,6 +1161,7 @@ class Workspace:
             #   lax.while_loop and lax.scan.
             batch_indices = lax.dynamic_slice(
                 permutation, (0,), (self.l2ws_model.batch_size,))
+            
             train_loss_first, params, state = self.l2ws_model.train_batch(
                 batch_indices, self.l2ws_model.params, self.l2ws_model.state)
 
@@ -1170,15 +1173,43 @@ class Workspace:
 
         # loop the last (self.l2ws_model.num_batches - 1) iterates if not
         #   the first time calling train_batch
-        init_val = epoch_train_losses, params, state
-        body_fn = partial(self.train_over_epochs_body_fn, permutation=permutation)
-        val = lax.fori_loop(start_index, loop_size, body_fn, init_val)
+        # init_val = epoch_train_losses, params, state
+        # import pdb
+        # pdb.set_trace()
+        # body_fn = partial(self.train_over_epochs_body_fn, permutation=permutation)
+        # val = lax.fori_loop(start_index, loop_size, body_fn, init_val)
+        # epoch_batch_end_time = time.time()
+        # time_diff = epoch_batch_end_time - epoch_batch_start_time
+        # time_train_per_epoch = time_diff / self.epochs_jit
+        # epoch_train_losses, params, state = val
 
+        init_val = epoch_train_losses, params, state, permutation
+        # import pdb
+        # pdb.set_trace()
+        body_fn = self.train_over_epochs_body_simple_fn
+        val = lax.fori_loop(start_index, loop_size, body_fn, init_val)
         epoch_batch_end_time = time.time()
         time_diff = epoch_batch_end_time - epoch_batch_start_time
         time_train_per_epoch = time_diff / self.epochs_jit
-        epoch_train_losses, params, state = val
+        epoch_train_losses, params, state, permutation = val
+
         return params, state, epoch_train_losses, time_train_per_epoch
+    
+    def train_over_epochs_body_simple_fn(self, batch, val):
+        """
+        to be used as the body_fn in lax.fori_loop
+        need to call partial for the specific permutation
+        """
+        train_losses, params, state, permutation = val
+        start_index = batch * self.l2ws_model.batch_size
+        batch_indices = lax.dynamic_slice(
+            permutation, (start_index,), (self.l2ws_model.batch_size,))
+        # batch_indices = permutation[start_index: start_index + self.l2ws_model.batch_size]
+        train_loss, params, state = self.l2ws_model.train_batch(
+            batch_indices, params, state)
+        train_losses = train_losses.at[batch].set(train_loss)
+        val = train_losses, params, state, permutation
+        return val
 
     def train_over_epochs_body_fn(self, batch, val, permutation):
         """
