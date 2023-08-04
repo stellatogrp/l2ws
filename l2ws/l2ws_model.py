@@ -109,8 +109,9 @@ class L2WSmodel(object):
                 z_final, iter_losses, z_all_plus_1 = eval_out[0], eval_out[1], eval_out[2]
 
                 # compute angle(z^{k+1} - z^k, z^k - z^{k-1})
-                diffs = jnp.diff(z_all_plus_1, axis=0)
-                angles = self.batch_angle(diffs[:-1], diffs[1:])
+                # diffs = jnp.diff(z_all_plus_1, axis=0)
+                # angles = self.batch_angle(diffs[:-1], diffs[1:])
+                angles = None
 
             loss = self.final_loss(loss_method, z_final, iter_losses, supervised, z0, z_star)
 

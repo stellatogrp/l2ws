@@ -52,12 +52,12 @@ skip_startup: True
 num_samples_test: 1000
 num_samples_train: 100
 eval_batch_size_test: 100
-eval_unrolls: 15000
+eval_unrolls: 500
 N_train: 10000
 N_test: 1000
-train_unrolls: 30
+train_unrolls: 5
 supervised: False
-load_weights_datetime: '2023-07-09/15-38-54'
+# load_weights_datetime: '2023-07-09/15-38-54'
 # '2023-07-09/14-14-53'
 # solve_c_num: 1000
 
@@ -69,7 +69,7 @@ load_weights_datetime: '2023-07-09/15-38-54'
 # solving in C
 rel_tols: [1e-1, 1e-2, 1e-3, 1e-4, 1e-5]
 abs_tols: [1e-1, 1e-2, 1e-3, 1e-4, 1e-5]
-solve_c_num: 1000
+# solve_c_num: 1000
 
 # rollouts
 num_rollouts: 0

@@ -27,12 +27,12 @@ data:
 
 
 eval_unrolls: 1000
-eval_every_x_epochs: 1
+eval_every_x_epochs: 5
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 1
-N_train: 10000
+N_train: 1000
 N_test: 1000
 # num_samples: 1000
 prediction_variable: w
@@ -51,16 +51,18 @@ scale: 1
 alpha_relax: 1
 skip_startup: True
 # solve_c_num: 1000
-save_weights_flag: True
-load_weights_datetime: '2023-07-26/20-47-36'
-train_unrolls: 30
+# save_weights_flag: True
+
+# load_weights_datetime: '2023-08-03/11-39-05'
+train_unrolls: 2
 supervised: True
-num_samples: 100
+num_samples: 10
 # num_samples_test: 1000
 # num_samples_train: 100
 # eval_batch_size_test: 200
-# eval_batch_size_train: 100
-lightweight: True
+# eval_batch_size_train: 200
+# num_samples: 10
+# lightweight: True
 
 # output_datetimes: ['2023-07-25/23-28-42', '2023-07-25/22-13-13', '2023-07-26/22-08-40', '2023-07-26/22-38-49', '2023-07-26/22-47-30',
 # '2023-07-26/21-55-00', '2023-07-26/08-49-43', '2023-07-26/21-24-25', '2023-07-26/20-47-36', '2023-07-26/21-18-04']
