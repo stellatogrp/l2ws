@@ -11,7 +11,7 @@ from l2ws.scs_model import SCSmodel
 from l2ws.eg_model import EGmodel
 import jax.numpy as jnp
 import jax.scipy as jsp
-from jax import lax
+from jax import lax, jit
 import hydra
 import time
 from scipy.spatial import distance_matrix
@@ -1130,7 +1130,7 @@ class Workspace:
             self.l2ws_model.epoch += self.epochs_jit
             self.l2ws_model.params, self.l2ws_model.state = params, state
 
-            
+            gc.collect()
 
             prev_batches = len(self.l2ws_model.tr_losses_batch)
             self.l2ws_model.tr_losses_batch = self.l2ws_model.tr_losses_batch + \
@@ -1167,6 +1167,7 @@ class Workspace:
 
             epoch_train_losses = epoch_train_losses.at[0].set(train_loss_first)
             start_index = 1
+            self.train_over_epochs_body_simple_fn_jitted = jit(self.train_over_epochs_body_simple_fn)
         else:
             start_index = 0
             params, state = self.l2ws_model.params, self.l2ws_model.state
@@ -1186,8 +1187,8 @@ class Workspace:
         init_val = epoch_train_losses, params, state, permutation
         # import pdb
         # pdb.set_trace()
-        body_fn = self.train_over_epochs_body_simple_fn
-        val = lax.fori_loop(start_index, loop_size, body_fn, init_val)
+        # body_fn = self.train_over_epochs_body_simple_fn
+        val = lax.fori_loop(start_index, loop_size, self.train_over_epochs_body_simple_fn_jitted, init_val)
         epoch_batch_end_time = time.time()
         time_diff = epoch_batch_end_time - epoch_batch_start_time
         time_train_per_epoch = time_diff / self.epochs_jit
@@ -1195,6 +1196,7 @@ class Workspace:
 
         return params, state, epoch_train_losses, time_train_per_epoch
     
+    # @jit
     def train_over_epochs_body_simple_fn(self, batch, val):
         """
         to be used as the body_fn in lax.fori_loop
