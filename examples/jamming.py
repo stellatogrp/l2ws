@@ -74,12 +74,19 @@ def setup_probs(setup_cfg):
     n = cfg.n
     k = cfg.solve_iters
     eg_step = cfg.step_size
+    delta_frac = cfg.delta_frac
 
     np.random.seed(cfg.seed)
     key = jra.PRNGKey(cfg.seed)
 
+    beta0 = beta_min + np.random.rand(n) * (beta_max - beta_min)
+
     # sample uniformly to get beta, sigma
-    beta = beta_min + np.random.rand(N, n) * (beta_max - beta_min)
+    beta_delta = beta_min + np.random.rand(N, n) * (beta_max - beta_min)
+    beta = beta0 + delta_frac * beta_delta
+
+    # sample uniformly to get beta, sigma
+    # beta = beta_min + np.random.rand(N, n) * (beta_max - beta_min)
     sigma = sigma_min + np.random.rand(N, n) * (sigma_max - sigma_min)
     theta_mat = jnp.hstack([beta, sigma])
 

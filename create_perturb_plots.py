@@ -18,6 +18,7 @@ from examples.sparse_pca import multiple_random_sparse_pca
 from l2ws.scs_problem import scs_jax
 from l2ws.algo_steps import k_steps_train_scs, lin_sys_solve, create_M, create_projection_fn, get_scaled_vec_and_factor
 import pdb
+import jax
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
@@ -139,6 +140,72 @@ def averaged_plot():
     # x_jax, y_jax, s_jax = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
 
 
+def create_toy_example():
+    """proximal Gradient descent for 
+
+    min (x_1 - a)^2 + (x_2 - b)^2
+
+    z_hist = run_prox_gd(init)
+    """
+    def f(x):
+        return (x[0] - a) ** 2 + (x[1] - b) ** 2
+    
+    grad = jax.grad(f)
+
+    # setup x_inits
+    x_inits = [jnp.array([-2, -2]), jnp.array([2, 2])]
+    step_size, num_steps = 0.01, 20
+
+    x_hists = []
+    for i in range(len(x_inits)):
+        x_init = x_inits[i]
+        x_hist = run_prox_gd(x_init, grad, step_size, num_steps)
+        x_hists.append(x_hist)
+
+
+    # x = np.array([gamma, 1])
+    # x_hist = [x]
+    # for k in range(1000):
+    #     if np.linalg.norm(df(x)) < 1e-02:
+    #         print("t = %.2e, converged in %d iterations" % (t, k))
+    #         break
+    #     dx = -df(x)
+    #     #  x = line_search(x, dx)
+    #     x = x + t * dx
+    #     x_hist.append(x)
+
+    # Plot
+    fig, ax = plt.subplots(figsize=(16, 9))
+
+    # Contour
+    # cs = plt.contour(X1, X2, f_vec(X1, X2), colors='k')
+    #  ax.clabel(cs, fontsize=18, inline=True)
+
+    # Gradient descent
+    ax.plot(*zip(*x_hist), linestyle='--', marker='o',
+            markersize=10, markerfacecolor='none', color='k')
+
+    # Optimal solution
+    # ax.scatter(*zip(x_star), marker='*', s=600, color='k')
+    
+
+    # ax.set_xlim([x_min, x_max])
+    # ax.set_ylim([y_min, y_max])
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_aspect('equal', adjustable='box')
+    plt.tight_layout()
+    # plt.savefig("gradient_descent_%.4f.pdf" % t)
+    plt.show()
+
+
+def run_prox_gd(x_init, grad, step_size, num_steps):
+    x_hist = []
+    x = x_init
+    for i in range(num_steps):
+        x = jnp.clip(x - step_size * grad(x), a_min=0)
+        x_hist.append(x)
+    return x_hist
 
 
 if __name__ == '__main__':
