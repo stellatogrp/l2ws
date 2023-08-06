@@ -33,30 +33,30 @@ def run(run_cfg):
     np.random.seed(setup_cfg['seed'])
 
     lambd = setup_cfg['lambd']
-    blur_size = setup_cfg['blur_size']
 
-    # static_dict = dict(A=A, lambd=lambd, ista_step=ista_step)
+    # # old
+    # blur_size = setup_cfg['blur_size']
 
-    # get the blur matrix
-    B = vectorized2DBlurMatrix(28, 28, blur_size)
+    # # get the blur matrix
+    # B = vectorized2DBlurMatrix(28, 28, blur_size)
 
-    # get P, A
-    P = B.T @ B * setup_cfg.get('obj_const', 1)
-    m, n = 784, 784
-    A = np.eye(n)
-    A = setup_cfg.get('A_scale', 1) * A
-
-    # M = np.zeros((m +n, m + n))
-    # M[:n, :n] = P
-    # M[:n, n:] = .1 * A.T
-    # M[:n, n:] = .1 * A
-    # U, S, VT = np.linalg.svd(M)
-    # import pdb
-    # pdb.set_trace()
+    # # get P, A
+    # P = B.T @ B * setup_cfg.get('obj_const', 1)
+    # m, n = 784, 784
+    # A = np.eye(n)
+    # A = setup_cfg.get('A_scale', 1) * A
 
 
-    rho_vec, sigma = jnp.ones(m), 1
-    # rho_vec = rho_vec.at[l == u].set(1000)
+    # rho_vec, sigma = jnp.ones(m), 1
+    # # rho_vec = rho_vec.at[l == u].set(1000)
+
+    # new
+    sigma = 1
+    P, A, prob, img_param, num_eq = mnist_canon(np.eye(784), setup_cfg['lambd'])
+    m, n = A.shape
+    rho_vec = jnp.ones(m)
+    rho_vec = rho_vec.at[:num_eq].set(1000)
+
     M = P + sigma * jnp.eye(n) + A.T @ jnp.diag(rho_vec) @ A
 
     factor = jsp.linalg.lu_factor(M)
@@ -131,13 +131,14 @@ def setup_probs(setup_cfg):
     # new
 
     # first get P, A
-    P, A, prob, img_param = mnist_canon(np.eye(784, 784), lambd)
+    P, A, prob, img_param, num_eq = mnist_canon(np.eye(784, 784), lambd)
     m, n = A.shape
+    # import pdb
+    # pdb.set_trace()
 
     # create theta_mat
-    noise_matrix = cfg['noise_std_dev'] * jnp.array(np.random.normal(size=(N, 784)))
+    noise_matrix = cfg['noise_std_dev'] * np.array(np.random.normal(size=(N, 784)))
     theta_mat = np.clip(x_train[:N, :] + noise_matrix, a_min=0, a_max=1)
-
     q_mat = get_q_mat(theta_mat, prob, img_param, m, n)
 
     # blur img
@@ -166,7 +167,9 @@ def setup_probs(setup_cfg):
         axarr[0].imshow(blurred_img, cmap=plt.get_cmap('gray'), label='blurred')
         axarr[0].set_title('blurred')
 
-        sol_img = np.reshape(z_stars[i, :784], (28,28))
+        # sol_img = np.reshape(z_stars[i, :784], (28,28))
+        # sol_img = np.reshape(z_stars[i, 1458:1458 + 784], (28,28))
+        sol_img = np.reshape(z_stars[i, 2242:2242 + 784], (28,28))
         axarr[1].imshow(sol_img, cmap=plt.get_cmap('gray'), label='solution')
         axarr[1].set_title('solution')
 
@@ -186,7 +189,7 @@ def get_q_mat(img_matrix, prob, img_param, m, n):
     I think this should work now
     """
     N = img_matrix.shape[0]
-    q_mat = jnp.zeros((N, m + n))
+    q_mat = jnp.zeros((N, 2 * m + n))
     for i in range(N):
         # set the parameter
         img_param.value = img_matrix[i, :]
@@ -194,9 +197,15 @@ def get_q_mat(img_matrix, prob, img_param, m, n):
         # get the problem data
         data, _, __ = prob.get_problem_data(cp.OSQP)
 
-        c, b = data['c'], data['b']
-        g = jnp.array([data['G']])
+        
+        c, b = data['q'], data['b']
+        g = data['G']
         n = c.size
+        
+        u = np.concatenate([b, g])
+        l = np.concatenate([b, -np.inf * np.ones(g.size)])
+        # import pdb
+        # pdb.set_trace()
         q_mat = q_mat.at[i, :n].set(c)
         q_mat = q_mat.at[i, n:n + m].set(l)
         q_mat = q_mat.at[i, n + m:].set(u)
@@ -283,12 +292,12 @@ def tv(value, *args):
         return sum(norm(stacked, p=1, axis=0))
 
 
-def mnist_canon(A, lambd)#, blurred_img):
+def mnist_canon(A, lambd):#, blurred_img):
     # create cvxpy prob
     # b = np.ravel(blurred_img)
     img_param = cp.Parameter(784)
     # m_img, n_img = blurred_img.shape
-    m_img, n_img = 784, 784
+    m_img, n_img = 28, 28
     x = cp.Variable((m_img, n_img))
 
     # tv = 0
@@ -303,10 +312,14 @@ def mnist_canon(A, lambd)#, blurred_img):
     # pdb.set_trace
     prob = cp.Problem(cp.Minimize(lambd * tv(x) + cp.sum_squares(A @ cp.vec(x) - img_param)), constraints)
     data, chain, inverse_data = prob.get_problem_data(cp.OSQP)
+    # import pdb
+    # pdb.set_trace()
     img_param.value = np.ones(784)
 
-    A = np.vstack([data['A'], data['F']])
-    return data['P'], A, prob, img_param
+    A = np.vstack([data['A'].todense(), data['F'].todense()])
+    b = data['b']
+    num_eq = b.size
+    return data['P'].todense(), np.array(A), prob, img_param, num_eq
     import pdb
     pdb.set_trace()
 
