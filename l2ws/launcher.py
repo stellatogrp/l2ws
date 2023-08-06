@@ -482,11 +482,11 @@ class Workspace:
             q_mat_train = q_mat[:N_train, :]
             q_mat_test = q_mat[N_train:N, :]
             self.q_mat_train, self.q_mat_test = q_mat_train, q_mat_test
-        elif self.algo == 'extragradient':
-            q_mat = jnp.array(jnp_load_obj['thetas'])
-            q_mat_train = q_mat[:N_train, :]
-            q_mat_test = q_mat[N_train:N, :]
-            self.q_mat_train, self.q_mat_test = q_mat_train, q_mat_test
+        # elif self.algo == 'extragradient':
+        #     q_mat = jnp.array(jnp_load_obj['thetas'])
+        #     q_mat_train = q_mat[:N_train, :]
+        #     q_mat_test = q_mat[N_train:N, :]
+        #     self.q_mat_train, self.q_mat_test = q_mat_train, q_mat_test
 
         # load the closed_loop_rollout trajectories
         if 'ref_traj_tensor' in jnp_load_obj.keys():

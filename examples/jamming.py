@@ -131,7 +131,8 @@ def setup_probs(setup_cfg):
     t0 = time.time()
     jnp.savez(
         output_filename,
-        thetas=theta_mat,
+        q_mat=theta_mat,
+        thetas=theta_mat[:, :n],
         z_stars=z_stars,
     )
 
@@ -149,6 +150,9 @@ def setup_probs(setup_cfg):
         plt.plot(theta_mat[i, :])
     plt.savefig("thetas.pdf")
     plt.clf()
+
+    import pdb
+    pdb.set_trace()
 
 
 def jamming_obj(x, y, theta):
