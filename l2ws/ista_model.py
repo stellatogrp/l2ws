@@ -10,6 +10,7 @@ class ISTAmodel(L2WSmodel):
         super(ISTAmodel, self).__init__(input_dict)
 
     def initialize_algo(self, input_dict):
+        self.factor_static = None
         self.algo = 'ista'
         self.factors_required = False
         self.q_mat_train, self.q_mat_test = input_dict['b_mat_train'], input_dict['b_mat_test']
