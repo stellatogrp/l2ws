@@ -31,7 +31,7 @@ test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 10
 
-N_train: 1000
+N_train: 10
 N_test: 20
 
 
