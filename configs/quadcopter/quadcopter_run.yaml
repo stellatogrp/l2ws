@@ -49,8 +49,8 @@ alpha_relax: 1
 save_weights_flag: True
 
 skip_startup: True
-num_samples_test: 1000
-num_samples_train: 1000
+num_samples_test: 100
+num_samples_train: 100
 # eval_batch_size_test: 100
 eval_unrolls: 500
 N_train: 10000

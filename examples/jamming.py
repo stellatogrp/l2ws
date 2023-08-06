@@ -98,6 +98,10 @@ def setup_probs(setup_cfg):
     f = jamming_obj
     # z_final, iter_losses = k_steps_train_extragrad(k, z0, theta_mat[0, :], f, proj_X, proj_Y, n, eg_step,
     #                         supervised=False, z_star=None, jit=True)
+
+    # save output to output_filename
+    output_filename = f"{os.getcwd()}/data_setup"
+
     z_stars = jnp.zeros((N, 2 * n))
     for i in range(N):
         if i % 100 == 0:
@@ -108,13 +112,21 @@ def setup_probs(setup_cfg):
                                                                         supervised=False, z_star=None, jit=True)
         z_stars = z_stars.at[i, :].set(z_final)
         print('fixed point residual', iter_losses[-1])
+        if i % 1000 == 0:
+            log.info("final intermediate final data...", i)
+            t0 = time.time()
+            jnp.savez(
+                output_filename + str(i),
+                thetas=theta_mat,
+                z_stars=z_stars,
+            )
 
     # plt.plot(iter_losses)
     # plt.yscale('lo')
 
     # import pdb
     # pdb.set_trace()
-    aa = z_all - z_final
+    # aa = z_all - z_final
     # diffs = jnp.linalg.norm(aa, axis=1)
     # plt.plot(diffs)
     plt.plot(iter_losses)
@@ -122,8 +134,7 @@ def setup_probs(setup_cfg):
     plt.savefig("fp_resids.pdf")
     plt.clf()
 
-    # save output to output_filename
-    output_filename = f"{os.getcwd()}/data_setup"
+    
 
     # setup_script(q_mat, theta_mat_jax, solver, data, cones, output_filename, solve=cfg.solve)
     # save the data
