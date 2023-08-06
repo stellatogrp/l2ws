@@ -119,56 +119,49 @@ def setup_probs(setup_cfg):
     A_scale = cfg.get('A_scale', 1)
     A = A * A_scale
 
-    q_mat = jnp.zeros((N, 2 * m + n))
-    q_mat = q_mat.at[:, m + n:].set(1 * A_scale) #q_mat.at[:, m + n:].set(jnp.inf) #
-
-    theta_mat = jnp.zeros((N, n))
+    # old
+    # q_mat = jnp.zeros((N, 2 * m + n))
+    # q_mat = q_mat.at[:, m + n:].set(1 * A_scale) #q_mat.at[:, m + n:].set(jnp.inf) #
+    # theta_mat = jnp.zeros((N, n))
 
     # trial
-    noisy_img =  np.reshape(B @ x_train[0, :], (28, 28)) + .00 * np.random.normal(size=(28, 28))
-    mnist_canon(B, lambd, noisy_img)
+    # noisy_img =  np.reshape(B @ x_train[0, :], (28, 28)) + .00 * np.random.normal(size=(28, 28))
+    # mnist_canon(B, lambd, noisy_img)
+
+    # new
+
+    # first get P, A
+    P, A, prob, img_param = mnist_canon(np.eye(784, 784), lambd)
+    m, n = A.shape
+
+    # create theta_mat
+    noise_matrix = cfg['noise_std_dev'] * jnp.array(np.random.normal(size=(N, 784)))
+    theta_mat = np.clip(x_train[:N, :] + noise_matrix, a_min=0, a_max=1)
+
+    q_mat = get_q_mat(theta_mat, prob, img_param, m, n)
 
     # blur img
-    blurred_imgs = []
-    for i in range(N):
-        noise = cfg['noise_std_dev'] * jnp.array(np.random.normal(size=(28, 28)))
-        blurred_img = jnp.reshape(B @ x_train[i, :], (28, 28)) + noise
-        blurred_img_vec = jnp.ravel(blurred_img) 
-        q_mat = q_mat.at[i, :n].set((-B.T @ blurred_img_vec + lambd) * obj_const)
-        theta_mat = theta_mat.at[i, :].set(blurred_img_vec)
-        blurred_imgs.append(blurred_img)
+    # blurred_imgs = []
+    # for i in range(N):
+    #     noise = cfg['noise_std_dev'] * jnp.array(np.random.normal(size=(28, 28)))
+    #     # blurred_img = jnp.reshape(B @ x_train[i, :], (28, 28)) + noise
+    #     blurred_img = jnp.reshape(x_train[i, :], (28, 28)) + noise
+    #     blurred_img_vec = jnp.ravel(blurred_img)
 
-        # create cvxpy problem with TV regularization
+        # old
+        # q_mat = q_mat.at[i, :n].set((-B.T @ blurred_img_vec + lambd) * obj_const)
+        # theta_mat = theta_mat.at[i, :].set(blurred_img_vec)
+        # blurred_imgs.append(blurred_img)
 
-        # get P, A, q, l, u with cvxpy osqp canonicalization
-        # lambd = 1e-6
-        # P, A, c, l, u = mnist_canon(A, lambd, blurred_img)
-        # mnist_canon(A, lambd, blurred_img)
-        
-
-
-    # blur the images
-
-
-    # create the cvxpy problem with parameter
-
-
-    # create theta_mat and q_mat
-    # q_mat = jnp.vstack([q_mat_train, q_mat_test])
-    # theta_mat = jnp.vstack([theta_mat_train, theta_mat_test])
-
-
-    # osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=z_stars)
-    # P = B.T @ B
     z_stars = direct_osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=None)
     
-
     if not os.path.exists('images'):
         os.mkdir('images')
 
     # save blurred images
     for i in range(5):
-        blurred_img = blurred_imgs[i]
+        # blurred_img = blurred_imgs[i]
+        blurred_img = np.reshape(theta_mat[i, :], (28, 28))
         f, axarr = plt.subplots(1,3)
         axarr[0].imshow(blurred_img, cmap=plt.get_cmap('gray'), label='blurred')
         axarr[0].set_title('blurred')
@@ -185,6 +178,29 @@ def setup_probs(setup_cfg):
         plt.savefig(f"images/blur_img_{i}.pdf")
 
 
+def get_q_mat(img_matrix, prob, img_param, m, n):
+    """
+    change this so that b_matrix, b_param is passed in
+        instead of A_tensor, A_param
+
+    I think this should work now
+    """
+    N = img_matrix.shape[0]
+    q_mat = jnp.zeros((N, m + n))
+    for i in range(N):
+        # set the parameter
+        img_param.value = img_matrix[i, :]
+
+        # get the problem data
+        data, _, __ = prob.get_problem_data(cp.OSQP)
+
+        c, b = data['c'], data['b']
+        g = jnp.array([data['G']])
+        n = c.size
+        q_mat = q_mat.at[i, :n].set(c)
+        q_mat = q_mat.at[i, n:n + m].set(l)
+        q_mat = q_mat.at[i, n + m:].set(u)
+    return q_mat
 
 
 def load_mnist(path, kind='train'):
@@ -267,10 +283,12 @@ def tv(value, *args):
         return sum(norm(stacked, p=1, axis=0))
 
 
-def mnist_canon(A, lambd, blurred_img):
+def mnist_canon(A, lambd)#, blurred_img):
     # create cvxpy prob
-    b = np.ravel(blurred_img)
-    m_img, n_img = blurred_img.shape
+    # b = np.ravel(blurred_img)
+    img_param = cp.Parameter(784)
+    # m_img, n_img = blurred_img.shape
+    m_img, n_img = 784, 784
     x = cp.Variable((m_img, n_img))
 
     # tv = 0
@@ -283,8 +301,12 @@ def mnist_canon(A, lambd, blurred_img):
     # prob = cp.Problem(cp.Minimize(lambd * cp.sum(x) + cp.sum_squares(A @ cp.vec(x) - b)), constraints)
     # import pdb
     # pdb.set_trace
-    prob = cp.Problem(cp.Minimize(lambd * tv(x) + cp.sum_squares(A @ cp.vec(x) - b)), constraints)
+    prob = cp.Problem(cp.Minimize(lambd * tv(x) + cp.sum_squares(A @ cp.vec(x) - img_param)), constraints)
     data, chain, inverse_data = prob.get_problem_data(cp.OSQP)
+    img_param.value = np.ones(784)
+
+    A = np.vstack([data['A'], data['F']])
+    return data['P'], A, prob, img_param
     import pdb
     pdb.set_trace()
 
