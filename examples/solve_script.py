@@ -149,6 +149,17 @@ def direct_osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=No
             # z_stars = z_stars.at[i, :].set(z_star)
             # solve_times[i] = prob.solver_stats.solve_time
 
+            if i % 1000 == 0:
+                # save the data
+                log.info("saving data...")
+                t0 = time.time()
+                jnp.savez(
+                    output_filename,
+                    thetas=jnp.array(theta_mat),
+                    z_stars=z_stars,
+                    q_mat=q_mat
+                )
+
     # save the data
     log.info("final saving final data...")
     t0 = time.time()

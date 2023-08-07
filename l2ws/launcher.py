@@ -1095,7 +1095,7 @@ class Workspace:
         self.test_eval_write()
 
         # do all of the training
-        test_zero = True if self.skip_startup else False
+        test_zero = False #True if self.skip_startup else False
         self.train(test_zero=test_zero)
 
     def train(self, test_zero=False):
