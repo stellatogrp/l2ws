@@ -35,10 +35,10 @@ def run(run_cfg):
     lambd = setup_cfg['lambd']
 
     # # old
-    # blur_size = setup_cfg['blur_size']
+    blur_size = setup_cfg['blur_size']
 
     # # get the blur matrix
-    # B = vectorized2DBlurMatrix(28, 28, blur_size)
+    B = vectorized2DBlurMatrix(28, 28, blur_size)
 
     # # get P, A
     # P = B.T @ B * setup_cfg.get('obj_const', 1)
@@ -52,7 +52,7 @@ def run(run_cfg):
 
     # new
     sigma = 1
-    P, A, prob, img_param, num_eq = mnist_canon(np.eye(784), setup_cfg['lambd'])
+    P, A, prob, img_param, num_eq = mnist_canon(B, setup_cfg['lambd'])
     m, n = A.shape
     rho_vec = jnp.ones(m)
     rho_vec = rho_vec.at[:num_eq].set(1000)
@@ -131,15 +131,15 @@ def setup_probs(setup_cfg):
     # new
 
     # first get P, A
-    P, A, prob, img_param, num_eq = mnist_canon(np.eye(784, 784), lambd)
+    P, A, prob, img_param, num_eq = mnist_canon(B, lambd)
+    # P, A, prob, img_param, num_eq = mnist_canon(np.eye(784, 784), lambd)
     m, n = A.shape
-    # import pdb
-    # pdb.set_trace()
+
 
     # create theta_mat
     noise_matrix = cfg['noise_std_dev'] * np.array(np.random.normal(size=(N, 784)))
-    theta_mat = np.clip(x_train[:N, :] + noise_matrix, a_min=0, a_max=1)
-    q_mat = get_q_mat(theta_mat, prob, img_param, m, n)
+    theta_mat = np.clip((B @ x_train[:N, :].T).T + noise_matrix, a_min=0, a_max=1)
+    q_mat = get_q_mat(theta_mat, prob, img_param, m, n, B)
 
     # blur img
     # blurred_imgs = []
@@ -181,7 +181,7 @@ def setup_probs(setup_cfg):
         plt.savefig(f"images/blur_img_{i}.pdf")
 
 
-def get_q_mat(img_matrix, prob, img_param, m, n):
+def get_q_mat(img_matrix, prob, img_param, m, n, B):
     """
     change this so that b_matrix, b_param is passed in
         instead of A_tensor, A_param
@@ -190,25 +190,42 @@ def get_q_mat(img_matrix, prob, img_param, m, n):
     """
     N = img_matrix.shape[0]
     q_mat = jnp.zeros((N, 2 * m + n))
+
+    # set the parameter
+    img_param.value = img_matrix[0, :]
+
+    # get the problem data
+    data, _, __ = prob.get_problem_data(cp.OSQP)
+    c, b = data['q'], data['b']
+    g = data['G']
+
+    q_mat = q_mat.at[:, :n].set(c)
+    q_mat = q_mat.at[:, n + 784:n + m].set(-jnp.inf)
+    q_mat = q_mat.at[:, n + m + 784:].set(g)
+
+    q_mat = q_mat.at[:, n:n + 784].set((img_matrix.T).T)
+    q_mat = q_mat.at[:, n + m:n + m + 784].set((img_matrix.T).T)
+
     for i in range(N):
-        # set the parameter
+        print(i)
+        # # set the parameter
         img_param.value = img_matrix[i, :]
 
-        # get the problem data
+        # # get the problem data
         data, _, __ = prob.get_problem_data(cp.OSQP)
 
-        
+        # n = c.size
         c, b = data['q'], data['b']
         g = data['G']
-        n = c.size
-        
-        u = np.concatenate([b, g])
-        l = np.concatenate([b, -np.inf * np.ones(g.size)])
         # import pdb
         # pdb.set_trace()
-        q_mat = q_mat.at[i, :n].set(c)
-        q_mat = q_mat.at[i, n:n + m].set(l)
-        q_mat = q_mat.at[i, n + m:].set(u)
+        
+    #     u = np.concatenate([b, g])
+    #     l = np.concatenate([b, -np.inf * np.ones(g.size)])
+
+    #     # q_mat = q_mat.at[i, :n].set(c)
+    #     q_mat = q_mat.at[i, n:n + m].set(l)
+    #     q_mat = q_mat.at[i, n + m:].set(u)
     return q_mat
 
 
@@ -311,17 +328,18 @@ def mnist_canon(A, lambd):#, blurred_img):
     # import pdb
     # pdb.set_trace
     prob = cp.Problem(cp.Minimize(lambd * tv(x) + cp.sum_squares(A @ cp.vec(x) - img_param)), constraints)
-    data, chain, inverse_data = prob.get_problem_data(cp.OSQP)
+    # data, chain, inverse_data = prob.get_problem_data(cp.OSQP)
     # import pdb
     # pdb.set_trace()
-    img_param.value = np.ones(784)
+    img_param.value = 3.3 * np.ones(784)
+    data, chain, inverse_data = prob.get_problem_data(cp.OSQP)
 
-    A = np.vstack([data['A'].todense(), data['F'].todense()])
+    Amat = np.vstack([data['A'].todense(), data['F'].todense()])
     b = data['b']
     num_eq = b.size
-    return data['P'].todense(), np.array(A), prob, img_param, num_eq
-    import pdb
-    pdb.set_trace()
+
+    return data['P'].todense(), np.array(Amat), prob, img_param, num_eq
+    
 
     # A = np.vstack([data['A'].todense(), data['F'].todense()])
     # u = np.hstack([data['b'], data['G']])

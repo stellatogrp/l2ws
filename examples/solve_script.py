@@ -115,6 +115,9 @@ def direct_osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=No
     if z_stars is None:
         z_stars = jnp.zeros((N, n + 2 * m))
         objvals = jnp.zeros((N))
+        x_stars = []
+        y_stars = []
+        w_stars = []
         for i in range(N):
             log.info(f"solving problem number {i}")
 
@@ -134,9 +137,12 @@ def direct_osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=No
             # x_sols = x_sols.at[i, :].set(results.x)
             # y_sols = y_sols.at[i, :].set(results.y)
 
-            z_stars = z_stars.at[i, :n].set(results.x)
-            z_stars = z_stars.at[i, n:n + m].set(results.y)
-            z_stars = z_stars.at[i, n + m:].set(A @ results.x)
+            x_stars.append(results.x)
+            y_stars.append(results.y)
+            w_stars.append(A @ results.x)
+            # z_stars = z_stars.at[i, :n].set(results.x)
+            # z_stars = z_stars.at[i, n:n + m].set(results.y)
+            # z_stars = z_stars.at[i, n + m:].set(A @ results.x)
             # import pdb
             # pdb.set_trace()
             
@@ -148,6 +154,7 @@ def direct_osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=No
             # z_star = jnp.concatenate([x_star, y_star])
             # z_stars = z_stars.at[i, :].set(z_star)
             # solve_times[i] = prob.solver_stats.solve_time
+    z_stars = jnp.hstack([jnp.stack(x_stars), jnp.stack(y_stars), jnp.stack(w_stars)])
 
     # save the data
     log.info("final saving final data...")
