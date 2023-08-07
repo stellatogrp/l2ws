@@ -1,10 +1,6 @@
 solve_acc_abs: 1e-4
 solve_acc_rel: 0
-<<<<<<< HEAD
 lambd: 1e-4
-=======
-lambd: 5e-1
->>>>>>> 0e0a0ded591ac9d5fb97f28479cb486d5a0dcc7f
 N_train: 10000
 N_test: 1000
 seed: 42
