@@ -1,8 +1,8 @@
 nn_cfg:
-  lr: 1e-4
+  lr: 1e-3
   method: adam
-  intermediate_layer_sizes: [500, 500]
-  batch_size: 100
+  intermediate_layer_sizes: [1000, 1000]
+  batch_size: 50
   epochs: 1e6
   decay_lr: .1
   min_lr: 1e-7
@@ -25,14 +25,19 @@ pretrain:
 data:
   datetime: ''
 
-eval_every_x_epochs: 200
+eval_every_x_epochs: 10
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
-epochs_jit: 10
+epochs_jit: 2
 
+<<<<<<< HEAD
 N_train: 100
 N_test: 10
+=======
+N_train: 20000
+N_test: 1000
+>>>>>>> 0e0a0ded591ac9d5fb97f28479cb486d5a0dcc7f
 
 
 prediction_variable: w
@@ -53,10 +58,17 @@ alpha_relax: 1
 supervised: True
 skip_startup: False
 save_weights_flag: True
+<<<<<<< HEAD
 train_unrolls: 1
 num_samples: 10
 eval_batch_size: 100
 eval_unrolls: 200
+=======
+train_unrolls: 15
+num_samples: 100
+# eval_batch_size: 100
+eval_unrolls: 300
+>>>>>>> 0e0a0ded591ac9d5fb97f28479cb486d5a0dcc7f
 # load_weights_datetime: '2023-07-16/15-58-19'
 # load_weights_datetime: '2023-07-28/02-06-06'
 
