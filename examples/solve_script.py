@@ -293,7 +293,7 @@ def ista_setup_script(b_mat, A, lambd, output_filename):
     for i in range(N):
         print('solving problem', i)
         b_param.value = np.array(b_mat[i, :])
-        prob.solve(verbose=False)
+        prob.solve(verbose=True)
         objvals = objvals.at[i].set(prob.value)
         z_stars = z_stars.at[i, :].set(jnp.array(z.value))
         solve_times[i] = prob.solver_stats.solve_time

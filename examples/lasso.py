@@ -21,7 +21,8 @@ def run(run_cfg):
     # set the seed
     np.random.seed(setup_cfg['seed'])
     m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
-    A = jnp.array(np.random.normal(size=(m_orig, n_orig)))
+    A_scale = setup_cfg['A_scale']
+    A = A_scale * jnp.array(np.random.normal(size=(m_orig, n_orig)))
     evals, evecs = jnp.linalg.eigh(A.T @ A)
     ista_step =  1 / evals.max()
     lambd = setup_cfg['lambd']
@@ -43,7 +44,9 @@ def setup_probs(setup_cfg):
     N = N_train + N_test
     np.random.seed(setup_cfg['seed'])
     m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
-    A = jnp.array(np.random.normal(size=(m_orig, n_orig)))
+    A_scale = setup_cfg['A_scale']
+    # b_scale = setup_cfg['b_scale']
+    A = A_scale * jnp.array(np.random.normal(size=(m_orig, n_orig)))
     evals, evecs = jnp.linalg.eigh(A.T @ A)
     ista_step = 1 / evals.max()
     lambd = setup_cfg['lambd']
@@ -53,14 +56,18 @@ def setup_probs(setup_cfg):
     # save output to output_filename
     output_filename = f"{os.getcwd()}/data_setup"
 
-    b_mat = generate_b_mat(A, N, p=.1)
+    b_min, b_max = setup_cfg['b_min'], setup_cfg['b_max']
+    # b_mat = b_scale * generate_b_mat(A, N, b_min, b_max)
+    m, n = A.shape
+    b_mat = (b_max - b_min) * np.random.rand(N, m) + b_min
 
     ista_setup_script(b_mat, A, lambd, output_filename)
 
 
 def generate_b_mat(A, N, p=.1):
     m, n = A.shape
-    b_mat = jnp.array(np.random.normal(size=(N, m)))
+    b0 = jnp.array(np.random.normal(size=(m)))
+    b_mat = 0 * b0 + 1 * jnp.array(np.random.normal(size=(N, m))) + 1
     # b_mat = jnp.zeros((N, m))
     # x_star_mask = np.random.binomial(1, p, size=(N, n))
     # x_stars_dense = jnp.array(np.random.normal(size=(N, n)))

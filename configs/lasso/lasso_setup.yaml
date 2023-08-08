@@ -1,9 +1,12 @@
-m_orig: 1000
-n_orig: 500
-lambd: 10
+m_orig: 1500
+n_orig: 1500
+lambd: 100
 solve_acc_abs: 1e-10
 solve_acc_rel: 0
 N_train: 10000
 N_test: 100
 seed: 42
 solve: True
+A_scale: 1
+b_min: 0
+b_max: 10
