@@ -43,12 +43,12 @@ titles_2_styles = dict(cold_start=':',
                        reg_k30='-',
                        reg_k60='-',
                        reg_k120='-',
-                       obj_k0='-.',
-                       obj_k5='-.',
-                       obj_k15='-.',
-                       obj_k30='-.',
-                       obj_k60='-.',
-                       obj_k120='-.')
+                       obj_k0='-',
+                       obj_k5='-',
+                       obj_k15='-',
+                       obj_k30='-',
+                       obj_k60='-',
+                       obj_k120='-')
 
 
 
