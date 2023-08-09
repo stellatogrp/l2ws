@@ -5,6 +5,7 @@ import yaml
 from l2ws.launcher import Workspace
 from examples.solve_script import ista_setup_script
 import os
+from scipy.sparse import random
 
 def run(run_cfg):
     example = "lasso"
@@ -23,6 +24,8 @@ def run(run_cfg):
     m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
     A_scale = setup_cfg['A_scale']
     A = A_scale * jnp.array(np.random.normal(size=(m_orig, n_orig)))
+    # density = 0.1
+    # A = A_scale * jnp.array(random(m_orig, n_orig, density=density, format='csr').todense())
     evals, evecs = jnp.linalg.eigh(A.T @ A)
     ista_step =  1 / evals.max()
     lambd = setup_cfg['lambd']
@@ -47,6 +50,8 @@ def setup_probs(setup_cfg):
     A_scale = setup_cfg['A_scale']
     # b_scale = setup_cfg['b_scale']
     A = A_scale * jnp.array(np.random.normal(size=(m_orig, n_orig)))
+    # density = 0.1
+    # A = A_scale * jnp.array(random(m_orig, n_orig, density=density, format='csr').todense())
     evals, evecs = jnp.linalg.eigh(A.T @ A)
     ista_step = 1 / evals.max()
     lambd = setup_cfg['lambd']
