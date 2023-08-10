@@ -15,6 +15,7 @@ import gzip
 import matplotlib.pyplot as plt
 import hydra
 from emnist import extract_training_samples
+from PIL import Image
 
 
 def run(run_cfg):
@@ -37,28 +38,31 @@ def run(run_cfg):
     # # old
     blur_size = setup_cfg['blur_size']
 
+    deblur_or_denoise = setup_cfg['deblur_or_denoise']
+
     # # get the blur matrix
-    B = vectorized2DBlurMatrix(28, 28, blur_size)
+    dataset = setup_cfg['dataset']
+    img_size = setup_cfg['mri_size'] if dataset == 'mri' else 28
+    B = vectorized2DBlurMatrix(img_size, img_size, blur_size)
 
     # # get P, A
-    # P = B.T @ B * setup_cfg.get('obj_const', 1)
-    # m, n = 784, 784
-    # A = np.eye(n)
-    # A = setup_cfg.get('A_scale', 1) * A
+    if deblur_or_denoise == 'deblur':
+        P = B.T @ B * setup_cfg.get('obj_const', 1)
+        m, n = img_size * img_size, img_size * img_size
+        A = np.eye(n)
+        A = setup_cfg.get('A_scale', 1) * A
 
+        rho_vec, sigma = jnp.ones(m), 1
+        # rho_vec = rho_vec.at[l == u].set(1000)
+    else:
+        # new
+        P, A, prob, img_param, num_eq = mnist_canon(B, setup_cfg['lambd'])
+        m, n = A.shape
+        rho_vec = jnp.ones(m)
+        rho_vec = rho_vec.at[:num_eq].set(1000)
 
-    # rho_vec, sigma = jnp.ones(m), 1
-    # # rho_vec = rho_vec.at[l == u].set(1000)
-
-    # new
     sigma = 1
-    P, A, prob, img_param, num_eq = mnist_canon(B, setup_cfg['lambd'])
-    m, n = A.shape
-    rho_vec = jnp.ones(m)
-    rho_vec = rho_vec.at[:num_eq].set(1000)
-
     M = P + sigma * jnp.eye(n) + A.T @ jnp.diag(rho_vec) @ A
-
     factor = jsp.linalg.lu_factor(M)
 
     m, n = A.shape
@@ -80,79 +84,68 @@ def setup_probs(setup_cfg):
     N_train, N_test = cfg.N_train, cfg.N_test
     N = N_train + N_test
     lambd = cfg.lambd
-    emnist = cfg.get('emnist', True)
-
-    # np.random.seed(setup_cfg['seed'])
-    # m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
-    # A = jnp.array(np.random.normal(size=(m_orig, n_orig)))
-    # evals, evecs = jnp.linalg.eigh(A.T @ A)
-    # ista_step = 1 / evals.max()
-    # lambd = setup_cfg['lambd']
+    # emnist = cfg.get('emnist', True)
+    dataset = cfg.get('dataset')
+    mri_size = setup_cfg['mri_size']
+    img_size = mri_size if dataset == 'mri' else 28
+    deblur_or_denoise = cfg.get('deblur_or_denoise')
 
     np.random.seed(cfg.seed)
 
     # save output to output_filename
     output_filename = f"{os.getcwd()}/data_setup"
 
-    # P, A, cones, q_mat, theta_mat_jax, A_tensor = multiple_random_sparse_pca(
-    #     n_orig, cfg.k, cfg.r, N, factor=False)
-    # P_sparse, A_sparse = csc_matrix(P), csc_matrix(A)
-    # b_mat = generate_b_mat(A, N, p=.1)
-    # m, n = A.shape
-
     # setup the training
-
     lambd = setup_cfg['lambd']
     blur_size = setup_cfg['blur_size']
+    
 
     # load the mnist images
-    x_train, x_test = get_mnist(emnist=emnist)
+    # x_train, x_test = get_mnist(emnist=emnist)
+    x_train, x_test = get_dataset(dataset, mri_size=mri_size)
 
     # get the blur matrix
-    B = vectorized2DBlurMatrix(28, 28, blur_size)
+    B = vectorized2DBlurMatrix(img_size, img_size, blur_size)
 
     # get P, A
     obj_const = cfg.get('obj_const', 1)
     P = B.T @ B * obj_const
-    m, n = 784, 784
+    m, n = img_size * img_size, img_size * img_size
     A = np.eye(n)
     A_scale = cfg.get('A_scale', 1)
     A = A * A_scale
 
-    # old
-    # q_mat = jnp.zeros((N, 2 * m + n))
-    # q_mat = q_mat.at[:, m + n:].set(1 * A_scale) #q_mat.at[:, m + n:].set(jnp.inf) #
-    # theta_mat = jnp.zeros((N, n))
+    if deblur_or_denoise == 'denoise':
+        # first get P, A
+        # the following line is for deblurring and denoising
+        # P, A, prob, img_param, num_eq = mnist_canon(B, lambd)
+        P, A, prob, img_param, num_eq = mnist_canon(np.eye(784, 784), lambd)
+        m, n = A.shape
 
-    # trial
-    # noisy_img =  np.reshape(B @ x_train[0, :], (28, 28)) + .00 * np.random.normal(size=(28, 28))
-    # mnist_canon(B, lambd, noisy_img)
+        # create theta_mat
+        noise_matrix = cfg['noise_std_dev'] * np.array(np.random.normal(size=(N, 784)))
+        theta_mat = np.clip((B @ x_train[:N, :].T).T + noise_matrix, a_min=0, a_max=1)
+        q_mat = get_q_mat(theta_mat, prob, img_param, m, n, B)
 
-    # new
+    elif deblur_or_denoise == 'deblur':
+        q_mat = jnp.zeros((N, 2 * m + n))
+        q_mat = q_mat.at[:, m + n:].set(1 * A_scale) #q_mat.at[:, m + n:].set(jnp.inf) #
+        theta_mat = jnp.zeros((N, n))
 
-    # first get P, A
-    P, A, prob, img_param, num_eq = mnist_canon(B, lambd)
-    # P, A, prob, img_param, num_eq = mnist_canon(np.eye(784, 784), lambd)
-    m, n = A.shape
+        # noisy_img =  np.reshape(B @ x_train[0, :], (28, 28)) + .00 * np.random.normal(size=(28, 28))
+        # mnist_canon(B, lambd, noisy_img)
 
+        # blur img
+        # blurred_imgs = []
+        for i in range(N):
+            noise = cfg['noise_std_dev'] * jnp.array(np.random.normal(size=(img_size, img_size)))
+            blurred_img = jnp.reshape(B @ x_train[i, :], (img_size, img_size)) + noise
+            # blurred_img = jnp.reshape(x_train[i, :], (28, 28)) + noise
+            blurred_img_vec = jnp.ravel(blurred_img)
 
-    # create theta_mat
-    noise_matrix = cfg['noise_std_dev'] * np.array(np.random.normal(size=(N, 784)))
-    theta_mat = np.clip((B @ x_train[:N, :].T).T + noise_matrix, a_min=0, a_max=1)
-    q_mat = get_q_mat(theta_mat, prob, img_param, m, n, B)
-
-    # blur img
-    # blurred_imgs = []
-    # for i in range(N):
-    #     noise = cfg['noise_std_dev'] * jnp.array(np.random.normal(size=(28, 28)))
-    #     # blurred_img = jnp.reshape(B @ x_train[i, :], (28, 28)) + noise
-    #     blurred_img = jnp.reshape(x_train[i, :], (28, 28)) + noise
-    #     blurred_img_vec = jnp.ravel(blurred_img)
-
-        # old
-        # q_mat = q_mat.at[i, :n].set((-B.T @ blurred_img_vec + lambd) * obj_const)
-        # theta_mat = theta_mat.at[i, :].set(blurred_img_vec)
-        # blurred_imgs.append(blurred_img)
+            q_mat = q_mat.at[i, :n].set((-B.T @ blurred_img_vec + lambd) * obj_const)
+            theta_mat = theta_mat.at[i, :].set(blurred_img_vec)
+            # blurred_imgs.append(blurred_img)
 
     z_stars = direct_osqp_setup_script(theta_mat, q_mat, P, A, output_filename, z_stars=None)
     
@@ -161,19 +154,24 @@ def setup_probs(setup_cfg):
 
     # save blurred images
     for i in range(5):
-        # blurred_img = blurred_imgs[i]
-        blurred_img = np.reshape(theta_mat[i, :], (28, 28))
+        blurred_img = np.reshape(theta_mat[i, :], (img_size, img_size))
         f, axarr = plt.subplots(1,3)
         axarr[0].imshow(blurred_img, cmap=plt.get_cmap('gray'), label='blurred')
         axarr[0].set_title('blurred')
 
         # sol_img = np.reshape(z_stars[i, :784], (28,28))
         # sol_img = np.reshape(z_stars[i, 1458:1458 + 784], (28,28))
-        sol_img = np.reshape(z_stars[i, 2242:2242 + 784], (28,28))
+        if dataset == 'mri':
+            sol_img = np.reshape(z_stars[i, :img_size * img_size], (img_size, img_size))
+        else:
+            if deblur_or_denoise == 'denoise':
+                sol_img = np.reshape(z_stars[i, 2242:2242 + 784], (28,28))
+            elif deblur_or_denoise == 'deblur':
+                sol_img = np.reshape(z_stars[i, :784], (28,28))
         axarr[1].imshow(sol_img, cmap=plt.get_cmap('gray'), label='solution')
         axarr[1].set_title('solution')
 
-        orig_img = np.reshape(x_train[i, :], (28, 28))
+        orig_img = np.reshape(x_train[i, :], (img_size, img_size))
         axarr[2].imshow(orig_img, cmap=plt.get_cmap('gray'), label='original')
         axarr[2].set_title('original')
 
@@ -262,6 +260,44 @@ def get_mnist(emnist=True):
         x_train = x_train.astype('float32') / 255
         x_test = x_test.astype('float32') / 255
     return x_train, x_test
+
+
+def get_mri(mri_size):
+    orig_cwd = hydra.utils.get_original_cwd()
+    x_test = None
+    img_x, img_y = mri_size, mri_size
+    folder_path = f"{orig_cwd}/examples/mri_data"
+    files = os.listdir(folder_path)
+    N = len(files)
+    x_train = np.zeros((N, img_x * img_y))
+    # for filename in files:
+    for i in range(len(files)):
+        filename = files[i]
+        if filename.endswith(".jpg"):
+            image_path = os.path.join(folder_path, filename)
+            img = Image.open(image_path).convert('L')  # Convert to grayscale
+            img = img.resize((img_x, img_y))  # Resize to desired dimensions
+            
+            img_mat = np.array(img)
+            # img_cut = img_mat[10:-10, 10:-10]
+            # import pdb
+            # pdb.set_trace()
+            
+            img_vector = img_mat.flatten()
+            # image_matrix.append(img_vector)
+            x_train[i, :] = img_vector / 255
+    
+    # x_train = np.array(image_matrix)
+    return x_train, x_test
+
+
+def get_dataset(dataset, mri_size=50):
+    if dataset == 'mnist':
+        return get_mnist(emnist=False)
+    elif dataset == 'emnist':
+        return get_mnist(emnist=True)
+    elif dataset == 'mri':
+        return get_mri(mri_size)
 
 
 def tv(value, *args):

@@ -144,3 +144,4 @@ mnist_data/
 cartpole*
 high_mpc/
 examples/cifar-10-batches-py/
+examples/mri_data/
