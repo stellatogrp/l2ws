@@ -194,7 +194,8 @@ class Workspace:
                               nn_cfg=cfg.nn_cfg,
                               z_stars_train=self.z_stars_train,
                               z_stars_test=self.z_stars_test,
-                              jit=True)
+                              jit=True,
+                              plateau_decay=cfg.plateau_decay)
         else:
             self.m, self.n = static_dict['m'], static_dict['n']
             m, n = self.m, self.n
@@ -937,8 +938,6 @@ class Workspace:
             inputs = jnp.expand_dims(normalized_input, 0)
             fixed_ws = False
             print('inputs', inputs)
-            # import pdb
-            # pdb.set_trace()
 
         loss, out, time_per_prob  = self.l2ws_model.dynamic_eval(budget, inputs, q_mat, z_stars, factors, tag='test', fixed_ws=fixed_ws)
         
@@ -1114,8 +1113,9 @@ class Workspace:
             epoch = int(epoch_batch * self.epochs_jit)
             if (test_zero and epoch == 0) or (epoch % self.eval_every_x_epochs == 0 and epoch > 0):
                 self.eval_iters_train_and_test(f"train_epoch_{epoch}", self.pretrain_on)
-            # if epoch > self.l2ws_model.dont_decay_until:
-            #     self.l2ws_model.decay_upon_plateau()
+
+            if epoch > self.l2ws_model.dont_decay_until:
+                self.l2ws_model.decay_upon_plateau()
 
             # setup the permutations
             permutation = setup_permutation(

@@ -245,6 +245,9 @@ class L2WSmodel(object):
 
         # auto-decay learning rate
         self.plateau_decay = input_dict.get('plateau_decay')
+        import pdb
+        pdb.set_trace()
+
         if self.plateau_decay is None:
             self.plateau_decay = dict(min_lr=1e-7, decay_factor=5,
                                       avg_window_size=50, tolerance=1e-2, patience=2)
