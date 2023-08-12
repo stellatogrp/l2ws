@@ -11,8 +11,8 @@ nn_cfg:
 plateau_decay:
   min_lr: 1e-7
   decay_factor: 5
-  avg_window_size: 5 # in epochs
-  tolerance: 1e-3 #1e-3
+  avg_window_size: 5000 # in epochs
+  tolerance: -100 #1e-3
   patience: 1
 
 
@@ -25,19 +25,19 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 15
+train_unrolls: 60
 eval_unrolls: 400
-eval_every_x_epochs: 5
+eval_every_x_epochs: 100
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 2
-N_train: 10000
-N_test: 100
+N_train: 1000
+N_test: 10
 num_samples: 100
 prediction_variable: w
 angle_anchors: [0]
-supervised: True
+supervised: False
 plot_iterates: [0, 10, 20]
 loss_method: 'fixed_k' #'fixed_k' #'constant_sum'
 share_all: False

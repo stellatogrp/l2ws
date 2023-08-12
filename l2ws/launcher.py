@@ -1114,8 +1114,8 @@ class Workspace:
             if (test_zero and epoch == 0) or (epoch % self.eval_every_x_epochs == 0 and epoch > 0):
                 self.eval_iters_train_and_test(f"train_epoch_{epoch}", self.pretrain_on)
 
-            if epoch > self.l2ws_model.dont_decay_until:
-                self.l2ws_model.decay_upon_plateau()
+            # if epoch > self.l2ws_model.dont_decay_until:
+            #     self.l2ws_model.decay_upon_plateau()
 
             # setup the permutations
             permutation = setup_permutation(

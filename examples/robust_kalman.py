@@ -854,13 +854,20 @@ def setup_probs(setup_cfg):
         x_kalman_rotated = x_kalman_rotated_transpose.T
 
         # plot original
-        plot_positions_overlay([x_trues[i, :, :-1], x_kalman_rotated, y_mat[i, :, :]],
+        plot_positions_overlay([x_kalman_rotated, y_mat[i, :, :]],
                                ['True', 'KF recovery', 'Noisy'],
                                filename=f"positions_plots/positions_{i}.pdf")
 
-        plot_positions_overlay([x_trues_rotated[i, :, :-1], x_kalman, y_mat_rotated[i, :, :]],
+        plot_positions_overlay([x_kalman, y_mat_rotated[i, :, :]],
                                ['True', 'KF recovery', 'Noisy'],
                                filename=f"positions_plots/positions_{i}_rotated.pdf")
+        # plot_positions_overlay([x_trues[i, :, :-1], x_kalman_rotated, y_mat[i, :, :]],
+        #                        ['True', 'KF recovery', 'Noisy'],
+        #                        filename=f"positions_plots/positions_{i}.pdf")
+
+        # plot_positions_overlay([x_trues_rotated[i, :, :-1], x_kalman, y_mat_rotated[i, :, :]],
+        #                        ['True', 'KF recovery', 'Noisy'],
+        #                        filename=f"positions_plots/positions_{i}_rotated.pdf")
         
 def compile_outs(outs):
     thetas_np = np.stack([item for rollout_result in outs for item in rollout_result[0]])
