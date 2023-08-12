@@ -1314,6 +1314,9 @@ def plot_traj_3d(state_traj_list, goals, labels, T=10, goal_bound=1, filename=No
             ax.set_xlim([-1.1 * goal_bound, 1.1 * goal_bound])  # Set limits for the X-axis
             ax.set_ylim([-1.1 * goal_bound, 1.1 * goal_bound])  # Set limits for the Y-axis
             ax.set_zlim([-1.1 * goal_bound, 1.1 * goal_bound])
+            ax.axes.xaxis.set_ticklabels([])
+            ax.axes.yaxis.set_ticklabels([])
+            ax.axes.zaxis.set_ticklabels([])
             for j in range(4):
                 body_x, body_y, body_z = propeller_data[i][j]
                 color = 'r' if j <= 1 else 'b'

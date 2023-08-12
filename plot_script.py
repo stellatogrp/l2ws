@@ -535,10 +535,10 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
     axes[0, 0].set_ylabel('fixed point residual')
     axes[1, 0].set_ylabel('gain to cold-start')
 
-    axes[0, 0].set_title('fixed point residual-based losses')
-    axes[0, 1].set_title('regression-based losses')
-    axes[1, 0].set_title('fixed point residual-based losses')
-    axes[1, 1].set_title('regression-based losses')
+    axes[0, 0].set_title('fixed point residual losses')
+    axes[0, 1].set_title('regression losses')
+    axes[1, 0].set_title('fixed point residual losses')
+    axes[1, 1].set_title('regression losses')
 
     # titles
     # axes[0, 0].set_title('fixed point residuals with fixed point residual-based losses')
