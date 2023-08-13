@@ -19,6 +19,7 @@ from l2ws.scs_problem import scs_jax
 from l2ws.algo_steps import k_steps_train_scs, lin_sys_solve, create_M, create_projection_fn, get_scaled_vec_and_factor
 import pdb
 import jax
+import imageio
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
@@ -28,9 +29,10 @@ plt.rcParams.update({
 
 
 def main():
-    contractive_plot()
+    # contractive_plot()
     # linearly_regular_plot()
     # averaged_plot()
+    create_toy_example()
 
 
 def contractive_plot():
@@ -147,14 +149,17 @@ def create_toy_example():
 
     z_hist = run_prox_gd(init)
     """
+    a, b = 0, 0
     def f(x):
-        return (x[0] - a) ** 2 + (x[1] - b) ** 2
+        return 10 * (x[0] - a) ** 2 + (x[1] - b) ** 2
     
     grad = jax.grad(f)
 
     # setup x_inits
-    x_inits = [jnp.array([-2, -2]), jnp.array([2, 2])]
-    step_size, num_steps = 0.01, 20
+    x_inits = [10 * jnp.array([-jnp.sqrt(2) / 2, -np.sqrt(2) / 2]), 
+               10 * jnp.array([1.0, 0.0]), 
+               10 * jnp.array([0.5, jnp.sqrt(3) / 2])]
+    step_size, num_steps = 0.01, 25
 
     x_hists = []
     for i in range(len(x_inits)):
@@ -182,8 +187,52 @@ def create_toy_example():
     #  ax.clabel(cs, fontsize=18, inline=True)
 
     # Gradient descent
-    ax.plot(*zip(*x_hist), linestyle='--', marker='o',
-            markersize=10, markerfacecolor='none', color='k')
+    colors = ['b', 'r', 'g']
+    for i in range(len(x_hists)):
+        x_hist = x_hists[i]
+        ax.plot(*zip(*x_hist), linestyle='--', marker='o',
+                markersize=10, markerfacecolor='none', color=colors[i])
+    ax.set_aspect('equal', adjustable='box')
+    plt.tight_layout()
+    # plt.savefig("gradient_descent_%.4f.pdf" % t)
+    plt.show()
+        
+    # create the plots at each iteration
+    # if not exis
+    # os.mkdir('motivating_example')
+    filenames = []
+    
+    for j in range(len(x_hists[0])):
+        fig, ax = plt.subplots(figsize=(16, 9))
+        
+        for i in range(len(x_hists)):
+            x_hist = x_hists[i]
+            # ax.plot(*zip(*x_hist), linestyle='--', marker='o',
+            #         markersize=10, markerfacecolor='none', color=colors[i])
+            ax.set_xlim([-11, 11])  # Set limits for the X-axis
+            ax.set_ylim([-11, 11])
+            ax.scatter(x_hist[j][0], x_hist[j][1], s=100, color=colors[i])
+            
+                    #    linestyle='--', marker='o',
+                    # markersize=10, markerfacecolor='none', 
+        circle1 = plt.Circle((0, 0), 10, color='k', fill=False)
+        ax.add_patch(circle1)
+        ax.set_aspect('equal', adjustable='box')
+        filename = f"motivating_example/curr_point_{j}.jpg"
+        filenames.append(filename)
+        plt.savefig(filename)
+        plt.clf()
+
+    # create the gif
+    with imageio.get_writer(f"motivating_example/paths.gif", mode='I') as writer:
+        for filename in filenames:
+            image = imageio.imread(filename)
+            writer.append_data(image)
+
+    # remove the files
+    # delete the images - todo
+    for filename in set(filenames):
+        os.remove(filename)
 
     # Optimal solution
     # ax.scatter(*zip(x_star), marker='*', s=600, color='k')
@@ -191,16 +240,13 @@ def create_toy_example():
 
     # ax.set_xlim([x_min, x_max])
     # ax.set_ylim([y_min, y_max])
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_aspect('equal', adjustable='box')
-    plt.tight_layout()
-    # plt.savefig("gradient_descent_%.4f.pdf" % t)
-    plt.show()
+    # ax.set_xticks([])
+    # ax.set_yticks([])
+    
 
 
 def run_prox_gd(x_init, grad, step_size, num_steps):
-    x_hist = []
+    x_hist = [x_init]
     x = x_init
     for i in range(num_steps):
         x = jnp.clip(x - step_size * grad(x), a_min=0)

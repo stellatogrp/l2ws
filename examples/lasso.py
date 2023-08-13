@@ -24,6 +24,9 @@ def run(run_cfg):
     m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
     A_scale = setup_cfg['A_scale']
     A = A_scale * jnp.array(np.random.normal(size=(m_orig, n_orig)))
+    # split = int(n_orig / 2)
+    # A_vec = jnp.concatenate([100 * jnp.ones(split), 1 * jnp.ones(split)])
+    # A = jnp.diag(A_vec)
     # density = 0.1
     # A = A_scale * jnp.array(random(m_orig, n_orig, density=density, format='csr').todense())
     evals, evecs = jnp.linalg.eigh(A.T @ A)
@@ -50,6 +53,9 @@ def setup_probs(setup_cfg):
     A_scale = setup_cfg['A_scale']
     # b_scale = setup_cfg['b_scale']
     A = A_scale * jnp.array(np.random.normal(size=(m_orig, n_orig)))
+    # split = int(n_orig / 2)
+    # A_vec = jnp.concatenate([100 * jnp.ones(split), 1 * jnp.ones(split)])
+    # A = jnp.diag(A_vec)
     # density = 0.1
     # A = A_scale * jnp.array(random(m_orig, n_orig, density=density, format='csr').todense())
     evals, evecs = jnp.linalg.eigh(A.T @ A)
