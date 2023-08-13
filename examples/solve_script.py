@@ -328,6 +328,56 @@ def ista_setup_script(b_mat, A, lambd, output_filename):
     plt.clf()
 
 
+def gd_setup_script(c_mat, P, output_filename):
+    """
+    solves many gd problems where each problem has a different b vector
+    """
+    # m, n = A.shape
+    # N = b_mat.shape[0]
+    # z, b_param = cp.Variable(n), cp.Parameter(m)
+    # prob = cp.Problem(cp.Minimize(.5 * cp.sum_squares(np.array(A) @ z - b_param) + lambd * cp.norm(z, p=1)))
+    # z_stars = jnp.zeros((N, n))
+    # objvals = jnp.zeros((N))
+    # solve_times = np.zeros(N)
+    # for i in range(N):
+    #     print('solving problem', i)
+    #     b_param.value = np.array(b_mat[i, :])
+    #     prob.solve(verbose=True)
+    #     objvals = objvals.at[i].set(prob.value)
+    #     z_stars = z_stars.at[i, :].set(jnp.array(z.value))
+    #     solve_times[i] = prob.solver_stats.solve_time
+    P_inv = jnp.linalg.inv(P)
+    z_stars = (-P_inv @ c_mat.T).T
+
+    # save the data
+    log.info("final saving final data...")
+    t0 = time.time()
+    jnp.savez(
+        output_filename,
+        thetas=jnp.array(c_mat),
+        z_stars=z_stars,
+    )
+
+    # save solve times
+    # df_solve_times = pd.DataFrame(solve_times, columns=['solve_times'])
+    # df_solve_times.to_csv('solve_times.csv')
+
+    save_time = time.time()
+    log.info(f"finished saving final data... took {save_time-t0}'")
+
+    # save plot of first 5 solutions
+    for i in range(5):
+        plt.plot(z_stars[i, :])
+    plt.savefig("z_stars.pdf")
+    plt.clf()
+
+
+    # save plot of first 5 parameters
+    for i in range(5):
+        plt.plot(c_mat[i, :])
+    plt.savefig("thetas.pdf")
+    plt.clf()
+
 
 def setup_script(q_mat, theta_mat, solver, data, cones_dict, output_filename, solve=True):
     N = q_mat.shape[0]

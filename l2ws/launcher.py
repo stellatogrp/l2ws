@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from l2ws.l2ws_model import L2WSmodel
+from l2ws.gd_model import GDmodel
 from l2ws.ista_model import ISTAmodel
 from l2ws.osqp_model import OSQPmodel
 from l2ws.scs_model import SCSmodel
@@ -117,6 +118,10 @@ class Workspace:
             self.create_scs_model(cfg, static_dict)
         elif algo == 'extragradient':
             self.create_extragradient_model(cfg, static_dict)
+        elif algo == 'gd':
+            self.q_mat_train = thetas[:N_train, :]
+            self.q_mat_test = thetas[N_train:N, :]
+            self.create_gd_model(cfg, static_dict)
 
     def create_ista_model(self, cfg, static_dict):
         # get A, lambd, ista_step
@@ -139,6 +144,27 @@ class Workspace:
                           z_stars_test=self.z_stars_test,
                           )
         self.l2ws_model = ISTAmodel(input_dict)
+
+    def create_gd_model(self, cfg, static_dict):
+        # get A, lambd, ista_step
+        P = static_dict['P']
+        gd_step = static_dict['gd_step']
+
+        input_dict = dict(algorithm='gd',
+                          supervised=cfg.supervised,
+                          train_unrolls=self.train_unrolls,
+                          jit=True,
+                          train_inputs=self.train_inputs,
+                          test_inputs=self.test_inputs,
+                          c_mat_train=self.q_mat_train,
+                          c_mat_test=self.q_mat_test,
+                          gd_step=gd_step,
+                          P=P,
+                          nn_cfg=cfg.nn_cfg,
+                          z_stars_train=self.z_stars_train,
+                          z_stars_test=self.z_stars_test,
+                          )
+        self.l2ws_model = GDmodel(input_dict)
 
     def create_extragradient_model(self, cfg, static_dict):
         # get A, lambd, ista_step
@@ -611,7 +637,8 @@ class Workspace:
             z_plot = z_all[:, :, :-1] / z_all[:, :, -1:]
         else:
             z_plot = z_all
-
+        # import pdb
+        # pdb.set_trace()
         self.plot_warm_starts(None, z_plot, train, col)
 
         # plot the alpha coefficients
@@ -1970,8 +1997,12 @@ class Workspace:
                         plt.plot(z_all[i, j, :self.l2ws_model.m + self.l2ws_model.n] - self.l2ws_model.z_stars_train[i, :self.l2ws_model.m + self.l2ws_model.n],
                                 label=f"prediction_{j}")
                 else:
-                    plt.plot(z_all[i, j, :] - self.l2ws_model.z_stars_train[i, :],
-                             label=f"prediction_{j}")
+                    if train:
+                        plt.plot(z_all[i, j, :] - self.l2ws_model.z_stars_train[i, :],
+                                label=f"prediction_{j}")
+                    else:
+                        plt.plot(z_all[i, j, :] - self.l2ws_model.z_stars_test[i, :],
+                                label=f"prediction_{j}")
             plt.legend()
             plt.title('diffs to optimal')
             plt.savefig(f"{ws_path}/{col}/prob_{i}_diffs_z.pdf")

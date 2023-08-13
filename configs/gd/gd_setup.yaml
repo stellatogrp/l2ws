@@ -1,12 +1,12 @@
-m_orig: 200
 n_orig: 200
-lambd: 100
-solve_acc_abs: 1e-10
-solve_acc_rel: 0
+# solve_acc_abs: 1e-10
+# solve_acc_rel: 0
+split_factor: 100
 N_train: 100
 N_test: 10
 seed: 42
 solve: True
 A_scale: 1
-b_min: 10
-b_max: 20
+c_min: 10
+c_max: 20
+P_split: 100
