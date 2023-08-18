@@ -1,7 +1,7 @@
 nn_cfg:
   lr: 1e-3
   method: adam
-  intermediate_layer_sizes: [500, 500]
+  intermediate_layer_sizes: []
   batch_size: 100
   epochs: 1e6
   decay_lr: .1
@@ -25,14 +25,14 @@ pretrain:
 data:
   datetime: ''
 
-eval_every_x_epochs: 50
+eval_every_x_epochs: 10
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 2
 
-N_train: 40 #4900
-N_test: 10 #100
+N_train: 500 #4900
+N_test: 100 #100
 
 
 prediction_variable: w
@@ -54,7 +54,7 @@ supervised: True
 skip_startup: False
 save_weights_flag: True
 train_unrolls: 5
-num_samples: 100
+num_samples: 10
 # eval_batch_size: 100
 eval_unrolls: 300
 # load_weights_datetime: '2023-07-16/15-58-19'
@@ -70,5 +70,5 @@ eval_unrolls: 300
 # closed_loop_budget: 10
 
 # visualize
-iterates_visualize: [] #[10, 20, 50, 90] #[10, 20, 50, 100, 200, 500]
-vis_num: 0
+iterates_visualize: [10, 20, 50, 90] #[10, 20, 50, 100, 200, 500]
+vis_num: 10
