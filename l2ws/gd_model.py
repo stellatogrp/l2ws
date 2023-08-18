@@ -10,9 +10,12 @@ class GDmodel(L2WSmodel):
         super(GDmodel, self).__init__(input_dict)
 
     def initialize_algo(self, input_dict):
+        self.factor_static = None
+        self.algo = 'ista'
+        self.factors_required = False
         self.algo = 'gd'
         self.factors_required = False
-        self.q_mat_train, self.q_mat_test = input_dict['b_mat_train'], input_dict['b_mat_test']
+        self.q_mat_train, self.q_mat_test = input_dict['c_mat_train'], input_dict['c_mat_test']
         P = input_dict['P']
         gd_step = input_dict['gd_step']
         n = P.shape[0]
@@ -20,3 +23,4 @@ class GDmodel(L2WSmodel):
 
         self.k_steps_train_fn = partial(k_steps_train_gd, P=P, gd_step=gd_step, jit=self.jit)
         self.k_steps_eval_fn = partial(k_steps_eval_gd, P=P, gd_step=gd_step, jit=self.jit)
+        self.out_axes_length = 5

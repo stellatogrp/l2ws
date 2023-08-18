@@ -1,12 +1,12 @@
 solve_acc_abs: 1e-3
 solve_acc_rel: 0
 lambd: 1e-4
-N_train: 4000
-N_test: 1000
+N_train: 40
+N_test: 10
 seed: 42
 solve: True
 noise_std_dev: 0
-blur_size: 8
+blur_size: 5
 dataset: mri
 obj_const: 1
 A_scale: 1

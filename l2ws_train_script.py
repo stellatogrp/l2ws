@@ -250,7 +250,7 @@ if __name__ == '__main__':
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_run_mpc()
     elif sys.argv[1] == 'unconstrained_qp':
-        sys.argv[1] = base + 'lasso/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv[1] = base + 'unconstrained_qp/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_run_unconstrained_qp()
     elif sys.argv[1] == 'quadcopter':

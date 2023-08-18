@@ -266,7 +266,8 @@ def get_mri(mri_size):
     orig_cwd = hydra.utils.get_original_cwd()
     x_test = None
     img_x, img_y = mri_size, mri_size
-    folder_path = f"{orig_cwd}/examples/mri_data"
+    # folder_path = f"{orig_cwd}/examples/mri_data"
+    folder_path = f"{orig_cwd}/examples/mri_data2"
     files = os.listdir(folder_path)
     N = len(files)
     x_train = np.zeros((N, img_x * img_y))

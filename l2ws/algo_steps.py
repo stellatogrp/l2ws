@@ -287,6 +287,17 @@ def fp_train_ista(i, val, supervised, z_star, A, b, lambd, ista_step):
     return z_next, loss_vec
 
 
+def fp_train_gd(i, val, supervised, z_star, P, c, gd_step):
+    z, loss_vec = val
+    z_next = fixed_point_gd(z, P, c, gd_step)
+    if supervised:
+        diff = jnp.linalg.norm(z - z_star)
+    else:
+        diff = jnp.linalg.norm(z_next - z)
+    loss_vec = loss_vec.at[i].set(diff)
+    return z_next, loss_vec
+
+
 def fp_train_fista(i, val, supervised, z_star, A, b, lambd, ista_step):
     z, y, t, loss_vec = val
     z_next, y_next, t_next = fixed_point_fista(z, y, t, A, b, lambd, ista_step)
@@ -309,6 +320,21 @@ def fp_eval_ista(i, val, supervised, z_star, A, b, lambd, ista_step):
     loss_vec = loss_vec.at[i].set(diff)
     obj = .5 * jnp.linalg.norm(A @ z_next - b) ** 2 + lambd * jnp.linalg.norm(z_next, ord=1)
     opt_obj = .5 * jnp.linalg.norm(A @ z_star - b) ** 2 + lambd * jnp.linalg.norm(z_star, ord=1)
+    obj_diffs = obj_diffs.at[i].set(obj - opt_obj)
+    z_all = z_all.at[i, :].set(z_next)
+    return z_next, loss_vec, z_all, obj_diffs
+
+
+def fp_eval_gd(i, val, supervised, z_star, P, c, gd_step):
+    z, loss_vec, z_all, obj_diffs = val
+    z_next = fixed_point_gd(z, P, c, gd_step)
+    if supervised:
+        diff = jnp.linalg.norm(z - z_star)
+    else:
+        diff = jnp.linalg.norm(z_next - z)
+    loss_vec = loss_vec.at[i].set(diff)
+    obj = .5 * z_next @ P @ z_next + c @ z_next
+    opt_obj = .5 * z_star @ P @ z_star + c @ z_star
     obj_diffs = obj_diffs.at[i].set(obj - opt_obj)
     z_all = z_all.at[i, :].set(z_next)
     return z_next, loss_vec, z_all, obj_diffs
@@ -499,28 +525,28 @@ def k_steps_eval_ista(k, z0, q, lambd, A, ista_step, supervised, z_star, jit):
     return z_final, iter_losses, z_all_plus_1, obj_diffs
 
 
-def k_steps_eval_gd(k, z0, q, A, gd_step, supervised, z_star, jit):
+def k_steps_eval_gd(k, z0, q, P, gd_step, supervised, z_star, jit):
     iter_losses = jnp.zeros(k)
     z_all_plus_1 = jnp.zeros((k + 1, z0.size))
     z_all_plus_1 = z_all_plus_1.at[0, :].set(z0)
-    fp_eval_partial = partial(fp_eval_ista,
+    fp_eval_partial = partial(fp_eval_gd,
                               supervised=supervised,
                               z_star=z_star,
-                              A=A,
-                              b=q,
-                              lambd=lambd,
-                              ista_step=gd__step
+                              P=P,
+                              c=q,
+                              gd_step=gd_step
                               )
     z_all = jnp.zeros((k, z0.size))
-    val = z0, iter_losses, z_all
+    obj_diffs = jnp.zeros(k)
+    val = z0, iter_losses, z_all, obj_diffs
     start_iter = 0
     if jit:
         out = lax.fori_loop(start_iter, k, fp_eval_partial, val)
     else:
         out = python_fori_loop(start_iter, k, fp_eval_partial, val)
-    z_final, iter_losses, z_all = out
+    z_final, iter_losses, z_all, obj_diffs = out
     z_all_plus_1 = z_all_plus_1.at[1:, :].set(z_all)
-    return z_final, iter_losses, z_all_plus_1
+    return z_final, iter_losses, z_all_plus_1, obj_diffs
 
 
 def k_steps_eval_scs(k, z0, q, factor, proj, P, A, supervised, z_star, jit, hsde, zero_cone_size,
@@ -745,7 +771,7 @@ def fixed_point_ista(z, A, b, lambd, ista_step):
     return soft_threshold(z + ista_step * A.T.dot(b - A.dot(z)), ista_step * lambd)
 
 
-def fixed_point_gd(z, P, c, lambd, gd_step):
+def fixed_point_gd(z, P, c, gd_step):
     """
     applies the ista fixed point operator
     """
