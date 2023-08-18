@@ -1058,6 +1058,8 @@ class Workspace:
                 z_nn = self.z_nn_test
             if 'z_prev_sol_test' in dir(self):
                 z_prev_sol = self.z_prev_sol_test
+            else:
+                z_prev_sol = None
 
         if col == 'no_train':
             if train:
@@ -1085,8 +1087,12 @@ class Workspace:
                                         thetas, self.iterates_visualize, visual_path)
         else:
             if col != 'nearest_neighbor' and col != 'no_train' and col != 'prev_sol':
-                self.custom_visualize_fn(z_all, z_stars, z_prev_sol, z_nn,
-                                        thetas, self.iterates_visualize, visual_path, num=self.vis_num)
+                if z_prev_sol is None:
+                    self.custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn,
+                                            thetas, self.iterates_visualize, visual_path, num=self.vis_num)
+                else:
+                    self.custom_visualize_fn(z_all, z_stars, z_prev_sol, z_nn,
+                                            thetas, self.iterates_visualize, visual_path, num=self.vis_num)
 
 
     def run(self):
