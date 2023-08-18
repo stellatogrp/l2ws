@@ -34,8 +34,8 @@ titles_2_colors = dict(cold_start='black',
                        obj_k30='green',
                        obj_k60='orange',
                        obj_k120='gray')
-titles_2_styles = dict(cold_start=':', 
-                       nearest_neighbor=':', 
+titles_2_styles = dict(cold_start='-.', 
+                       nearest_neighbor='-.', 
                        prev_sol=':',
                        reg_k0='-',
                        reg_k5='-',
@@ -633,6 +633,65 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
     else:
         plt.savefig('test_gain_plots.pdf', bbox_inches='tight')
     fig.tight_layout()
+
+
+    # plot the loss and the gain for each loss separately
+    for i in range(2):
+        # fig_width = 9
+        fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(18, 12), sharey='row') #, sharey=True)
+        plt_titles = ['fixed point residuals', 'gain to cold-start']
+
+        # for i in range(2):
+
+        # yscale
+        axes[0].set_yscale('log')
+        # axes[0, 1].set_yscale('log')
+
+        # x-label
+        axes[0].set_xlabel('evaluation iterations')
+        # axes[0, 1].set_xlabel('evaluation iterations')
+        axes[1].set_xlabel('evaluation iterations')
+        # axes[1, 1].set_xlabel('evaluation iterations')
+
+        # y-label
+        axes[0].set_ylabel('fixed point residual')
+        axes[1].set_ylabel('gain to cold-start')
+
+        # axes[0, 0].set_title('fixed point residual losses')
+        # axes[0, 1].set_title('regression losses')
+        # axes[1, 0].set_title('fixed point residual losses')
+        # axes[1, 1].set_title('regression losses')
+
+        curr_metric = metrics[0]
+
+        for j in range(len(curr_metric)):
+            title = titles[j]
+            color = titles_2_colors[title]
+            style = titles_2_styles[title]
+            if title[:3] != 'reg' and i == 0:
+                # either obj or baselines
+                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, color=color)
+            if title[:3] != 'obj' and  i == 1:
+                # either reg or baselines
+                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, color=color)
+
+        for j in range(len(curr_metric)):
+            title = titles[j]
+            color = titles_2_colors[title]
+            style = titles_2_styles[title]
+            if j == 0:
+                cs = np.array(curr_metric[j])[start:eval_iters + start]
+            gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], a_min=0, a_max=1500)
+            if title[:3] != 'reg' and i == 0:
+                axes[1].plot(gain, linestyle=style, color=color)
+            if title[:3] != 'obj' and i == 1:
+                axes[1].plot(gain, linestyle=style, color=color)
+
+        if i == 0:
+            plt.savefig('fixed_point_residual_loss.pdf', bbox_inches='tight')
+        elif i == 1:
+            plt.savefig('regression_loss.pdf', bbox_inches='tight')
+
 
 
 def get_loss_type(orig_cwd, example, datetime):
