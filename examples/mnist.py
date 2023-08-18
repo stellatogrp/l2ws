@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import hydra
 from emnist import extract_training_samples
 from PIL import Image
+from functools import partial
 
 
 def run(run_cfg):
@@ -71,8 +72,11 @@ def run(run_cfg):
     # we directly save q now
     static_flag = True
     algo = 'osqp'
+
+    
+    vis_fn = partial(custom_visualize_fn, figsize=img_size**2)
     workspace = Workspace(algo, run_cfg, static_flag, static_dict, example, 
-                          custom_visualize_fn=custom_visualize_fn)
+                          custom_visualize_fn=vis_fn)
 
     # run the workspace
     workspace.run()
@@ -266,8 +270,8 @@ def get_mri(mri_size):
     orig_cwd = hydra.utils.get_original_cwd()
     x_test = None
     img_x, img_y = mri_size, mri_size
-    # folder_path = f"{orig_cwd}/examples/mri_data"
-    folder_path = f"{orig_cwd}/examples/mri_data2"
+    folder_path = f"{orig_cwd}/examples/mri_data"
+    # folder_path = f"{orig_cwd}/examples/mri_data2"
     files = os.listdir(folder_path)
     N = len(files)
     x_train = np.zeros((N, img_x * img_y))
@@ -446,7 +450,9 @@ def vectorized2DBlurMatrix(m, n, width=3):
     return np.kron(Brows, Bcols)
 
 
-def custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn, thetas, iterates, visual_path, num=20, 
+def custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn, thetas, iterates, visual_path, 
+                        figsize=784,
+                        num=20, 
                         quantiles=[.01, .05, .1, .2, .25, .3, .35, .4, .45, .45, .5, .55, .6, .65, .7, .75, .8, .85, .9, .95, .99]):
     """
     assume len(iterates) == 1 for now
@@ -475,12 +481,12 @@ def custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn, thetas, iterates, visu
         for j in range(len(iterates)):
             steps = iterates[j]
             filename = f"{visual_path}/first_few/blur_img_{i}/steps_{steps}.pdf"
-            x_star = z_stars[i, :784]
-            blurred_img_vec = thetas[i, :784]
-            x_no_learn = z_no_learn[i, steps, :784]
-            x_nn = z_nn[i, steps, :784]
-            x_learn = z_all[i, steps, :784]
-            plot_mnist_img(x_star, blurred_img_vec, x_no_learn, x_nn, x_learn, filename)
+            x_star = z_stars[i, :figsize]
+            blurred_img_vec = thetas[i, :figsize]
+            x_no_learn = z_no_learn[i, steps, :figsize]
+            x_nn = z_nn[i, steps, :figsize]
+            x_learn = z_all[i, steps, :figsize]
+            plot_mnist_img(x_star, blurred_img_vec, x_no_learn, x_nn, x_learn, filename, figsize=figsize)
 
     # plot the quantiles
     # first get the nn distances, a vector of length (N) 
@@ -508,12 +514,12 @@ def custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn, thetas, iterates, visu
         for j in range(len(iterates)):
             steps = iterates[j]
             filename = f"{visual_path}/quantiles/quantile_{quantile}/steps_{steps}.pdf"
-            x_star = z_stars[index, :784]
-            blurred_img_vec = thetas[index, :784]
-            x_no_learn = z_no_learn[index, steps, :784]
-            x_nn = z_nn[index, steps, :784]
-            x_learn = z_all[index, steps, :784]
-            plot_mnist_img(x_star, blurred_img_vec, x_no_learn, x_nn, x_learn, filename)
+            x_star = z_stars[index, :figsize]
+            blurred_img_vec = thetas[index, :figsize]
+            x_no_learn = z_no_learn[index, steps, :figsize]
+            x_nn = z_nn[index, steps, :figsize]
+            x_learn = z_all[index, steps, :figsize]
+            plot_mnist_img(x_star, blurred_img_vec, x_no_learn, x_nn, x_learn, filename, figsize=figsize)
 
     # plot the percentiles for [.1, .5, .9, .99]
     indices = np.array(mult_percentiles_indices)
@@ -522,15 +528,15 @@ def custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn, thetas, iterates, visu
     for j in range(len(iterates)):
         steps = iterates[j]
         filename = f"{visual_path}/quantiles/quantile_mult/steps_{steps}.pdf"
-        x_stars = z_stars[indices, :784]
-        blurred_img_vecs = thetas[indices, :784]
-        x_no_learns = z_no_learn[indices, steps, :784]
-        x_nns = z_nn[indices, steps, :784]
-        x_learns = z_all[indices, steps, :784]
-        plot_mult_mnist_img(x_stars, blurred_img_vecs, x_no_learns, x_nns, x_learns, filename)
+        x_stars = z_stars[indices, :figsize]
+        blurred_img_vecs = thetas[indices, :figsize]
+        x_no_learns = z_no_learn[indices, steps, :figsize]
+        x_nns = z_nn[indices, steps, :figsize]
+        x_learns = z_all[indices, steps, :figsize]
+        plot_mult_mnist_img(x_stars, blurred_img_vecs, x_no_learns, x_nns, x_learns, filename, figsize=figsize)
 
 
-def plot_mult_mnist_img(x_stars, blurred_img_vecs, x_no_learns, x_nns, x_learns, filename):
+def plot_mult_mnist_img(x_stars, blurred_img_vecs, x_no_learns, x_nns, x_learns, filename, figsize=784):
     num = x_stars.shape[0]
     f, axarr = plt.subplots(num, 5 + 1)
 
@@ -551,9 +557,10 @@ def plot_mult_mnist_img(x_stars, blurred_img_vecs, x_no_learns, x_nns, x_learns,
 
     # import pdb
     # pdb.set_trace()
+    img_size = int(np.sqrt(figsize))
     for i in range(num):
         # get the clean image (optimal solution) from x_stars
-        opt_img = np.reshape(x_stars[i, :], (28,28))
+        opt_img = np.reshape(x_stars[i, :], (img_size, img_size))
         axarr[i, start + 0].imshow(opt_img, cmap=plt.get_cmap('gray'))
         axarr[i, 0].axis('off')
         # axarr[i, 0].tick_params(axis='both', which='both', length=0)
@@ -563,22 +570,22 @@ def plot_mult_mnist_img(x_stars, blurred_img_vecs, x_no_learns, x_nns, x_learns,
         # axarr[i, 0].yticks('off')
 
         # get the blurred image from theta
-        blurred_img = np.reshape(blurred_img_vecs[i, :], (28,28))
+        blurred_img = np.reshape(blurred_img_vecs[i, :], (img_size, img_size))
         axarr[i, start + 1].imshow(blurred_img, cmap=plt.get_cmap('gray'))
         axarr[i, 1].axis('off')
 
         # cold-start
-        cold_start_img = np.reshape(x_no_learns[i, :], (28,28))
+        cold_start_img = np.reshape(x_no_learns[i, :], (img_size, img_size))
         axarr[i, start + 2].imshow(cold_start_img, cmap=plt.get_cmap('gray'))
         axarr[i, 2].axis('off')
 
         # nearest neighbor
-        nearest_neighbor_img = np.reshape(x_nns[i, :], (28,28))
+        nearest_neighbor_img = np.reshape(x_nns[i, :], (img_size, img_size))
         axarr[i, start + 3].imshow(nearest_neighbor_img, cmap=plt.get_cmap('gray'))
         axarr[i, 3].axis('off')
 
         # learned
-        learned_img = np.reshape(x_learns[i, :], (28,28))
+        learned_img = np.reshape(x_learns[i, :], (img_size, img_size))
         axarr[i, start + 4].imshow(learned_img, cmap=plt.get_cmap('gray'))
         axarr[i, 4].axis('off')
 
@@ -590,35 +597,37 @@ def plot_mult_mnist_img(x_stars, blurred_img_vecs, x_no_learns, x_nns, x_learns,
 
 
 
-def plot_mnist_img(x_star, blurred_img_vec, x_no_learn, x_nn, x_learn, filename):
+def plot_mnist_img(x_star, blurred_img_vec, x_no_learn, x_nn, x_learn, filename, figsize=784):
+    img_size = int(np.sqrt(figsize))
+
     f, axarr = plt.subplots(1, 5)
 
     # get the clean image (optimal solution) from x_stars
-    opt_img = np.reshape(x_star, (28,28))
+    opt_img = np.reshape(x_star, (img_size, img_size))
     axarr[0].imshow(opt_img, cmap=plt.get_cmap('gray'))
     axarr[0].set_title('optimal\n')
     axarr[0].axis('off')
 
     # get the blurred image from theta
-    blurred_img = np.reshape(blurred_img_vec, (28,28))
+    blurred_img = np.reshape(blurred_img_vec, (img_size, img_size))
     axarr[1].imshow(blurred_img, cmap=plt.get_cmap('gray'))
     axarr[1].set_title('blurred\n')
     axarr[1].axis('off')
 
     # cold-start
-    cold_start_img = np.reshape(x_no_learn, (28,28))
+    cold_start_img = np.reshape(x_no_learn, (img_size, img_size))
     axarr[2].imshow(cold_start_img, cmap=plt.get_cmap('gray'))
     axarr[2].set_title('cold-start\n')
     axarr[2].axis('off')
 
     # nearest neighbor
-    nearest_neighbor_img = np.reshape(x_nn, (28,28))
+    nearest_neighbor_img = np.reshape(x_nn, (img_size, img_size))
     axarr[3].imshow(nearest_neighbor_img, cmap=plt.get_cmap('gray'))
     axarr[3].set_title('nearest \n neighbor')
     axarr[3].axis('off')
 
     # learned
-    learned_img = np.reshape(x_learn, (28,28))
+    learned_img = np.reshape(x_learn, (img_size, img_size))
     axarr[4].imshow(learned_img, cmap=plt.get_cmap('gray'))
     axarr[4].set_title('learned\n')
     axarr[4].axis('off')

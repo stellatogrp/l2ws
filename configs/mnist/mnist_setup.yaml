@@ -1,7 +1,7 @@
 solve_acc_abs: 1e-3
 solve_acc_rel: 0
 lambd: 1e-4
-N_train: 40
+N_train: 500
 N_test: 10
 seed: 42
 solve: True
@@ -11,4 +11,4 @@ dataset: mri
 obj_const: 1
 A_scale: 1
 deblur_or_denoise: 'deblur'
-mri_size: 50
+mri_size: 80
