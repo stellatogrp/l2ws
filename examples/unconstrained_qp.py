@@ -63,6 +63,22 @@ def setup_probs(setup_cfg):
     P = jnp.diag(P_vec)
     c_min = setup_cfg['c_min']
     c_max = setup_cfg['c_max']
+    # range_factor = setup_cfg['range_factor']
+
+
+    """
+    P is a diagonal matrix diag(p_1, ..., p_n)
+    p_1, ..., p_split = split_factor
+    p_{split+1}, ..., n = 1
+    sample c in the following way
+    c_i = p_i b_i cos(theta pi i / n)
+
+    b is range_factor
+    """
+
+    # generate theta
+    
+    # generate c_mat
 
     c1_mat = split_factor ** 2 * (c_min + (c_max - c_min) * jnp.array(np.random.rand(N, split)))
     c2_mat = c_min + (c_max - c_min) * jnp.array(np.random.rand(N, n_orig - split))

@@ -25,14 +25,14 @@ pretrain:
 data:
   datetime: ''
 
-eval_every_x_epochs: 10
+eval_every_x_epochs: 50
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 2
 
-N_train: 4900
-N_test: 100
+N_train: 40 #4900
+N_test: 10 #100
 
 
 prediction_variable: w
@@ -50,10 +50,10 @@ rho_x: 1
 scale: 1
 alpha_relax: 1
 
-supervised: False
+supervised: True
 skip_startup: False
 save_weights_flag: True
-train_unrolls: 15
+train_unrolls: 5
 num_samples: 100
 # eval_batch_size: 100
 eval_unrolls: 300
