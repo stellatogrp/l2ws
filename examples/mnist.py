@@ -17,6 +17,7 @@ import hydra
 from emnist import extract_training_samples
 from PIL import Image
 from functools import partial
+from scipy.spatial import distance_matrix
 
 
 def run(run_cfg):
@@ -72,9 +73,9 @@ def run(run_cfg):
     # we directly save q now
     static_flag = True
     algo = 'osqp'
-
+    deblur_or_denoise = setup_cfg['deblur_or_denoise']
     
-    vis_fn = partial(custom_visualize_fn, figsize=img_size**2)
+    vis_fn = partial(custom_visualize_fn, figsize=img_size**2, deblur_or_denoise=deblur_or_denoise)
     workspace = Workspace(algo, run_cfg, static_flag, static_dict, example, 
                           custom_visualize_fn=vis_fn)
 
@@ -101,12 +102,19 @@ def setup_probs(setup_cfg):
 
     # setup the training
     lambd = setup_cfg['lambd']
+    lambd2 = setup_cfg['lambd2']
     blur_size = setup_cfg['blur_size']
     
 
     # load the mnist images
     # x_train, x_test = get_mnist(emnist=emnist)
-    x_train, x_test = get_dataset(dataset, mri_size=mri_size)
+    x_train, x_test = get_dataset(dataset, mri_size=mri_size, num=N)
+
+    # distances = distance_matrix(
+    #             x_train,
+    #             x_train)
+    # import pdb
+    # pdb.set_trace()
 
     # get the blur matrix
     B = vectorized2DBlurMatrix(img_size, img_size, blur_size)
@@ -123,11 +131,12 @@ def setup_probs(setup_cfg):
         # first get P, A
         # the following line is for deblurring and denoising
         # P, A, prob, img_param, num_eq = mnist_canon(B, lambd)
-        P, A, prob, img_param, num_eq = mnist_canon(np.eye(784, 784), lambd)
+        P, A, prob, img_param, num_eq = mnist_canon(np.eye(784, 784), lambd, lambd2)
         m, n = A.shape
 
         # create theta_mat
         noise_matrix = cfg['noise_std_dev'] * np.array(np.random.normal(size=(N, 784)))
+        # theta_mat = np.clip((B @ x_train[:N, :].T).T + noise_matrix, a_min=0, a_max=1)
         theta_mat = np.clip((B @ x_train[:N, :].T).T + noise_matrix, a_min=0, a_max=1)
         q_mat = get_q_mat(theta_mat, prob, img_param, m, n, B)
 
@@ -169,7 +178,7 @@ def setup_probs(setup_cfg):
             sol_img = np.reshape(z_stars[i, :img_size * img_size], (img_size, img_size))
         else:
             if deblur_or_denoise == 'denoise':
-                sol_img = np.reshape(z_stars[i, 2242:2242 + 784], (28,28))
+                sol_img = np.reshape(z_stars[i, 1458:1458 + 784], (28,28))
             elif deblur_or_denoise == 'deblur':
                 sol_img = np.reshape(z_stars[i, :784], (28,28))
         axarr[1].imshow(sol_img, cmap=plt.get_cmap('gray'), label='solution')
@@ -266,7 +275,7 @@ def get_mnist(emnist=True):
     return x_train, x_test
 
 
-def get_mri(mri_size):
+def get_mri(mri_size, num=11000):
     orig_cwd = hydra.utils.get_original_cwd()
     x_test = None
     img_x, img_y = mri_size, mri_size
@@ -276,33 +285,38 @@ def get_mri(mri_size):
     N = len(files)
     x_train = np.zeros((N, img_x * img_y))
     # for filename in files:
-    for i in range(len(files)):
+    # 
+    num_files = min(len(files), num)
+
+    for i in range(num_files):
+        print(i)
         filename = files[i]
-        if filename.endswith(".jpg"):
+        if filename.endswith(".jpg") or filename.endswith(".png"):
             image_path = os.path.join(folder_path, filename)
             img = Image.open(image_path).convert('L')  # Convert to grayscale
             img = img.resize((img_x, img_y))  # Resize to desired dimensions
             
             img_mat = np.array(img)
             # img_cut = img_mat[10:-10, 10:-10]
-            # import pdb
-            # pdb.set_trace()
+            
             
             img_vector = img_mat.flatten()
             # image_matrix.append(img_vector)
             x_train[i, :] = img_vector / 255
+            # import pdb
+            # pdb.set_trace()
     
     # x_train = np.array(image_matrix)
     return x_train, x_test
 
 
-def get_dataset(dataset, mri_size=50):
+def get_dataset(dataset, mri_size=50, num=11000):
     if dataset == 'mnist':
         return get_mnist(emnist=False)
     elif dataset == 'emnist':
         return get_mnist(emnist=True)
     elif dataset == 'mri':
-        return get_mri(mri_size)
+        return get_mri(mri_size, num=num)
 
 
 def tv(value, *args):
@@ -350,7 +364,7 @@ def tv(value, *args):
         return sum(norm(stacked, p=1, axis=0))
 
 
-def mnist_canon(A, lambd):#, blurred_img):
+def mnist_canon(A, lambd, lambd2=0):#, blurred_img):
     # create cvxpy prob
     # b = np.ravel(blurred_img)
     img_param = cp.Parameter(784)
@@ -368,16 +382,23 @@ def mnist_canon(A, lambd):#, blurred_img):
     # prob = cp.Problem(cp.Minimize(lambd * cp.sum(x) + cp.sum_squares(A @ cp.vec(x) - b)), constraints)
     # import pdb
     # pdb.set_trace
-    prob = cp.Problem(cp.Minimize(lambd * tv(x) + cp.sum_squares(A @ cp.vec(x) - img_param)), constraints)
+    prob = cp.Problem(cp.Minimize(lambd * tv(x) + lambd2 * cp.sum(x) + cp.sum_squares(A @ cp.vec(x) - img_param)), constraints)
     # data, chain, inverse_data = prob.get_problem_data(cp.OSQP)
     # import pdb
     # pdb.set_trace()
-    img_param.value = 3.3 * np.ones(784)
+    img_param.value = 3.3 * np.random.rand(784)
+    soln = prob.solve()
     data, chain, inverse_data = prob.get_problem_data(cp.OSQP)
+    soln = chain.solve_via_data(prob, data)
+    # unpacks the solution returned by SCS into `problem`
+    prob.unpack_results(soln, chain, inverse_data)
 
     Amat = np.vstack([data['A'].todense(), data['F'].todense()])
     b = data['b']
     num_eq = b.size
+    # x_indices = [i for i, var in enumerate(prob.variables()) if id(var) == id(x)]
+    # import pdb
+    # pdb.set_trace()
 
     return data['P'].todense(), np.array(Amat), prob, img_param, num_eq
     
@@ -453,6 +474,7 @@ def vectorized2DBlurMatrix(m, n, width=3):
 def custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn, thetas, iterates, visual_path, 
                         figsize=784,
                         num=20, 
+                        deblur_or_denoise='deblur',
                         quantiles=[.01, .05, .1, .2, .25, .3, .35, .4, .45, .45, .5, .55, .6, .65, .7, .75, .8, .85, .9, .95, .99]):
     """
     assume len(iterates) == 1 for now
@@ -481,11 +503,19 @@ def custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn, thetas, iterates, visu
         for j in range(len(iterates)):
             steps = iterates[j]
             filename = f"{visual_path}/first_few/blur_img_{i}/steps_{steps}.pdf"
-            x_star = z_stars[i, :figsize]
-            blurred_img_vec = thetas[i, :figsize]
-            x_no_learn = z_no_learn[i, steps, :figsize]
-            x_nn = z_nn[i, steps, :figsize]
-            x_learn = z_all[i, steps, :figsize]
+            if deblur_or_denoise == 'deblur':
+                x_star = z_stars[i, :figsize]
+                blurred_img_vec = thetas[i, :figsize]
+                x_no_learn = z_no_learn[i, steps, :figsize]
+                x_nn = z_nn[i, steps, :figsize]
+                x_learn = z_all[i, steps, :figsize]
+            elif deblur_or_denoise == 'denoise':
+                base = 1458
+                x_star = z_stars[i, base:base + figsize]
+                blurred_img_vec = thetas[i,  :figsize]
+                x_no_learn = z_no_learn[i, steps,  base:base + figsize]
+                x_nn = z_nn[i, steps,  base:base + figsize]
+                x_learn = z_all[i, steps,  base:base + figsize]
             plot_mnist_img(x_star, blurred_img_vec, x_no_learn, x_nn, x_learn, filename, figsize=figsize)
 
     # plot the quantiles

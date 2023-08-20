@@ -159,7 +159,7 @@ def create_toy_example():
     x_inits = [10 * jnp.array([-jnp.sqrt(2) / 2, -np.sqrt(2) / 2]), 
                10 * jnp.array([1.0, 0.0]), 
                10 * jnp.array([0.5, jnp.sqrt(3) / 2])]
-    step_size, num_steps = 0.01, 25
+    step_size, num_steps = 0.01, 15
 
     x_hists = []
     for i in range(len(x_inits)):
@@ -192,9 +192,11 @@ def create_toy_example():
         x_hist = x_hists[i]
         ax.plot(*zip(*x_hist), linestyle='--', marker='o',
                 markersize=10, markerfacecolor='none', color=colors[i])
+    circle1 = plt.Circle((0, 0), 10, color='k', fill=False)
+    ax.add_patch(circle1)
     ax.set_aspect('equal', adjustable='box')
     plt.tight_layout()
-    # plt.savefig("gradient_descent_%.4f.pdf" % t)
+    plt.savefig("motivating_example/paths.pdf")
     plt.show()
         
     # create the plots at each iteration
