@@ -2,8 +2,8 @@ solve_acc_abs: 1e-3
 solve_acc_rel: 0
 lambd: .001
 lambd2: 0.4
-N_train: 10
-N_test: 10
+N_train: 10000
+N_test: 1000
 seed: 42
 solve: True
 noise_std_dev: .001
