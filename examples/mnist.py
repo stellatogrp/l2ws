@@ -152,6 +152,7 @@ def setup_probs(setup_cfg):
         # blurred_imgs = []
         for i in range(N):
             noise = cfg['noise_std_dev'] * jnp.array(np.random.normal(size=(img_size, img_size)))
+            # noise = cfg['salt_and_pepper_noise_prob'] * noise
             blurred_img = jnp.reshape(B @ x_train[i, :], (img_size, img_size)) + noise
             # blurred_img = jnp.reshape(x_train[i, :], (28, 28)) + noise
             blurred_img_vec = jnp.ravel(blurred_img)

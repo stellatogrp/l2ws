@@ -1,15 +1,16 @@
 solve_acc_abs: 1e-3
 solve_acc_rel: 0
-lambd: 0.2
+lambd: .001
 lambd2: 0.4
-N_train: 10000
-N_test: 100
+N_train: 10
+N_test: 10
 seed: 42
 solve: True
-noise_std_dev: .25
-blur_size: 1
+noise_std_dev: .001
+blur_size: 8
 dataset: emnist
-obj_const: 1
+obj_const: 10
 A_scale: 1
-deblur_or_denoise: 'denoise'
+deblur_or_denoise: 'deblur'
 mri_size: 70
+# salt_and_pepper_noise_prob: 0.2
