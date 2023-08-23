@@ -36,7 +36,7 @@ titles_2_colors = dict(cold_start='black',
                        obj_k120='gray')
 titles_2_styles = dict(cold_start='-.', 
                        nearest_neighbor='-.', 
-                       prev_sol=':',
+                       prev_sol='-.',
                        reg_k0='-',
                        reg_k5='-',
                        reg_k15='-',
@@ -212,7 +212,7 @@ def plot_l4dc(cfg):
     axes[0].set_xlabel('evaluation iterations')
     axes[1].set_xlabel('evaluation iterations')
     axes[2].set_xlabel('evaluation iterations')
-    axes[0].set_ylabel('test fixed point residuals')
+    axes[0].set_ylabel('test fixed-point residuals')
     axes[0].set_title('oscillating masses')
     axes[1].set_title('vehicle')
     axes[2].set_title('markowitz')
@@ -249,8 +249,8 @@ def create_journal_results(example, cfg, train=False):
     does the following steps
 
     1. get data 
-        1.1 (fixed point residuals, primal residuals, dual residuals) or 
-            (fixed point residuals, obj_diffs)
+        1.1 (fixed-point residuals, primal residuals, dual residuals) or 
+            (fixed-point residuals, obj_diffs)
         store this in metrics
 
         1.2 timing data
@@ -259,7 +259,7 @@ def create_journal_results(example, cfg, train=False):
         also need: styles, titles
             styles comes from titles
     2. plot the metrics
-    3. create the table for fixed point residuals
+    3. create the table for fixed-point residuals
     4. create the table for timing results
     """
 
@@ -487,8 +487,10 @@ def create_fixed_point_residual_table(metrics_fp, titles, accs):
     df_percent.to_csv('iteration_reduction.csv')
 
     # save both iterations and fraction reduction in single table
-    df_acc_both['accuracies'] = df_acc['cold_start']
-    df_acc_both['cold_start_iters'] = np.array(accs)
+    # df_acc_both['accuracies'] = df_acc['cold_start']
+    # df_acc_both['cold_start_iters'] = np.array(accs)
+    df_acc_both['accuracies'] = np.array(accs)
+    df_acc_both['cold_start_iters'] = df_acc['cold_start']
 
     for col in df_percent.columns:
         if col != 'accuracies' and col != 'cold_start':
@@ -517,7 +519,7 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
     """
     fig_width = 9
     fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(18, 12), sharey='row') #, sharey=True)
-    plt_titles = ['fixed point residuals', 'gain to cold-start']
+    plt_titles = ['fixed-point residuals', 'gain to cold start']
 
     # for i in range(2):
 
@@ -532,26 +534,26 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
     axes[1, 1].set_xlabel('evaluation iterations')
 
     # y-label
-    axes[0, 0].set_ylabel('fixed point residual')
-    axes[1, 0].set_ylabel('gain to cold-start')
+    axes[0, 0].set_ylabel('fixed-point residual')
+    axes[1, 0].set_ylabel('gain to cold start')
 
-    axes[0, 0].set_title('fixed point residual losses')
+    axes[0, 0].set_title('fixed-point residual losses')
     axes[0, 1].set_title('regression losses')
-    axes[1, 0].set_title('fixed point residual losses')
+    axes[1, 0].set_title('fixed-point residual losses')
     axes[1, 1].set_title('regression losses')
 
     # titles
-    # axes[0, 0].set_title('fixed point residuals with fixed point residual-based losses')
-    # axes[0, 1].set_title('fixed point residuals with regression-based losses')
-    # axes[1, 0].set_title('gain to cold-start with fixed point residual-based losses')
-    # axes[1, 1].set_title('gain to cold-start with regression-based losses')
+    # axes[0, 0].set_title('fixed-point residuals with fixed-point residual-based losses')
+    # axes[0, 1].set_title('fixed-point residuals with regression-based losses')
+    # axes[1, 0].set_title('gain to cold start with fixed-point residual-based losses')
+    # axes[1, 1].set_title('gain to cold start with regression-based losses')
 
     if len(metrics) == 3:
         start = 1
     else:
         start = 0
 
-    # plot the fixed point residual
+    # plot the fixed-point residual
     for i in range(1):
         curr_metric = metrics[i]
         for j in range(len(curr_metric)):
@@ -584,7 +586,7 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             #     cs = np.array(curr_metric[j])[start:eval_iters + start]
             if j == 0:
                 cs = np.array(curr_metric[j])[start:eval_iters + start]
-            gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], a_min=0, a_max=1500)
+            gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], a_min=0, a_max=150)
             if title[:3] != 'reg':
                 axes[1, 0].plot(gain, linestyle=style, color=color)
             if title[:3] != 'obj':
@@ -612,7 +614,7 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
         for j in range(len(curr_metric)):
         # for j in range(1):
             title = titles[j]
-            # title = 'gain to cold-start'
+            # title = 'gain to cold start'
             color = titles_2_colors[title]
             style = titles_2_styles[title]
 
@@ -639,7 +641,7 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
     for i in range(2):
         # fig_width = 9
         fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(18, 12), sharey='row') #, sharey=True)
-        plt_titles = ['fixed point residuals', 'gain to cold-start']
+        plt_titles = ['fixed-point residuals', 'gain to cold start']
 
         # for i in range(2):
 
@@ -654,12 +656,12 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
         # axes[1, 1].set_xlabel('evaluation iterations')
 
         # y-label
-        axes[0].set_ylabel('fixed point residual')
-        axes[1].set_ylabel('gain to cold-start')
+        axes[0].set_ylabel('fixed-point residual')
+        axes[1].set_ylabel('gain to cold start')
 
-        # axes[0, 0].set_title('fixed point residual losses')
+        # axes[0, 0].set_title('fixed-point residual losses')
         # axes[0, 1].set_title('regression losses')
-        # axes[1, 0].set_title('fixed point residual losses')
+        # axes[1, 0].set_title('fixed-point residual losses')
         # axes[1, 1].set_title('regression losses')
 
         curr_metric = metrics[0]
@@ -681,7 +683,7 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             style = titles_2_styles[title]
             if j == 0:
                 cs = np.array(curr_metric[j])[start:eval_iters + start]
-            gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], a_min=0, a_max=1500)
+            gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], a_min=0, a_max=150)
             if title[:3] != 'reg' and i == 0:
                 axes[1].plot(gain, linestyle=style, color=color)
             if title[:3] != 'obj' and i == 1:
@@ -832,7 +834,7 @@ def overlay_training_losses(example, cfg):
         elif loss_type == 'reg':
             k_vals_reg.append(k)
             gain_ratios_reg.append(gain_ratio)
-    create_train_test_plots(k_vals_obj,  gain_ratios_obj, k_vals_reg, gain_ratios_reg)
+    create_train_test_plots(example, k_vals_obj,  gain_ratios_obj, k_vals_reg, gain_ratios_reg)
 
     # # now give a plot for the generalization
     # plt.plot(np.array(k_values), np.array(gain_gaps))
@@ -858,13 +860,33 @@ def overlay_training_losses(example, cfg):
     # plt.clf()
 
 
-def create_train_test_plots(k_vals_obj,  gain_ratios_obj, k_vals_reg, gain_ratios_reg):
+def create_title(example):
+    if example == 'robust_kalman':
+        title = 'Robust Kalman filtering'
+    elif example == 'robust_ls':
+        title = 'Robust non-negative least squares'
+    elif example == 'sparse_pca':
+        title = 'Sparse PCA'
+    elif example == 'phase_retrieval':
+        title = 'Phase retrieval'
+    elif example == 'mnist':
+        title = 'Image deblurring'
+    elif example == 'quadcopter':
+        title = 'Quadcopter'
+    return title
+
+
+def create_train_test_plots(example, k_vals_obj,  gain_ratios_obj, k_vals_reg, gain_ratios_reg):
     # now give a plot for the generalization
-    plt.plot(np.array(k_vals_obj), np.array(gain_ratios_obj), label='obj')
-    plt.plot(np.array(k_vals_reg), np.array(gain_ratios_reg), label='reg')
-    plt.xlabel('k')
-    plt.ylabel('gain ratio')
-    plt.legend()
+    plt.figure(figsize=(8, 6))
+    plt.plot(np.array(k_vals_obj), np.array(gain_ratios_obj) - 1, label='obj')
+    plt.plot(np.array(k_vals_reg), np.array(gain_ratios_reg) - 1, label='reg')
+    plt.xlabel(r'$k$')
+    plt.ylabel('relative gap')
+    # plt.legend()
+    title = create_title(example)
+    plt.title(title)
+    plt.tight_layout()
     plt.savefig('gain_ratios.pdf', bbox_inches='tight')
     plt.clf()
 
@@ -977,7 +999,7 @@ def plot_eval_iters(example, cfg, train=False):
 
     plt.yscale('log')
     plt.xlabel('evaluation iterations')
-    plt.ylabel('test fixed point residuals')
+    plt.ylabel('test fixed-point residuals')
     plt.legend()
     plt.savefig('eval_iters.pdf', bbox_inches='tight')
     plt.clf()
