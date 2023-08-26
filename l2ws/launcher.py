@@ -1200,7 +1200,8 @@ class Workspace:
 
             epoch_train_losses = epoch_train_losses.at[0].set(train_loss_first)
             start_index = 1
-            self.train_over_epochs_body_simple_fn_jitted = jit(self.train_over_epochs_body_simple_fn)
+            # self.train_over_epochs_body_simple_fn_jitted = jit(self.train_over_epochs_body_simple_fn)
+            self.train_over_epochs_body_simple_fn_jitted = self.train_over_epochs_body_simple_fn
         else:
             start_index = 0
             params, state = self.l2ws_model.params, self.l2ws_model.state
@@ -1301,9 +1302,10 @@ class Workspace:
 
     def eval_iters_train_and_test(self, col, pretrain_on):
         self.evaluate_iters(
-            self.num_samples_train, col, train=True, plot_pretrain=pretrain_on)
-        self.evaluate_iters(
             self.num_samples_test, col, train=False, plot_pretrain=pretrain_on)
+        self.evaluate_iters(
+            self.num_samples_train, col, train=True, plot_pretrain=pretrain_on)
+        
 
     def write_train_results(self, loop_size, prev_batches, epoch_train_losses,
                             time_train_per_epoch):
@@ -1406,7 +1408,9 @@ class Workspace:
             for j in range(num_tuples):
                 stacked_entry.append(tuples_list[j][i])
             # result.append(tuple(stacked_entry))
-            if tuples_list[j][i].ndim == 2:
+            if tuples_list[j][i] is None:
+                result.append(None)
+            elif tuples_list[j][i].ndim == 2:
                 result.append(jnp.vstack(stacked_entry))
             elif tuples_list[j][i].ndim == 1:
                 result.append(jnp.hstack(stacked_entry))
