@@ -118,9 +118,10 @@ def mpc_plot_eval_iters(cfg):
 def phase_retrieval_plot_eval_iters(cfg):
     example = 'phase_retrieval'
     # plot_eval_iters(example, cfg, train=False)
-    overlay_training_losses(example, cfg)
+    
     # plot_eval_iters(example, cfg, train=False)
     create_journal_results(example, cfg, train=False)
+    overlay_training_losses(example, cfg)
 
 
 @hydra.main(config_path='configs/mnist', config_name='mnist_plot.yaml')

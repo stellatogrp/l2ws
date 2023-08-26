@@ -56,7 +56,7 @@ save_weights_flag: True
 train_unrolls: 1
 num_samples: 100
 # eval_batch_size: 100
-eval_unrolls: 500
+eval_unrolls: 299
 # load_weights_datetime: '2023-07-16/15-58-19'
 # load_weights_datetime: '2023-07-28/02-06-06'
 
