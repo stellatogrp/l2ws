@@ -142,7 +142,7 @@ def averaged_plot():
     # x_jax, y_jax, s_jax = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
 
 
-def create_toy_example():
+def create_toy_example(gif=False):
     """proximal Gradient descent for 
 
     min (x_1 - a)^2 + (x_2 - b)^2
@@ -150,23 +150,34 @@ def create_toy_example():
     z_hist = run_prox_gd(init)
     """
     a, b = 0, 0
+    coeff = 10
     def f(x):
-        return 10 * (x[0] - a) ** 2 + (x[1] - b) ** 2
+        return coeff * (x[0] - a) ** 2 + (x[1] - b) ** 2 #+ x[1] * x[0]
     
     grad = jax.grad(f)
 
     # setup x_inits
-    x_inits = [10 * jnp.array([-jnp.sqrt(2) / 2, -np.sqrt(2) / 2]), 
-               10 * jnp.array([1.0, 0.0]), 
-               10 * jnp.array([0.5, jnp.sqrt(3) / 2])]
-    step_size, num_steps = 0.01, 15
+    init_dist = 10
+    theta1 = 105 * (np.pi/180)
+    theta2 = 10 * (np.pi/180)
+    x_inits = [init_dist * jnp.array([-jnp.sqrt(2) / 2, -np.sqrt(2) / 2]), 
+            #    init_dist * jnp.array([1.0, 0.0]), 
+            #    init_dist * jnp.array([jnp.sqrt(3) / 2, 0.5]), 
+               init_dist * jnp.array([np.cos(theta1), np.sin(theta1)]),
+               init_dist * jnp.array([np.cos(theta2), np.sin(theta2)])]
+    m = 1
+    L = 20
+    num_steps = 50
+    num_steps_display = 5
+    step_size= 2 / (m + L) #1 / coeff, 10
 
     x_hists = []
+    fp_res_list = []
     for i in range(len(x_inits)):
         x_init = x_inits[i]
-        x_hist = run_prox_gd(x_init, grad, step_size, num_steps)
+        x_hist, fp_res = run_prox_gd(x_init, grad, step_size, num_steps)
         x_hists.append(x_hist)
-
+        fp_res_list.append(fp_res)
 
     # x = np.array([gamma, 1])
     # x_hist = [x]
@@ -190,70 +201,138 @@ def create_toy_example():
     colors = ['b', 'r', 'g']
     for i in range(len(x_hists)):
         x_hist = x_hists[i]
-        ax.plot(*zip(*x_hist), linestyle='--', marker='o',
+        ax.plot(*zip(*x_hist[:num_steps_display]), linestyle='--', marker='o',
                 markersize=10, markerfacecolor='none', color=colors[i])
     circle1 = plt.Circle((0, 0), 10, color='k', fill=False)
     ax.add_patch(circle1)
     ax.set_aspect('equal', adjustable='box')
+
+    # turn off axes and show xstar
+    # plt.scatter(0, 0)
+    plt.scatter(np.zeros(1), np.zeros(1), marker='x', color='black', s=1000)
+    ax.text(-1.5, -1, r'$z^\star$', fontsize=48, verticalalignment='center', horizontalalignment='center')
+    plt.axis('off')
+    
     plt.tight_layout()
     plt.savefig("motivating_example/paths.pdf")
-    plt.show()
-        
-    # create the plots at each iteration
-    # if not exis
-    # os.mkdir('motivating_example')
-    filenames = []
+    plt.clf()
+    # plt.show()
+
+    # plot the fixed-point residual
+    for i in range(len(fp_res_list)):
+        plt.plot(fp_res_list[i])
+        print(fp_res_list[i])
+    plt.yscale('log')
+    plt.xlabel('evaluation iterations')
+    plt.ylabel('fixed-point residual')
+    plt.tight_layout()
+    plt.savefig("motivating_example/fp_res.pdf")
+    plt.clf()
+
+
+
+    # plot both
+    fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+    linestyles = ['--', ':', '-.']
+
+    # first plot the path
+    # colors = ['b', 'r', 'g']
+    cmap = plt.cm.Set1
+    colors = cmap.colors
+
+    for i in range(len(x_hists)):
+        x_hist = x_hists[i]
+        # axs[0].plot(*zip(*x_hist[:num_steps_display]), linestyle='--', marker='o',
+        #         markersize=10, markerfacecolor='none', color=colors[i])
+        axs[0].plot(*zip(*x_hist[:num_steps_display]), linestyle=linestyles[i], marker='o',
+                markersize=10, markerfacecolor='none', color=colors[i])
+    circle1 = plt.Circle((0, 0), 10, color='k', fill=False)
+    axs[0].add_patch(circle1)
+    axs[0].set_aspect('equal', adjustable='box')
+
+    # turn off axes and show xstar
+    # plt.scatter(0, 0)
+    axs[0].scatter(np.zeros(1), np.zeros(1), marker='*', color='black', s=500)
+    axs[0].text(-2, -1, r'$z^\star$', fontsize=24, verticalalignment='center', horizontalalignment='center')
+    axs[0].axis('off')
     
-    for j in range(len(x_hists[0])):
-        fig, ax = plt.subplots(figsize=(16, 9))
+    # axs[0].tight_layout()
+
+    # next plot the fp res
+    for i in range(len(fp_res_list)):
+        plt.plot(fp_res_list[i], color=colors[i], linestyle=linestyles[i])
+        # print(fp_res_list[i])
+    axs[1].set_yscale('log')
+    axs[1].set_xlabel('evaluation iterations')
+    axs[1].set_ylabel('fixed-point residual')
+    # axs[1].tight_layout()
+    plt.tight_layout()
+    plt.savefig("motivating_example/paths_and_fp_res.pdf")
+    plt.clf()
+
+
+    if gif:
+        # create the plots at each iteration
+        # if not exis
+        # os.mkdir('motivating_example')
+        filenames = []
         
-        for i in range(len(x_hists)):
-            x_hist = x_hists[i]
-            # ax.plot(*zip(*x_hist), linestyle='--', marker='o',
-            #         markersize=10, markerfacecolor='none', color=colors[i])
-            ax.set_xlim([-11, 11])  # Set limits for the X-axis
-            ax.set_ylim([-11, 11])
-            ax.scatter(x_hist[j][0], x_hist[j][1], s=100, color=colors[i])
+        for j in range(len(x_hists[0])):
+            fig, ax = plt.subplots(figsize=(16, 9))
             
-                    #    linestyle='--', marker='o',
-                    # markersize=10, markerfacecolor='none', 
-        circle1 = plt.Circle((0, 0), 10, color='k', fill=False)
-        ax.add_patch(circle1)
-        ax.set_aspect('equal', adjustable='box')
-        filename = f"motivating_example/curr_point_{j}.jpg"
-        filenames.append(filename)
-        plt.savefig(filename)
-        plt.clf()
+            for i in range(len(x_hists)):
+                x_hist = x_hists[i]
+                # ax.plot(*zip(*x_hist), linestyle='--', marker='o',
+                #         markersize=10, markerfacecolor='none', color=colors[i])
+                ax.set_xlim([-11, 11])  # Set limits for the X-axis
+                ax.set_ylim([-11, 11])
+                ax.scatter(x_hist[j][0], x_hist[j][1], s=100, color=colors[i])
+                
+                        #    linestyle='--', marker='o',
+                        # markersize=10, markerfacecolor='none', 
+            circle1 = plt.Circle((0, 0), 10, color='k', fill=False)
+            ax.add_patch(circle1)
+            ax.set_aspect('equal', adjustable='box')
+            filename = f"motivating_example/curr_point_{j}.jpg"
+            filenames.append(filename)
+            plt.savefig(filename)
+            plt.clf()
 
-    # create the gif
-    with imageio.get_writer(f"motivating_example/paths.gif", mode='I') as writer:
-        for filename in filenames:
-            image = imageio.imread(filename)
-            writer.append_data(image)
+        # create the gif
+        with imageio.get_writer(f"motivating_example/paths.gif", mode='I') as writer:
+            for filename in filenames:
+                image = imageio.imread(filename)
+                writer.append_data(image)
 
-    # remove the files
-    # delete the images - todo
-    for filename in set(filenames):
-        os.remove(filename)
+        # remove the files
+        # delete the images - todo
+        for filename in set(filenames):
+            os.remove(filename)
 
-    # Optimal solution
-    # ax.scatter(*zip(x_star), marker='*', s=600, color='k')
-    
+        # Optimal solution
+        # ax.scatter(*zip(x_star), marker='*', s=600, color='k')
+        
 
-    # ax.set_xlim([x_min, x_max])
-    # ax.set_ylim([y_min, y_max])
-    # ax.set_xticks([])
-    # ax.set_yticks([])
-    
+        # ax.set_xlim([x_min, x_max])
+        # ax.set_ylim([y_min, y_max])
+        # ax.set_xticks([])
+        # ax.set_yticks([])
+        
 
 
 def run_prox_gd(x_init, grad, step_size, num_steps):
     x_hist = [x_init]
     x = x_init
+    fp_res = np.zeros(num_steps)
     for i in range(num_steps):
+        x_prev = x
         x = jnp.clip(x - step_size * grad(x), a_min=0)
         x_hist.append(x)
-    return x_hist
+        # if i > 0:
+        
+        fp_res[i] = np.linalg.norm(x - x_prev)
+        print(fp_res)
+    return x_hist, fp_res
 
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-m_orig: 200
+m_orig: 100
 n_orig: 200
 lambd: 100
 solve_acc_abs: 1e-10
