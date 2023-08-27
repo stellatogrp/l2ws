@@ -19,21 +19,23 @@ plt.rcParams.update({
     "font.size": 24,
     # "font.size": 16,
 })
+cmap = plt.cm.Set1
+colors = cmap.colors
 titles_2_colors = dict(cold_start='black', 
-                       nearest_neighbor='magenta', 
-                       prev_sol='cyan',
-                       reg_k0=mcolors.TABLEAU_COLORS['tab:brown'],
-                       reg_k5='blue',
-                       reg_k15='red',
-                       reg_k30='green',
-                       reg_k60='orange',
-                       reg_k120='gray',
-                       obj_k0=mcolors.TABLEAU_COLORS['tab:brown'],
-                       obj_k5='blue',
-                       obj_k15='red',
-                       obj_k30='green',
-                       obj_k60='orange',
-                       obj_k120='gray')
+                       nearest_neighbor=colors[6], 
+                       prev_sol=colors[4],
+                       reg_k0=colors[3],
+                       reg_k5=colors[0],
+                       reg_k15=colors[1],
+                       reg_k30=colors[5],
+                       reg_k60=colors[2],
+                    #    reg_k120=colors[0],
+                       obj_k0=colors[3],
+                       obj_k5=colors[0],
+                       obj_k15=colors[1],
+                       obj_k30=colors[5],
+                       obj_k60=colors[2])
+                    #    obj_k120='gray')
 titles_2_styles = dict(cold_start='-.', 
                        nearest_neighbor='-.', 
                        prev_sol='-.',
@@ -46,9 +48,54 @@ titles_2_styles = dict(cold_start='-.',
                        obj_k0='-',
                        obj_k5='-',
                        obj_k15='-',
-                       obj_k30='-',
-                       obj_k60='-',
-                       obj_k120='-')
+                    #    obj_k30='-',
+                       obj_k60='-')
+                    #    obj_k120='-')
+titles_2_markers = dict(cold_start='v', 
+                       nearest_neighbor='<', 
+                       prev_sol='.',
+                       reg_k0='>',
+                       reg_k5='o',
+                       reg_k15='s',
+                    #    reg_k30='-',
+                       reg_k60='D',
+                    #    reg_k120='-',
+                       obj_k0='>',
+                       obj_k5='o',
+                       obj_k15='s',
+                    #    obj_k30='-',
+                       obj_k60='D')
+                    #    obj_k120='-')
+# titles_2_colors = dict(cold_start='black', 
+#                        nearest_neighbor='magenta', 
+#                        prev_sol='cyan',
+#                        reg_k0=mcolors.TABLEAU_COLORS['tab:brown'],
+#                        reg_k5='blue',
+#                        reg_k15='red',
+#                        reg_k30='green',
+#                        reg_k60='orange',
+#                        reg_k120='gray',
+#                        obj_k0=mcolors.TABLEAU_COLORS['tab:brown'],
+#                        obj_k5='blue',
+#                        obj_k15='red',
+#                        obj_k30='green',
+#                        obj_k60='orange',
+#                        obj_k120='gray')
+# titles_2_styles = dict(cold_start='-.', 
+#                        nearest_neighbor='-.', 
+#                        prev_sol='-.',
+#                        reg_k0='-',
+#                        reg_k5='-',
+#                        reg_k15='-',
+#                        reg_k30='-',
+#                        reg_k60='-',
+#                        reg_k120='-',
+#                        obj_k0='-',
+#                        obj_k5='-',
+#                        obj_k15='-',
+#                        obj_k30='-',
+#                        obj_k60='-',
+#                        obj_k120='-')
 
 
 
@@ -561,14 +608,15 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             title = titles[j]
             color = titles_2_colors[title]
             style = titles_2_styles[title]
+            marker = titles_2_markers[title]
             if title[:3] != 'reg':
-                axes[0, 0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, color=color)
+                axes[0, 0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, marker=marker, color=color, markevery=25)
                 # if vert_lines:
                 #     if title[0] == 'k':
                 #         k = int(title[1:])
                 #         axes[i].axvline(k, color=color)
             if title[:3] != 'obj':
-                axes[0, 1].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, color=color)
+                axes[0, 1].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, marker=marker, color=color, markevery=25)
                 # if vert_lines:
                 #     if title[0] == 'k':
                 #         k = int(title[1:])
@@ -581,17 +629,19 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             title = titles[j]
             color = titles_2_colors[title]
             style = titles_2_styles[title]
+            marker = titles_2_markers[title]
             # if j > 0:
             #     gain = cs / np.array(curr_metric[j])[start:eval_iters + start]
             # else:
             #     cs = np.array(curr_metric[j])[start:eval_iters + start]
             if j == 0:
                 cs = np.array(curr_metric[j])[start:eval_iters + start]
-            gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], a_min=0, a_max=150)
-            if title[:3] != 'reg':
-                axes[1, 0].plot(gain, linestyle=style, color=color)
-            if title[:3] != 'obj':
-                axes[1, 1].plot(gain, linestyle=style, color=color)
+            else:
+                gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], a_min=0, a_max=1500)
+                if title[:3] != 'reg':
+                    axes[1, 0].plot(gain, linestyle=style, marker=marker, color=color, markevery=25)
+                if title[:3] != 'obj':
+                    axes[1, 1].plot(gain, linestyle=style, marker=marker, color=color, markevery=25)
 
             # if vert_lines:
             #     if title[0] == 'k':
@@ -684,7 +734,7 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             style = titles_2_styles[title]
             if j == 0:
                 cs = np.array(curr_metric[j])[start:eval_iters + start]
-            gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], a_min=0, a_max=150)
+            gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], a_min=0, a_max=1500)
             if title[:3] != 'reg' and i == 0:
                 axes[1].plot(gain, linestyle=style, color=color)
             if title[:3] != 'obj' and i == 1:
