@@ -255,6 +255,11 @@ def create_toy_example(gif=False):
     axs[0].scatter(np.zeros(1), np.zeros(1), marker='*', color='black', s=500)
     axs[0].text(-2, -1, r'$z^\star$', fontsize=24, verticalalignment='center', horizontalalignment='center')
     axs[0].axis('off')
+
+    # fill the non-negative orthant
+    x = np.linspace(-2, 2, 400)
+    y = np.linspace(-2, 2, 400)
+    axs[0].fill_betweenx(y, 0, x, where=(x >= 0), color='gray', alpha=0.3)
     
     # axs[0].tight_layout()
 
