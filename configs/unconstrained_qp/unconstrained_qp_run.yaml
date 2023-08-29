@@ -1,5 +1,5 @@
 nn_cfg:
-  lr: 1e-2
+  lr: 1e-1
   method: adam
   intermediate_layer_sizes: [10]
   batch_size: 100
@@ -25,19 +25,19 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 1
+train_unrolls: 60
 eval_unrolls: 1000
 eval_every_x_epochs: 100
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 2
-N_train: 50
+N_train: 100
 N_test: 10
 num_samples: 10
 prediction_variable: w
 angle_anchors: [0]
-supervised: True
+supervised: False
 plot_iterates: [0, 10, 20]
 loss_method: 'fixed_k' #'fixed_k' #'constant_sum'
 share_all: True

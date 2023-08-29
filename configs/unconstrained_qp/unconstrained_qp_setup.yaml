@@ -7,6 +7,6 @@ N_test: 10
 seed: 42
 solve: True
 A_scale: 1
-c_min: 10
-c_max: 20
+c_min: -10
+c_max: 10
 P_split: 10

@@ -48,22 +48,22 @@ titles_2_styles = dict(cold_start='-.',
                        obj_k0='-',
                        obj_k5='-',
                        obj_k15='-',
-                    #    obj_k30='-',
+                       obj_k30='-',
                        obj_k60='-')
                     #    obj_k120='-')
 titles_2_markers = dict(cold_start='v', 
                        nearest_neighbor='<', 
-                       prev_sol='.',
+                       prev_sol='^',
                        reg_k0='>',
                        reg_k5='o',
                        reg_k15='s',
-                    #    reg_k30='-',
+                       reg_k30='x',
                        reg_k60='D',
                     #    reg_k120='-',
                        obj_k0='>',
                        obj_k5='o',
                        obj_k15='s',
-                    #    obj_k30='-',
+                       obj_k30='x',
                        obj_k60='D')
                     #    obj_k120='-')
 # titles_2_colors = dict(cold_start='black', 
@@ -154,6 +154,15 @@ def lasso_plot_eval_iters(cfg):
     create_journal_results(example, cfg, train=False)
 
 
+@hydra.main(config_path='configs/unconstrained_qp', config_name='unconstrained_qp_plot.yaml')
+def unconstrained_qp_plot_eval_iters(cfg):
+    example = 'unconstrained_qp'
+    
+    # plot_eval_iters(example, cfg, train=False)
+    create_journal_results(example, cfg, train=False)
+    overlay_training_losses(example, cfg)
+
+
 @hydra.main(config_path='configs/mpc', config_name='mpc_plot.yaml')
 def mpc_plot_eval_iters(cfg):
     example = 'mpc'
@@ -175,9 +184,10 @@ def phase_retrieval_plot_eval_iters(cfg):
 def mnist_plot_eval_iters(cfg):
     example = 'mnist'
     # plot_eval_iters(example, cfg, train=False)
-    overlay_training_losses(example, cfg)
+    
     # plot_eval_iters(example, cfg, train=False)
     create_journal_results(example, cfg, train=False)
+    overlay_training_losses(example, cfg)
 
 
 @hydra.main(config_path='configs/jamming', config_name='jamming_plot.yaml')
@@ -582,13 +592,19 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
     axes[1, 1].set_xlabel('evaluation iterations')
 
     # y-label
-    axes[0, 0].set_ylabel('fixed-point residual')
-    axes[1, 0].set_ylabel('gain to cold start')
+    # axes[0, 0].set_ylabel('fixed-point residual')
+    # axes[1, 0].set_ylabel('gain to cold start')
+    axes[0, 0].set_ylabel('test fixed-point residual')
+    axes[1, 0].set_ylabel('test gain to cold start')
 
-    axes[0, 0].set_title('fixed-point residual losses')
-    axes[0, 1].set_title('regression losses')
-    axes[1, 0].set_title('fixed-point residual losses')
-    axes[1, 1].set_title('regression losses')
+    # axes[0, 0].set_title('fixed-point residual losses')
+    # axes[0, 1].set_title('regression losses')
+    # axes[1, 0].set_title('fixed-point residual losses')
+    # axes[1, 1].set_title('regression losses')
+    axes[0, 0].set_title('training with fixed-point residual losses')
+    axes[0, 1].set_title('training with regression losses')
+    axes[1, 0].set_title('training with fixed-point residual losses')
+    axes[1, 1].set_title('training with regression losses')
 
     # titles
     # axes[0, 0].set_title('fixed-point residuals with fixed-point residual-based losses')
@@ -924,6 +940,10 @@ def create_title(example):
         title = 'Image deblurring'
     elif example == 'quadcopter':
         title = 'Quadcopter'
+    elif example == 'lasso':
+        title = 'Lasso'
+    elif example == 'unconstrained_wp':
+        title = 'Unconstrained QP'
     return title
 
 
@@ -1199,6 +1219,10 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'lasso/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         lasso_plot_eval_iters()
+    elif sys.argv[1] == 'unconstrained_qp':
+        sys.argv[1] = base + 'unconstrained_qp/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        unconstrained_qp_plot_eval_iters()
     elif sys.argv[1] == 'mpc':
         sys.argv[1] = base + 'mpc/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
