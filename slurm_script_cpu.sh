@@ -19,7 +19,7 @@ echo "Executing on the machine:" $(hostname)
 # python l2ws_train_script.py sparse_pca cluster
 # python gif_script.py robust_pca cluster
 # python utils/portfolio_utils.py
-python plot_script.py mnist cluster
+python plot_script.py unconstrained_qp cluster
 # python l2ws_train_script.py quadcopter cluster
 # python l2ws_setup_script.py unconstrained_qp cluster
 #python scs_c_speed.py markowitz

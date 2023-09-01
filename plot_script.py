@@ -16,7 +16,7 @@ from l2ws.utils.data_utils import recover_last_datetime
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
-    "font.size": 24,
+    "font.size": 28,
     # "font.size": 16,
 })
 cmap = plt.cm.Set1
@@ -65,6 +65,20 @@ titles_2_markers = dict(cold_start='v',
                        obj_k15='s',
                        obj_k30='x',
                        obj_k60='D')
+titles_2_marker_starts = dict(cold_start=0, 
+                       nearest_neighbor=16, 
+                       prev_sol=23,
+                       reg_k0=8,
+                       reg_k5=4,
+                       reg_k15=12,
+                       reg_k30=0,
+                       reg_k60=20,
+                    #    reg_k120='-',
+                       obj_k0=8,
+                       obj_k5=4,
+                       obj_k15=12,
+                       obj_k30=0,
+                       obj_k60=20)
                     #    obj_k120='-')
 # titles_2_colors = dict(cold_start='black', 
 #                        nearest_neighbor='magenta', 
@@ -586,8 +600,8 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
     axes[0, 1].set_yscale('log')
 
     # x-label
-    axes[0, 0].set_xlabel('evaluation iterations')
-    axes[0, 1].set_xlabel('evaluation iterations')
+    # axes[0, 0].set_xlabel('evaluation iterations')
+    # axes[0, 1].set_xlabel('evaluation iterations')
     axes[1, 0].set_xlabel('evaluation iterations')
     axes[1, 1].set_xlabel('evaluation iterations')
 
@@ -603,8 +617,11 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
     # axes[1, 1].set_title('regression losses')
     axes[0, 0].set_title('training with fixed-point residual losses')
     axes[0, 1].set_title('training with regression losses')
-    axes[1, 0].set_title('training with fixed-point residual losses')
-    axes[1, 1].set_title('training with regression losses')
+    # axes[1, 0].set_title('training with fixed-point residual losses')
+    # axes[1, 1].set_title('training with regression losses')
+
+    axes[0, 0].set_xticklabels([])
+    axes[0, 1].set_xticklabels([])
 
     # titles
     # axes[0, 0].set_title('fixed-point residuals with fixed-point residual-based losses')
@@ -625,14 +642,15 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             color = titles_2_colors[title]
             style = titles_2_styles[title]
             marker = titles_2_markers[title]
+            mark_start = titles_2_marker_starts[title]
             if title[:3] != 'reg':
-                axes[0, 0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, marker=marker, color=color, markevery=25)
+                axes[0, 0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
                 # if vert_lines:
                 #     if title[0] == 'k':
                 #         k = int(title[1:])
                 #         axes[i].axvline(k, color=color)
             if title[:3] != 'obj':
-                axes[0, 1].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, marker=marker, color=color, markevery=25)
+                axes[0, 1].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
                 # if vert_lines:
                 #     if title[0] == 'k':
                 #         k = int(title[1:])
@@ -646,6 +664,7 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             color = titles_2_colors[title]
             style = titles_2_styles[title]
             marker = titles_2_markers[title]
+            mark_start = titles_2_marker_starts[title]
             # if j > 0:
             #     gain = cs / np.array(curr_metric[j])[start:eval_iters + start]
             # else:
@@ -655,9 +674,9 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             else:
                 gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], a_min=0, a_max=1500)
                 if title[:3] != 'reg':
-                    axes[1, 0].plot(gain, linestyle=style, marker=marker, color=color, markevery=25)
+                    axes[1, 0].plot(gain, linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
                 if title[:3] != 'obj':
-                    axes[1, 1].plot(gain, linestyle=style, marker=marker, color=color, markevery=25)
+                    axes[1, 1].plot(gain, linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
 
             # if vert_lines:
             #     if title[0] == 'k':

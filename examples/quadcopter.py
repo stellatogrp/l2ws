@@ -1291,11 +1291,13 @@ def plot_traj_3d(state_traj_list, goals, labels, T=10, goal_bound=1, filename=No
             body_x, body_y, body_z = propeller_data[i][j]
             color = 'r' if j <= 1 else 'b'
             ax.plot(body_x, body_y, body_z, color)
+            ax.grid(False)
     # plt.legend()
     if filename is None:  
         plt.show()
     else:
-        plt.savefig(f"{filename}_img.pdf")
+        # plt.savefig(f"{filename}_img.pdf")
+        plt.savefig(f"{filename}_img.pdf", bbox_inches='tight', pad_inches=0)
         plt.clf()
 
     # create the gif    
@@ -1330,7 +1332,9 @@ def plot_traj_3d(state_traj_list, goals, labels, T=10, goal_bound=1, filename=No
             ax.plot(goal_xs[:-T], goal_ys[:-T], goal_zs[:-T], 'black')
             frame_name = f"{filename}/frame_{i}.png"
             filenames.append(frame_name)
-            plt.savefig(frame_name)
+            # plt.savefig(frame_name)
+            ax.grid(False)
+            plt.savefig(frame_name, bbox_inches='tight', pad_inches=0)
             plt.clf()
         
         # create the gif
