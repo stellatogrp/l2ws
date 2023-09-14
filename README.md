@@ -22,8 +22,15 @@ pip install -r requirements.txt
 
 ## Instructions
 ### Running experiments
-Experiments can from the root folder using the commands below.
-The different experiments are
+Experiments can from the root folder using the commands below for the quadcopter example.
+```
+python l2ws_setup.py quadcopter local
+python aggregate_slurm_runs_script.py quadcopter local
+python l2ws_train.py quadcopter local
+python plot_script.py quadcopter local
+
+```
+The names of the different experiments are the following.
 ```
 unconstrained_qp
 lasso
@@ -35,26 +42,7 @@ phase_retrieval
 sparse_pca
 ```
 
-```
-python l2ws_setup.py quadcopter local
-python aggregate_slurm_runs_script.py quadcopter local
-python l2ws_train.py quadcopter local
-python plot_script.py quadcopter local
-```
-
-
-
-We use the EMNIST dataset found at https://data.nasdaq.com/databases/WIKIP/documentation. To process the data run
-```
-python utils/portfolio_utils.py
-```
-
-To run our experiment run
-```
-python l2ws_setup.py markowitz local
-python l2ws_train.py markowitz local
-python plot_script.py markowitz local
-```
+For the image deblurring task, we use the EMNIST dataset found at https://www.nist.gov/itl/products-and-services/emnist-dataset and use pip to install emnist (https://pypi.org/project/emnist/). 
 
 Output folders will automatically be created from hydra and for the oscillating masses example, the plot and csv files to check the performance on different models will be creted in this file.
 ```
@@ -62,4 +50,6 @@ outputs/quadcopter/2022-12-03/14-54-32/plots/eval_iters.pdf
 outputs/quadcopter/2022-12-03/14-54-32/plots/accuracies.csv
 ```
 
-Adjust the config files to try different settings; for example, the number of train/test data, number of evaluation iterations, neural network training, and problem setup configurations. We automatically use the most recent output after each stage, but the specific datetime can be inputted. Additionally, the final evaluation plot can take in multiple training datetimes in a list. See the commented out lines in the config files.
+Adjust the config files to try different settings; for example, the number of train/test data, number of evaluation iterations, and the number of training steps.
+Additionally, the neural network and problem setup configurations can be updated.
+We automatically use the most recent output after each stage, but the specific datetime can be inputted. Additionally, the final evaluation plot can take in multiple training datetimes in a list. See the commented out lines in the config files.
