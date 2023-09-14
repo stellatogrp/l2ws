@@ -25,11 +25,25 @@ pip install -r requirements.txt
 Experiments can from the root folder using the commands below for the quadcopter example.
 ```
 python l2ws_setup.py quadcopter local
-python aggregate_slurm_runs_script.py quadcopter local
 python l2ws_train.py quadcopter local
 python plot_script.py quadcopter local
-
 ```
+The first script ```l2ws_setup.py``` creates all of the problem instances and solves them.
+This only needs to be run once for each example.
+Depending on the example, this can take some time because 10000 problems are being solved.
+
+The second script ```l2ws_train.py``` does the actual training.
+Run this file for each $k$ value to train for that number of fixed-point steps.
+Each run for a given $k$ and the loss function creates an output folder like
+```
+outputs/quadcopter/2022-12-03/14-54-32/
+```
+In this folder there are many metrics that are stored.
+
+
+The third script ```plot_script.py``` plots the results across many different training runs.
+Each train run creates a new folder 
+
 The names of the different experiments are the following.
 ```
 unconstrained_qp
