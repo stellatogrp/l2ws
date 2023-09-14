@@ -24,7 +24,7 @@ plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
     # "font.size": 24,
-    "font.size": 16,
+    "font.size": 24,
 })
 
 
@@ -238,7 +238,7 @@ def create_toy_example(gif=False):
     # first plot the path
     # colors = ['b', 'r', 'g']
     cmap = plt.cm.Set1
-    colors = cmap.colors
+    colors = [cmap.colors[3], cmap.colors[2], cmap.colors[4]]
 
     for i in range(len(x_hists)):
         x_hist = x_hists[i]
@@ -257,9 +257,29 @@ def create_toy_example(gif=False):
     axs[0].axis('off')
 
     # fill the non-negative orthant
-    x = np.linspace(-2, 2, 400)
-    y = np.linspace(-2, 2, 400)
-    axs[0].fill_betweenx(y, 0, x, where=(x >= 0), color='gray', alpha=0.3)
+    x = np.linspace(-12, 12, 400)
+    y = np.linspace(-12, 12, 400)
+    # indices = np.any(x <= 0, y <= 0)
+    # axs[0].fill_betweenx(x, -12, 12, where=indices, color='red', alpha=0.3)
+    # axs[0].fill_betweenx(x, -12, 12, where=(x <= 0), color='red', alpha=0.2, edgecolor=None)
+    # axs[0].fill_betweenx(x, -12, 0, where=(x >= -.1), color='red', alpha=0.2, edgecolor=None)
+    y2 = np.ones(400)
+    y2[:200] = 12
+    y2[200:] = 0
+    axs[0].fill_betweenx(x, -12, y2, color='red', alpha=0.1, edgecolor=None)
+
+    # contour plot
+    X, Y = np.meshgrid(x, y)
+    X_unraveled = np.ravel(X)
+    Y_unraveled = np.ravel(Y)
+    XY = np.stack([X_unraveled, Y_unraveled])
+    z_vec = f(XY)
+    # import pdb
+    # pdb.set_trace()
+    z_mat = np.reshape(z_vec, (400, 400))
+    levels = np.linspace(0, 1100, 6)
+    # axs[0].contour(x, y, z_mat, levels=levels, colors='gray', linestyles='dotted')
+    axs[0].contour(x, y, z_mat, levels=levels, cmap='Blues', linestyles='dotted')
     
     # axs[0].tight_layout()
 
