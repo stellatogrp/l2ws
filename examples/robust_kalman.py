@@ -457,18 +457,21 @@ def plot_positions_overlay(traj, labels, num_dots=2, grayscales=[.8, .3, 1.0, 0.
     '''
     n = len(traj)
 
-    colors = ['green', 'red', 'gray', 'orange', 'blue']
+    # colors = ['green', 'red', 'gray', 'orange', 'blue']
+    cmap = plt.cm.Set1
+    colors = [cmap.colors[0], cmap.colors[1], cmap.colors[2], cmap.colors[3], cmap.colors[4]]
+    linestyles = ['o', 'o', '-.', ':', '--']
 
     # for i in range(n - 2):
     #     shade = (i + 1) / (n - 2)
     #     colors.append(lighten_color('blue', shade))
 
     for i, x in enumerate(traj):
-        alpha = grayscales[i]
+        alpha = 1 #grayscales[i]
         if i < num_dots:
             plt.plot(x[0, :], x[1, :], 'o', color=colors[i], alpha=alpha, label=labels[i])
         else:
-            plt.plot(x[0, :], x[1, :], color=colors[i], alpha=alpha, label=labels[i])
+            plt.plot(x[0, :], x[1, :], color=colors[i], linestyle=linestyles[i], alpha=alpha, label=labels[i])
 
     # save with legend
     if legend:

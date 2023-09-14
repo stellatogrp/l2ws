@@ -1165,6 +1165,10 @@ def plot_traj_3d(state_traj_list, goals, labels, T=10, goal_bound=1, filename=No
     body_width = .1
     body_height = .01
 
+    # colors
+    cmap = plt.cm.Set1
+    colors = [cmap.colors[0], cmap.colors[1]]
+
     # Body coordinates
     body_coords = np.array([
         [-body_length/2, body_length/2, body_length/2, -body_length/2, -body_length/2],
@@ -1289,13 +1293,20 @@ def plot_traj_3d(state_traj_list, goals, labels, T=10, goal_bound=1, filename=No
     for i in range(len(propeller_data)):
         for j in range(4):
             body_x, body_y, body_z = propeller_data[i][j]
-            color = 'r' if j <= 1 else 'b'
-            ax.plot(body_x, body_y, body_z, color)
+            # color = 'r' if j <= 1 else 'b'
+            color = colors[0] if j <= 1 else colors[1]
+            ax.plot(body_x, body_y, body_z, color=color)
+            ax.grid(False)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_zticks([])
     # plt.legend()
     if filename is None:  
         plt.show()
     else:
-        plt.savefig(f"{filename}_img.pdf")
+        # plt.savefig(f"{filename}_img.pdf")
+        # plt.axis('off')
+        plt.savefig(f"{filename}_img.pdf", bbox_inches='tight', pad_inches=0)
         plt.clf()
 
     # create the gif    
@@ -1319,8 +1330,9 @@ def plot_traj_3d(state_traj_list, goals, labels, T=10, goal_bound=1, filename=No
             ax.axes.zaxis.set_ticklabels([])
             for j in range(4):
                 body_x, body_y, body_z = propeller_data[i][j]
-                color = 'r' if j <= 1 else 'b'
-                ax.plot(body_x, body_y, body_z, color)
+                # color = 'r' if j <= 1 else 'b'
+                color = colors[0] if j <= 1 else colors[1]
+                ax.plot(body_x, body_y, body_z, color=color)
 
             # plot the goals for each one
             # for k in range(len(goals)):
@@ -1330,7 +1342,13 @@ def plot_traj_3d(state_traj_list, goals, labels, T=10, goal_bound=1, filename=No
             ax.plot(goal_xs[:-T], goal_ys[:-T], goal_zs[:-T], 'black')
             frame_name = f"{filename}/frame_{i}.png"
             filenames.append(frame_name)
-            plt.savefig(frame_name)
+            # plt.savefig(frame_name)
+            ax.grid(False)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_zticks([])
+            # plt.axis('off')
+            plt.savefig(frame_name, bbox_inches='tight', pad_inches=0)
             plt.clf()
         
         # create the gif
