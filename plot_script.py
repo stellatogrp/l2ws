@@ -16,7 +16,7 @@ from l2ws.utils.data_utils import recover_last_datetime
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
-    "font.size": 28,
+    "font.size": 26,
     # "font.size": 16,
 })
 cmap = plt.cm.Set1
@@ -590,7 +590,9 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
         we will manually create the legend in latex later
     """
     fig_width = 9
-    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(18, 12), sharey='row') #, sharey=True)
+    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(20, 12), sharey='row')
+    # fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(30, 13), sharey='row')
+    # fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(18, 12), sharey='row')
     plt_titles = ['fixed-point residuals', 'gain to cold start']
 
     # for i in range(2):
@@ -602,26 +604,31 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
     # x-label
     # axes[0, 0].set_xlabel('evaluation iterations')
     # axes[0, 1].set_xlabel('evaluation iterations')
-    axes[1, 0].set_xlabel('evaluation iterations')
-    axes[1, 1].set_xlabel('evaluation iterations')
+    fontsize = 40
+    title_fontsize = 40
+    axes[1, 0].set_xlabel('evaluation iterations', fontsize=fontsize)
+    axes[1, 1].set_xlabel('evaluation iterations', fontsize=fontsize)
 
     # y-label
     # axes[0, 0].set_ylabel('fixed-point residual')
     # axes[1, 0].set_ylabel('gain to cold start')
-    axes[0, 0].set_ylabel('test fixed-point residual')
-    axes[1, 0].set_ylabel('test gain to cold start')
+    axes[0, 0].set_ylabel('test fixed-point residual', fontsize=fontsize)
+    axes[1, 0].set_ylabel('test gain to cold start', fontsize=fontsize)
 
     # axes[0, 0].set_title('fixed-point residual losses')
     # axes[0, 1].set_title('regression losses')
     # axes[1, 0].set_title('fixed-point residual losses')
     # axes[1, 1].set_title('regression losses')
-    axes[0, 0].set_title('training with fixed-point residual losses')
-    axes[0, 1].set_title('training with regression losses')
+    axes[0, 0].set_title('training with fixed-point residual losses', fontsize=title_fontsize)
+    axes[0, 1].set_title('training with regression losses', fontsize=title_fontsize)
     # axes[1, 0].set_title('training with fixed-point residual losses')
     # axes[1, 1].set_title('training with regression losses')
 
     axes[0, 0].set_xticklabels([])
     axes[0, 1].set_xticklabels([])
+
+    # axes[0, 0].tick_params(axis='y', which='major', pad=15)
+    # axes[1, 0].tick_params(axis='y', which='major', pad=15)
 
     # titles
     # axes[0, 0].set_title('fixed-point residuals with fixed-point residual-based losses')
@@ -682,6 +689,8 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             #     if title[0] == 'k':
             #         k = int(title[1:])
             #         plt.axvline(k, color=color)
+    # plt.subplots_adjust(left=0.15, right=0.85, top=0.85, bottom=0.15)
+    
     fig.tight_layout()
     if vert_lines:
         plt.savefig('all_metric_plots_vert.pdf', bbox_inches='tight')

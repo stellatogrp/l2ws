@@ -20,6 +20,13 @@ echo "Executing on the machine:" $(hostname)
 # python gif_script.py robust_pca cluster
 # python utils/portfolio_utils.py
 python plot_script.py unconstrained_qp cluster
+python plot_script.py lasso cluster
+python plot_script.py mnist cluster
+python plot_script.py quadcopter cluster
+python plot_script.py robust_kalman cluster
+python plot_script.py robust_ls cluster
+python plot_script.py sparse_pca cluster
+python plot_script.py phase_retrieval cluster
 # python l2ws_train_script.py quadcopter cluster
 # python l2ws_setup_script.py unconstrained_qp cluster
 #python scs_c_speed.py markowitz

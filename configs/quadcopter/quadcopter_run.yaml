@@ -48,20 +48,20 @@ accuracies:
 rho_x: 1
 scale: 1
 alpha_relax: 1
-skip_startup: true
+skip_startup: false
 save_weights_flag: true
 
-supervised: false
-eval_batch_size_test: 100
-solve_c_num: 1000
+supervised: true
+# eval_batch_size_test: 100
+solve_c_num: 0
 N_train: 10000
 N_test: 1000
 # num_samples: 1000
-num_samples_train: 10
-num_samples_test: 1000
-train_unrolls: 15
-eval_unrolls: 14000
-load_weights_datetime: '2023-07-09/15-35-15' #'2023-07-09/14-14-53' #'2023-07-09/15-38-54' #'2023-07-09/14-35-29' #2023-07-09/14-14-53
+num_samples_train: 100
+num_samples_test: 100
+train_unrolls: 5
+eval_unrolls: 500
+load_weights_datetime: '2023-07-30/23-40-17' #'2023-07-09/14-14-53' #'2023-07-09/15-38-54' #'2023-07-09/14-35-29' #2023-07-09/14-14-53
 num_rollouts: 5
 closed_loop_budget: 15
 
