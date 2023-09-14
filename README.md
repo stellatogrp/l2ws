@@ -29,20 +29,30 @@ python l2ws_train.py quadcopter local
 python plot_script.py quadcopter local
 ```
 The first script ```l2ws_setup.py``` creates all of the problem instances and solves them.
+The number of problems that are being solved is set in the setup config file.
+That config file also includes other parameters that define the problem instances. 
 This only needs to be run once for each example.
 Depending on the example, this can take some time because 10000 problems are being solved.
+After running this script, the results are saved a file in
+```
+outputs/quadcopter/data_setup_outputs/2022-06-03/14-54-32/
+```
 
 The second script ```l2ws_train.py``` does the actual training.
+The train config file holds information about the actual training process.
 Run this file for each $k$ value to train for that number of fixed-point steps.
 Each run for a given $k$ and the loss function creates an output folder like
 ```
-outputs/quadcopter/2022-12-03/14-54-32/
+outputs/quadcopter/train_outputs/2022-06-04/15-14-05/
 ```
 In this folder there are many metrics that are stored.
 
 
 The third script ```plot_script.py``` plots the results across many different training runs.
 Each train run creates a new folder 
+```
+outputs/quadcopter/plots/2022-06-04/15-14-05/
+```
 
 The names of the different experiments are the following.
 ```
