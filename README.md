@@ -6,27 +6,13 @@ This repository is by
 and [Bartolomeo Stellato](https://stellato.io/),
 and contains the Python source code to
 reproduce the experiments in our paper
-"[End-to-End Learning to Warm-Start for Real-Time Quadratic Optimization]()."
+"[Learning to Warm-Start Fixed-Point Optimization Algorithms]()."
 
 If you find this repository helpful in your publications,
 please consider citing our paper.
 
 # Abstract
-First-order methods are widely used to solve convex quadratic programs (QPs) in real-time applications because of their low per-iteration cost. 
-However, they can suffer from slow convergence to accurate solutions. 
-In this paper, we present a framework which learns an effective warm-start for a popular first-order method in real-time applications, Douglas-Rachford (DR) splitting, across a
-family of parametric QPs. 
-This framework consists of two modules: a feedforward neural network
-block, which takes as input the parameters of the QP and outputs a warm-start, and a block which
-performs a fixed number of iterations of DR splitting from this warm-start and outputs a candidate
-solution. 
-A key feature of our framework is its ability to do end-to-end learning as we differentiate through the DR iterations. 
-To illustrate the effectiveness of our method, we provide generalization
-bounds (based on Rademacher complexity) that improve with the number of training problems and
-number of iterations simultaneously. 
-We further apply our method to three real-time applications
-and observe that, by learning good warm-starts, we are able to significantly reduce the number of
-iterations required to obtain high-quality solutions.
+We introduce a machine-learning framework to warm-start fixed-point optimization algorithms. Our architecture consists of a neural network mapping problem parameters to warm starts, followed by a predefined number of fixed-point iterations. We propose two loss functions designed to either minimize the fixed-point residual or the distance to a ground truth solution. In this way, the neural network predicts warm starts with the end-to-end goal of minimizing the downstream loss. An important feature of our architecture is its flexibility, in that it can predict a warm start for fixed-point algorithms run for any number of steps, without being limited to the number of steps it has been trained on. We provide PAC- Bayes generalization bounds on unseen data for common classes of fixed-point operators: contractive, linearly convergent, and averaged. Applying this framework to well-known applications in control, statistics, and signal processing, we observe a significant reduction in the number of iterations and solution time required to solve these problems, through learned warm starts.
 
 ## Dependencies
 Install dependencies with
@@ -37,28 +23,28 @@ pip install -r requirements.txt
 ## Instructions
 ### Running experiments
 Experiments can from the root folder using the commands below.
-
-Oscillating masses:
+The different experiments are
 ```
-python l2ws_setup.py osc_mass local
-python aggregate_slurm_runs_script.py osc_mass local
-python l2ws_train.py osc_mass local
-python plot_script.py osc_mass local
-```
-Vehicle dynamics:
-```
-python l2ws_setup.py vehicle local
-python aggregate_slurm_runs_script.py vehicle local
-python l2ws_train.py vehicle local
-python plot_script.py vehicle local
-```
-Markowitz:
-To get the data, from NASDAQ you must create an account with NASDAQ (https://data.nasdaq.com/) and download the data with 
-```
-https://data.nasdaq.com/tables/WIKI-PRICES/export?api_key={INSERT_API_KEY}[…]date&qopts.columns%5B%5D=ticker&qopts.columns%5B%5D=adj_close
+unconstrained_qp
+lasso
+quadcopter
+mnist
+robust_kalman
+robust_ls
+phase_retrieval
+sparse_pca
 ```
 
-We use the WIKIPRICES dataset found at https://data.nasdaq.com/databases/WIKIP/documentation. To process the data run
+```
+python l2ws_setup.py quadcopter local
+python aggregate_slurm_runs_script.py quadcopter local
+python l2ws_train.py quadcopter local
+python plot_script.py quadcopter local
+```
+
+
+
+We use the EMNIST dataset found at https://data.nasdaq.com/databases/WIKIP/documentation. To process the data run
 ```
 python utils/portfolio_utils.py
 ```
@@ -66,15 +52,14 @@ python utils/portfolio_utils.py
 To run our experiment run
 ```
 python l2ws_setup.py markowitz local
-python aggregate_slurm_runs_script.py markowitz local
 python l2ws_train.py markowitz local
 python plot_script.py markowitz local
 ```
 
 Output folders will automatically be created from hydra and for the oscillating masses example, the plot and csv files to check the performance on different models will be creted in this file.
 ```
-outputs/osc_mass/2022-12-03/14-54-32/plots/eval_iters.pdf
-outputs/osc_mass/2022-12-03/14-54-32/plots/accuracies.csv
+outputs/quadcopter/2022-12-03/14-54-32/plots/eval_iters.pdf
+outputs/quadcopter/2022-12-03/14-54-32/plots/accuracies.csv
 ```
 
 Adjust the config files to try different settings; for example, the number of train/test data, number of evaluation iterations, neural network training, and problem setup configurations. We automatically use the most recent output after each stage, but the specific datetime can be inputted. Additionally, the final evaluation plot can take in multiple training datetimes in a list. See the commented out lines in the config files.
