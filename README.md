@@ -46,6 +46,24 @@ Each run for a given $k$ and the loss function creates an output folder like
 outputs/quadcopter/train_outputs/2022-06-04/15-14-05/
 ```
 In this folder there are many metrics that are stored.
+We highlight the mains ones here.
+
+
+- Fixed-point residuals over the test problems 
+
+    ```outputs/quadcopter/train_outputs/2022-12-03/14-54-32/plots/iters_compared_test.pdf```
+    ```outputs/quadcopter/train_outputs/2022-12-03/14-54-32/plots/eval_iters_test.pdf```
+
+- Fixed-point residuals over the training problems 
+
+    ```outputs/quadcopter/train_outputs/2022-12-03/14-54-32/plots/iters_compared_train.pdf```
+    ```outputs/quadcopter/train_outputs/2022-12-03/14-54-32/eval_iters_train.pdf```
+
+- Losses over epochs: for training this holds the average loss (for either loss function), for testing we plot the fixed-point residual at $k$ steps
+
+    ```outputs/quadcopter/train_outputs/2022-12-03/14-54-32/plots/losses_over_training.csv```
+    ```outputs/quadcopter/train_outputs/2022-12-03/14-54-32/plots/losses_over_training.pdf```
+
 
 
 The third script ```plot_script.py``` plots the results across many different training runs.
@@ -70,8 +88,13 @@ For the image deblurring task, we use the EMNIST dataset found at https://www.ni
 
 Output folders will automatically be created from hydra and for the oscillating masses example, the plot and csv files to check the performance on different models will be creted in this file.
 ```
-outputs/quadcopter/2022-12-03/14-54-32/plots/eval_iters.pdf
-outputs/quadcopter/2022-12-03/14-54-32/plots/accuracies.csv
+outputs/quadcopter/2022-12-03/14-54-32/plots/eval_iters_test.pdf
+outputs/quadcopter/2022-12-03/14-54-32/plots/eval_iters_train.pdf
+outputs/quadcopter/2022-12-03/14-54-32/plots/losses_over_training.pdf
+```
+The csv files for the fixed-point residuals over the evaluation steps exist in
+```
+outputs/quadcopter/2022-12-03/14-54-32/plots/accuracies
 ```
 
 Adjust the config files to try different settings; for example, the number of train/test data, number of evaluation iterations, and the number of training steps.
