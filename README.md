@@ -67,7 +67,7 @@ To replicate our results in the paper, the only inputs that need to be changed a
 outputs/quadcopter/train_outputs/2022-06-04/15-14-05/
 ```
 In this folder there are many metrics that are stored.
-We highlight the mains ones here.
+We highlight the mains ones here (both the raw data in csv files and the corresponding plots in pdf files).
 
 
 - Fixed-point residuals over the test problems 
@@ -111,3 +111,21 @@ outputs/quadcopter/2022-12-03/14-54-32/plots/accuracies
 Adjust the config files to try different settings; for example, the number of train/test data, number of evaluation iterations, and the number of training steps.
 Additionally, the neural network and problem setup configurations can be updated.
 We automatically use the most recent output after each stage, but the specific datetime can be inputted. Additionally, the final evaluation plot can take in multiple training datetimes in a list. See the commented out lines in the config files.
+
+***
+
+
+# Important files in the back-end
+To replicate our results, this part is not needed.
+The ```examples``` folder holds the code for each of the numerical experiments we run. The main purpose is to be used in conjunction with the ```l2ws_setup_script.py```
+***
+
+The ```l2ws``` folder holds the code that implements our architecture and allows for the training. In particular,
+
+
+
+- ```l2ws/algo_steps.py``` holds all of the code that runs the algorithms
+
+- ```l2ws/l2ws_model.py``` holds the L2WSmodel object.
+
+- ```l2ws/launcher.py``` holds the ```l2ws_model``` model 
