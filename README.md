@@ -85,6 +85,14 @@ We highlight the mains ones here (both the raw data in csv files and the corresp
     ```outputs/quadcopter/train_outputs/2022-06-04/15-14-05/train_test_results.csv```
     ```outputs/quadcopter/train_outputs/2022-06-04/15-14-05/losses_over_training.pdf```
 
+- The accuracies folder holds the results that are used for the tables. First, it holds the average number of iterations to reach the desired accuracies ($0.1$, $0.01$, $0.001$, and $0.0001$ by default).
+Second, it holds the reduction in iterations in comparison to the cold start.
+
+    ```outputs/quadcopter/2022-12-03/14-54-32/plots/accuracies```
+
+- The 
+
+
 
 ***
 The third script ```plot_script.py``` plots the results across many different training runs.
@@ -97,16 +105,6 @@ outputs/quadcopter/plots/2022-06-04/15-14-05/
 
 For the image deblurring task, we use the EMNIST dataset found at https://www.nist.gov/itl/products-and-services/emnist-dataset and use pip to install emnist (https://pypi.org/project/emnist/). 
 
-Output folders will automatically be created from hydra and for the oscillating masses example, the plot and csv files to check the performance on different models will be creted in this file.
-```
-outputs/quadcopter/2022-12-03/14-54-32/plots/eval_iters_test.pdf
-outputs/quadcopter/2022-12-03/14-54-32/plots/eval_iters_train.pdf
-outputs/quadcopter/2022-12-03/14-54-32/plots/losses_over_training.pdf
-```
-The csv files for the fixed-point residuals over the evaluation steps exist in
-```
-outputs/quadcopter/2022-12-03/14-54-32/plots/accuracies
-```
 
 Adjust the config files to try different settings; for example, the number of train/test data, number of evaluation iterations, and the number of training steps.
 Additionally, the neural network and problem setup configurations can be updated.
@@ -117,15 +115,18 @@ We automatically use the most recent output after each stage, but the specific d
 
 # Important files in the back-end
 To replicate our results, this part is not needed.
-The ```examples``` folder holds the code for each of the numerical experiments we run. The main purpose is to be used in conjunction with the ```l2ws_setup_script.py```
+The ```examples``` folder holds the code for each of the numerical experiments we run. The main purpose is to be used in conjunction with the ```l2ws_setup_script.py```.
+An important note is that the code is set to periodically evaluate the train and test sets -- this is set in the ```eval_every_x_epochs``` entry in the run config file.
+When we evaluate, the fixed-point curves are updated (see the above files for the run config).
+We can also set the number of problems we run with C (for OSQP and SCS) with ```solve_c_num```. This will create the results that are used for our timing tables.
 ***
 
 The ```l2ws``` folder holds the code that implements our architecture and allows for the training. In particular,
 
-
+- ```l2ws/launcher.py``` is the workspace which holds the L2WSmodel below.
+All of the evaluation and training is run through
 
 - ```l2ws/algo_steps.py``` holds all of the code that runs the algorithms
 
-- ```l2ws/l2ws_model.py``` holds the L2WSmodel object.
-
-- ```l2ws/launcher.py``` holds the ```l2ws_model``` model 
+- ```l2ws/l2ws_model.py``` holds the L2WSmodel object, i.e., the architecture.
+Using
