@@ -42,6 +42,8 @@ sparse_pca
 ```
 
 ***
+### ```l2ws_setup.py```
+
 The first script ```l2ws_setup.py``` creates all of the problem instances and solves them.
 The number of problems that are being solved is set in the setup config file.
 That config file also includes other parameters that define the problem instances. 
@@ -53,6 +55,8 @@ outputs/quadcopter/data_setup_outputs/2022-06-03/14-54-32/
 ```
 
 ***
+### ```l2ws_train.py```
+
 The second script ```l2ws_train.py``` does the actual training using the output from the prevous setup command.
 In particular, in the config file, it takes a datetime that points to the setup output.
 By default, it takes the most recent setup if this pointer is empty.
@@ -60,8 +64,8 @@ The train config file holds information about the actual training process.
 Run this file for each $k$ value to train for that number of fixed-point steps.
 Each run for a given $k$ and the loss function creates an output folder like
 To replicate our results in the paper, the only inputs that need to be changed are the ones that determine the number of training steps and which of the two loss functions you are using.
-- train_unrolls (an integer that is the value $k$)
-- supervised (either True or False)
+- ```train_unrolls``` (an integer that is the value $k$)
+- ```supervised``` (either True or False)
 
 ```
 outputs/quadcopter/train_outputs/2022-06-04/15-14-05/
@@ -85,16 +89,21 @@ We highlight the mains ones here (both the raw data in csv files and the corresp
     ```outputs/quadcopter/train_outputs/2022-06-04/15-14-05/train_test_results.csv```
     ```outputs/quadcopter/train_outputs/2022-06-04/15-14-05/losses_over_training.pdf```
 
-- The accuracies folder holds the results that are used for the tables. First, it holds the average number of iterations to reach the desired accuracies ($0.1$, $0.01$, $0.001$, and $0.0001$ by default).
+- The ```accuracies``` folder holds the results that are used for the tables. First, it holds the average number of iterations to reach the desired accuracies ($0.1$, $0.01$, $0.001$, and $0.0001$ by default).
 Second, it holds the reduction in iterations in comparison to the cold start.
 
     ```outputs/quadcopter/2022-12-03/14-54-32/plots/accuracies```
 
-- The 
+- The ```solve_c``` folder holds the results that we show for the timings (for OSQP and SCS) in the paper.
+In the train config file, we can set the accuracies that we set OSQP and SCS to (both the relative and absolute accuracies are set to the same value).
+
+    ```outputs/quadcopter/2022-12-03/14-54-32/plots/solve_c```
 
 
 
 ***
+### ```plot_script.py```
+
 The third script ```plot_script.py``` plots the results across many different training runs.
 Each train run creates a new folder 
 ```
@@ -113,11 +122,14 @@ We automatically use the most recent output after each stage, but the specific d
 ***
 
 
-# Important files in the back-end
-To replicate our results, this part is not needed.
-The ```examples``` folder holds the code for each of the numerical experiments we run. The main purpose is to be used in conjunction with the ```l2ws_setup_script.py```.
-An important note is that the code is set to periodically evaluate the train and test sets -- this is set in the ```eval_every_x_epochs``` entry in the run config file.
+# Important files in the backend
+To reproduce our results, this part is not needed.
+
+- The ```examples``` folder holds the code for each of the numerical experiments we run. The main purpose is to be used in conjunction with the ```l2ws_setup_script.py```.
+
+- An important note is that the code is set to periodically evaluate the train and test sets; this is set in the ```eval_every_x_epochs``` entry in the run config file.
 When we evaluate, the fixed-point curves are updated (see the above files for the run config).
+
 We can also set the number of problems we run with C (for OSQP and SCS) with ```solve_c_num```. This will create the results that are used for our timing tables.
 ***
 
@@ -128,5 +140,8 @@ All of the evaluation and training is run through
 
 - ```l2ws/algo_steps.py``` holds all of the code that runs the algorithms
 
-- ```l2ws/l2ws_model.py``` holds the L2WSmodel object, i.e., the architecture.
-Using
+    - the fixed-point algorithms follow the same form in case you want to try your own algorithm
+
+- ```l2ws/l2ws_model.py``` holds the L2WSmodel object, i.e., the architecture. This code allows us to 
+    - evaluate the problems (both test and train) for any initialization technique
+    - train the neural network weights with the given parameters: the number of fixed-point steps in the architecture $k$ (```train_unrolls```) and the training loss $\ell^{\rm fp}_{\theta}$ (```supervised=False```) or $\ell^{\rm reg}_{\theta}$ (```supervised=True```)
