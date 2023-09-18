@@ -331,7 +331,7 @@ class SCSmodel(L2WSmodel):
 
             # fix warm start
             # osqp_solver.warm_start(x=x_ws, y=y_ws)
-            sol = solver.solve(warm_start=True, x=x_ws, y=y_ws, s=s_ws)
+            sol = solver.solve(warm_start=True, x=x_ws, y=y_ws, s=s_ws, verbose=False)
 
             # solve
             # results = osqp_solver.solve()
