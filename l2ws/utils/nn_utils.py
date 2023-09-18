@@ -10,9 +10,9 @@ def get_nearest_neighbors(train_inputs, test_inputs, z_stars_train):
     indices = np.argmin(distances, axis=1)
     best_val = np.min(distances, axis=1)
 
-    print('distances', distances)
-    print('indices', indices)
-    print('best val', best_val)
+    # print('distances', distances)
+    # print('indices', indices)
+    # print('best val', best_val)
 
     return z_stars_train[indices, :]
 
