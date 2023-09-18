@@ -11,8 +11,6 @@ class GDmodel(L2WSmodel):
 
     def initialize_algo(self, input_dict):
         self.factor_static = None
-        self.algo = 'ista'
-        self.factors_required = False
         self.algo = 'gd'
         self.factors_required = False
         self.q_mat_train, self.q_mat_test = input_dict['c_mat_train'], input_dict['c_mat_test']

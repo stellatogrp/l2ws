@@ -144,4 +144,4 @@ All of the evaluation and training is run through
 
 - ```l2ws/l2ws_model.py``` holds the L2WSmodel object, i.e., the architecture. This code allows us to 
     - evaluate the problems (both test and train) for any initialization technique
-    - train the neural network weights with the given parameters: the number of fixed-point steps in the architecture $k$ (```train_unrolls```) and the training loss $`\ell^{\rm fp}_{\theta}`$ (```supervised=False```) or $\ell^{\rm reg}_{\theta}$ (```supervised=True```)
+    - train the neural network weights with the given parameters: the number of fixed-point steps in the architecture $k$ (```train_unrolls```) and the training loss $`\ell^{\rm fp}_{\theta}`$ (```supervised=False```) or $`\ell^{\rm reg}_{\theta}`$ (```supervised=True```)
