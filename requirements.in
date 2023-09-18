@@ -12,3 +12,4 @@ optax==0.1.1
 quandl
 cmake
 scs
+networkx

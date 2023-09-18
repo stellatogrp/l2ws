@@ -301,7 +301,8 @@ class SCSmodel(L2WSmodel):
                          acceleration_lookback=0,
                          max_iters=max_iter,
                          eps_abs=abs_tol,
-                         eps_rel=rel_tol)
+                         eps_rel=rel_tol,
+                         verbose=False)
 
         
 
@@ -331,7 +332,7 @@ class SCSmodel(L2WSmodel):
 
             # fix warm start
             # osqp_solver.warm_start(x=x_ws, y=y_ws)
-            sol = solver.solve(warm_start=True, x=x_ws, y=y_ws, s=s_ws, verbose=False)
+            sol = solver.solve(warm_start=True, x=x_ws, y=y_ws, s=s_ws)
 
             # solve
             # results = osqp_solver.solve()
