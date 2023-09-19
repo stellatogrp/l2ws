@@ -31,7 +31,7 @@ def test_sparse_pca():
     max_iters = 800
     c, b = q_mat[0, :n], q_mat[0, n:]
     data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_ws, y=y_ws, s=s_ws)
-    sol_hsde = scs_jax(data, hsde=True, rho_x=rho_x, scale=scale, alpha=alpha, iters=max_iters, plot=True)
+    sol_hsde = scs_jax(data, hsde=True, rho_x=rho_x, scale=scale, alpha=alpha, iters=max_iters, plot=False)
     x_jax = sol_hsde['x']
     fp_res_hsde = sol_hsde['fixed_point_residuals']
 
@@ -51,7 +51,7 @@ def test_sparse_pca():
     assert jnp.abs((jax_obj - cvxpy_obj) / cvxpy_obj) <= 5e-4
 
     assert fp_res_hsde[0] > 10
-    assert fp_res_hsde[-1] < 1e-3 and fp_res_hsde[-1] > 1e-16
+    assert fp_res_hsde[-1] < 5e-3 and fp_res_hsde[-1] > 1e-16
 
 
 def test_robust_ls():

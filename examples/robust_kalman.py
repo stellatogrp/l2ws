@@ -208,6 +208,7 @@ def sample_theta(num_rollouts, rollout_length, T, sigma, p, gamma, dt, w_noise_v
     # w = w_noise_var * np.random.randn(N, 2, T)
     # v = y_noise_var * np.random.randn(N, 2, T)
     w_inits = w_noise_var * np.random.randn(num_rollouts, 2, T)
+    w = w_inits
     v = y_noise_var * np.random.randn(N, 2, T)
 
     for j in range(N):
@@ -1151,8 +1152,13 @@ def multiple_random_robust_kalman(N, T, gamma, dt, mu, rho, sigma, p, w_noise_va
     P = jnp.array(out_dict['P_sparse'].todense())
     A = jnp.array(out_dict['A_sparse'].todense())
     cones = out_dict['cones_dict']
-    out = sample_theta(N, T, sigma, p, gamma, dt,
+
+    rollout_length = N
+    num_rollouts = 1
+    out = sample_theta(num_rollouts, rollout_length, T, sigma, p, gamma, dt,
                        w_noise_var, y_noise_var, B_const=1)
+    # out = sample_theta(N, T, sigma, p, gamma, dt,
+    #                    w_noise_var, y_noise_var, B_const=1)
     thetas_np, y_mat, x_trues, w_trues, y_mat_rotated, x_trues_rotated, w_trues_rot, angles = out
     theta_mat = jnp.array(thetas_np)
 

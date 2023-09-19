@@ -70,6 +70,7 @@ def test_minimal_l2ws_model():
     # enter into the L2WSmodel
     input_dict = dict(algorithm='scs',
                       m=m, n=n, hsde=True, static_flag=True, proj=static_prob_data['proj'],
+                      cones=cones,
                       train_unrolls=20, jit=True,
                       q_mat_train=q_mat_train, q_mat_test=q_mat_test,
                       train_inputs=train_inputs, test_inputs=test_inputs,
@@ -155,8 +156,6 @@ def test_minimal_l2ws_model():
     y_jax = u_final[n:n + m] / u_all[0, max_iters - 1, -1]
     s_jax = v_all[0, max_iters - 1, n:n+m] / u_all[0, max_iters - 1, -1]
 
-    import pdb
-    pdb.set_trace()
 
     assert jnp.linalg.norm(x_jax - x_c) < 1e-10
     assert jnp.linalg.norm(y_jax - y_c) < 1e-10
