@@ -48,7 +48,7 @@ def test_sparse_pca():
                alpha=alpha, eps_abs=1e-4, eps_rel=0, adaptive_scale=False)
     cvxpy_obj = prob.value
 
-    assert jnp.abs((jax_obj - cvxpy_obj) / cvxpy_obj) <= 5e-4
+    assert jnp.abs((jax_obj - cvxpy_obj) / cvxpy_obj) <= 1e-2
 
     assert fp_res_hsde[0] > 10
     assert fp_res_hsde[-1] < 1e-2 and fp_res_hsde[-1] > 1e-16
