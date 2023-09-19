@@ -32,7 +32,8 @@ def main():
     # contractive_plot()
     # linearly_regular_plot()
     # averaged_plot()
-    create_toy_example()
+    # create_toy_example()
+    combine_gifs()
 
 
 def contractive_plot():
@@ -358,6 +359,121 @@ def run_prox_gd(x_init, grad, step_size, num_steps):
         fp_res[i] = np.linalg.norm(x - x_prev)
         print(fp_res)
     return x_hist, fp_res
+
+
+def combine_gifs():
+    import imageio
+    import numpy as np    
+    from PIL import Image, ImageDraw, ImageFont
+
+    #Create reader object for the gif
+    gif1 = imageio.get_reader('rollout_2_flight_ps.gif')
+    gif2 = imageio.get_reader('rollout_2_flight_nn.gif')
+    gif3 = imageio.get_reader('rollout_2_flight_learned.gif')
+
+    #If they don't have the same number of frame take the shorter
+    number_of_frames = min(gif1.get_length(), gif2.get_length()) 
+
+    #Create writer object
+    new_gif = imageio.get_writer('output.gif')
+
+    captions = ["Caption 1", "Caption 2", "Caption 3"]
+
+    for frame_number in range(number_of_frames):
+        img1 = gif1.get_next_data()
+        img2 = gif2.get_next_data()
+        img3 = gif3.get_next_data()
+        #here is the magic
+        new_image = np.hstack((img1, img2, img3))
+
+        # Add captions to the new_image using Pillow
+        pil_image = Image.fromarray(new_image)
+        draw = ImageDraw.Draw(pil_image)
+        font = ImageFont.load_default()
+        font_size = 48
+        # font = ImageFont.truetype("arial.ttf", font_size)
+        # caption = captions[frame_number] if frame_number < len(captions) else ""
+        # caption = captions[0]
+        # draw.text((100, 10), caption, fill="black", font=font)
+
+        # new_gif.append_data(new_image)
+        new_gif.append_data(np.array(pil_image))
+
+    gif1.close()
+    gif2.close()    
+    gif3.close() 
+    new_gif.close()
+    # from PIL import Image, ImageDraw, ImageFont
+
+    # # Open the GIFs
+    # gif1 = Image.open("rollout_2_flight_learned.gif")
+    # gif2 = Image.open("rollout_2_flight_nn.gif")
+    # gif3 = Image.open("rollout_2_flight_ps.gif")
+
+    # import pdb
+    # pdb.set_trace()
+
+    # from PIL import Image
+
+    # # # Open the GIFs
+    # # gif1 = Image.open("gif1.gif")
+    # # gif2 = Image.open("gif2.gif")
+    # # gif3 = Image.open("gif3.gif")
+
+    # # Make sure all GIFs have the same height (resize if necessary)
+    # max_height = max(gif1.height, gif2.height, gif3.height)
+    # gif1 = gif1.resize((gif1.width, max_height))
+    # gif2 = gif2.resize((gif2.width, max_height))
+    # gif3 = gif3.resize((gif3.width, max_height))
+
+    # # Create a list of frames
+    # frames = [gif1, gif2, gif3]
+
+    # # Set the output file name
+    # output_filename = "combined.gif"
+
+    # # Save the animated GIF
+    # frames[0].save(output_filename, save_all=True, append_images=frames[1:], duration=100, loop=0)
+
+    # # Make sure all GIFs have the same height (resize if necessary)
+    # max_height = max(gif1.height, gif2.height, gif3.height)
+    # gif1 = gif1.resize((gif1.width, max_height))
+    # gif2 = gif2.resize((gif2.width, max_height))
+    # gif3 = gif3.resize((gif3.width, max_height))
+
+    # # Create a new image with triple the width and the same height as the GIFs
+    # combined_width = gif1.width + gif2.width + gif3.width
+    # combined_height = gif1.height
+    # combined_gif = Image.new("RGB", (combined_width, combined_height))
+
+    # # Paste the GIFs side by side
+    # combined_gif.paste(gif1, (0, 0))
+    # combined_gif.paste(gif2, (gif1.width, 0))
+    # combined_gif.paste(gif3, (gif1.width + gif2.width, 0))
+
+    # # Add captions to each GIF
+    # draw = ImageDraw.Draw(combined_gif)
+    # font = ImageFont.load_default()
+
+    # # Caption for GIF 1
+    # caption1 = "Caption for GIF 1"
+    # draw.text((10, combined_height - 20), caption1, fill="white", font=font)
+
+    # # Caption for GIF 2
+    # caption2 = "Caption for GIF 2"
+    # draw.text((gif1.width + 10, combined_height - 20), caption2, fill="white", font=font)
+
+    # # Caption for GIF 3
+    # caption3 = "Caption for GIF 3"
+    # draw.text((gif1.width + gif2.width + 10, combined_height - 20), caption3, fill="white", font=font)
+
+    # # Save the combined GIF with captions
+    # combined_gif.save("combined_with_captions.gif")
+
+    # # Close the GIFs
+    # gif1.close()
+    # gif2.close()
+    # gif3.close()
 
 
 if __name__ == '__main__':

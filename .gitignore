@@ -147,3 +147,10 @@ examples/cifar-10-batches-py/
 examples/mri_data/
 motivating_example/
 examples/mri_data2/
+rollout_2_flight_learned_old.gif
+rollout_2_flight_learned.gif
+rollout_2_flight_nn_old.gif
+rollout_2_flight_nn.gif
+rollout_2_flight_ps_old.gif
+rollout_2_flight_ps.gif
+combined_gif.gif
