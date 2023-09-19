@@ -45,13 +45,14 @@ importlib-resources==5.12.0
     # via matplotlib
 inflection==0.5.1
     # via quandl
-jax==0.3.1
+# jax==0.3.1
+jax==0.4.16
     # via
     #   -r requirements.in
     #   chex
     #   jaxopt
     #   optax
-jaxlib==0.3.1
+jaxlib==0.4.16
     # via
     #   -r requirements.in
     #   chex
