@@ -45,21 +45,23 @@ importlib-resources==5.12.0
     # via matplotlib
 inflection==0.5.1
     # via quandl
-jax==0.3.14
+# jax==0.3.14
+jax==0.4.8
 # jax==0.4.16
     # via
     #   -r requirements.in
     #   chex
     #   jaxopt
     #   optax
-jaxlib==0.3.14
+# jaxlib==0.3.14
+jaxlib==0.4.7
 # jaxlib==0.4.16
     # via
     #   -r requirements.in
     #   chex
     #   jaxopt
     #   optax
-jaxopt==0.8
+jaxopt==0.6
     # via -r requirements.in
 joblib==1.2.0
     # via scikit-learn
@@ -94,7 +96,7 @@ omegaconf==2.3.0
     # via hydra-core
 opt-einsum==3.3.0
     # via jax
-optax==0.1.1
+optax==0.1.5
 # optax==0.1.7
     # via -r requirements.in
 osqp==0.6.2.post8
