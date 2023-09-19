@@ -160,7 +160,7 @@ urllib3==1.26.14
     # via requests
 zipp==3.15.0
     # via importlib-resources
-trajax==0.0.1
+trajax @ git+https://github.com/google/trajax
 
 # The following packages are considered to be unsafe in a requirements file:
 # setuptools
