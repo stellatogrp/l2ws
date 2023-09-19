@@ -58,7 +58,7 @@ jaxlib==0.4.16
     #   chex
     #   jaxopt
     #   optax
-jaxopt==0.4
+jaxopt==0.8
     # via -r requirements.in
 joblib==1.2.0
     # via scikit-learn
@@ -93,7 +93,8 @@ omegaconf==2.3.0
     # via hydra-core
 opt-einsum==3.3.0
     # via jax
-optax==0.1.1
+# optax==0.1.1
+optax==0.1.7
     # via -r requirements.in
 osqp==0.6.2.post8
     # via cvxpy
