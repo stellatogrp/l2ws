@@ -78,34 +78,43 @@ class L2WSmodel(object):
             # if isinstance(self, SCSmodel):
             #     q = lin_sys_solve(self.factor, q)
 
+            if self.train_fn is not None:
+                train_fn = self.train_fn
+            else:
+                train_fn = self.k_steps_train_fn
+            if self.eval_fn is not None:
+                eval_fn = self.eval_fn
+            else:
+                eval_fn = self.k_steps_eval_fn
+
             if diff_required:
                 if self.factors_required:
-                    z_final, iter_losses = self.k_steps_train_fn(k=iters,
-                                                                 z0=z0,
-                                                                 q=q,
-                                                                 supervised=supervised,
-                                                                 z_star=z_star,
-                                                                 factor=factor)
+                    z_final, iter_losses = train_fn(k=iters,
+                                                    z0=z0,
+                                                    q=q,
+                                                    supervised=supervised,
+                                                    z_star=z_star,
+                                                    factor=factor)
                 else:
-                    z_final, iter_losses = self.k_steps_train_fn(k=iters,
-                                                                 z0=z0,
-                                                                 q=q,
-                                                                 supervised=supervised,
-                                                                 z_star=z_star)
+                    z_final, iter_losses = train_fn(k=iters,
+                                                    z0=z0,
+                                                    q=q,
+                                                    supervised=supervised,
+                                                    z_star=z_star)
             else:
                 if self.factors_required:
-                    eval_out = self.k_steps_eval_fn(k=iters,
-                                                    z0=z0,
-                                                    q=q,
-                                                    factor=factor,
-                                                    supervised=supervised,
-                                                    z_star=z_star)
+                    eval_out = eval_fn(k=iters,
+                                       z0=z0,
+                                       q=q,
+                                       factor=factor,
+                                       supervised=supervised,
+                                       z_star=z_star)
                 else:
-                    eval_out = self.k_steps_eval_fn(k=iters,
-                                                    z0=z0,
-                                                    q=q,
-                                                    supervised=supervised,
-                                                    z_star=z_star)
+                    eval_out = eval_fn(k=iters,
+                                       z0=z0,
+                                       q=q,
+                                       supervised=supervised,
+                                       z_star=z_star)
                 z_final, iter_losses, z_all_plus_1 = eval_out[0], eval_out[1], eval_out[2]
 
                 # compute angle(z^{k+1} - z^k, z^k - z^{k-1})
@@ -166,10 +175,10 @@ class L2WSmodel(object):
 
         if self.factors_required and not self.factor_static_bool:
             test_loss, test_out, time_per_prob = self.dynamic_eval(self.train_unrolls,
-                                                                  self.test_inputs,
-                                                                  self.q_mat_test,
-                                                                  z_stars_test,
-                                                                  factors=self.factors_test)
+                                                                   self.test_inputs,
+                                                                   self.q_mat_test,
+                                                                   z_stars_test,
+                                                                   factors=self.factors_test)
         else:
             test_loss, test_out, time_per_prob = self.static_eval(self.train_unrolls,
                                                                   self.test_inputs,
@@ -234,7 +243,6 @@ class L2WSmodel(object):
         time_per_prob = (time.time() - test_time0)/num_probs
 
         return loss, out, time_per_prob
-
 
     def initialize_neural_network(self, input_dict):
         nn_cfg = input_dict.get('nn_cfg', {})

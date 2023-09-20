@@ -21,7 +21,16 @@ TAU_FACTOR = 10
 #     return jnp.concatenate([x2, y2])
 
 
-def create_k_steps_train(fixed_point_fn):
+def cold_start_solve(fixed_point_fn, n, b_mat):
+    N, m = b_mat.shape
+    train_fn = create_train_fn(fixed_point_fn)
+    batch_train_fn_proj_gd = vmap(train_fn, in_axes=(None, 0, 0, None, None, None), out_axes=(0, 0))
+    z0_init_mat = jnp.zeros((N, n))
+    z_finals, iter_losses = batch_train_fn_proj_gd(1000, z0_init_mat, b_mat, False, None, False)
+    return z_finals, iter_losses
+
+
+def create_train_fn(fixed_point_fn):
     def fp_train_generic(i, val, supervised, z_star, theta):
         z, loss_vec = val
         z_next = fixed_point_fn(z, theta)
@@ -46,7 +55,7 @@ def create_k_steps_train(fixed_point_fn):
     return k_steps_train
 
 
-def create_k_steps_eval(fixed_point_fn):
+def create_eval_fn(fixed_point_fn):
     def fp_train_generic(i, val, supervised, z_star, theta):
         z, loss_vec, z_all = val
         z_next = fixed_point_fn(z, theta)
