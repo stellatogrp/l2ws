@@ -11,8 +11,8 @@ from scipy import sparse
 
 
 class OSQPmodel(L2WSmodel):
-    def __init__(self, input_dict):
-        super(OSQPmodel, self).__init__(input_dict)
+    def __init__(self, **kwargs):
+        super(OSQPmodel, self).__init__(**kwargs)
 
     def initialize_algo(self, input_dict):
         # self.m, self.n = self.A.shape

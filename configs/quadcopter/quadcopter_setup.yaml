@@ -25,9 +25,9 @@ dt: 0.05
 goal_bound: 0.5
 noise_std_dev: 0.0
 num_goals: 5
-num_rollouts: 2
+num_rollouts: 110
 obstacle_tol: 0.1
-rollout_length: 20
+rollout_length: 100
 rollout_osqp_iters: 500
 save_gif: true
 seed: 42

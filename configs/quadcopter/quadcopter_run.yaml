@@ -61,7 +61,7 @@ num_samples_train: 100
 num_samples_test: 100
 train_unrolls: 5
 eval_unrolls: 500
-load_weights_datetime: '2023-07-30/23-40-17' #'2023-07-09/14-14-53' #'2023-07-09/15-38-54' #'2023-07-09/14-35-29' #2023-07-09/14-14-53
+# load_weights_datetime: '2023-07-30/23-40-17' #'2023-07-09/14-14-53' #'2023-07-09/15-38-54' #'2023-07-09/14-35-29' #2023-07-09/14-14-53
 num_rollouts: 5
 closed_loop_budget: 15
 

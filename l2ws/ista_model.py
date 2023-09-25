@@ -5,9 +5,8 @@ from functools import partial
 
 
 class ISTAmodel(L2WSmodel):
-    def __init__(self, input_dict):
-        # self.fista = input_dict['algorithm'] == 'fista'
-        super(ISTAmodel, self).__init__(input_dict)
+    def __init__(self, **kwargs):
+        super(ISTAmodel, self).__init__(**kwargs)
 
     def initialize_algo(self, input_dict):
         self.factor_static = None
@@ -20,10 +19,6 @@ class ISTAmodel(L2WSmodel):
         m, n = A.shape
         self.output_size = n
 
-        # if self.fista:
-        #     self.k_steps_train_fn = partial(k_steps_train_fista, A=A, lambd=lambd, ista_step=ista_step, jit=self.jit)
-        #     self.k_steps_eval_fn = partial(k_steps_eval_fista, A=A, lambd=lambd, ista_step=ista_step, jit=self.jit)
-        # else:
         self.k_steps_train_fn = partial(k_steps_train_ista, A=A, lambd=lambd, ista_step=ista_step, jit=self.jit)
         self.k_steps_eval_fn = partial(k_steps_eval_ista, A=A, lambd=lambd, ista_step=ista_step, jit=self.jit)
         self.out_axes_length = 5

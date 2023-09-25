@@ -129,21 +129,30 @@ class Workspace:
         ista_step = static_dict['ista_step']
 
         input_dict = dict(algorithm='ista',
-                          supervised=cfg.supervised,
-                          train_unrolls=self.train_unrolls,
-                          jit=True,
-                          train_inputs=self.train_inputs,
-                          test_inputs=self.test_inputs,
+                        #   supervised=cfg.supervised,
+                        #   train_unrolls=self.train_unrolls,
+                        #   jit=True,
+                        #   train_inputs=self.train_inputs,
+                        #   test_inputs=self.test_inputs,
                           b_mat_train=self.q_mat_train,
                           b_mat_test=self.q_mat_test,
                           lambd=lambd,
                           ista_step=ista_step,
                           A=A,
-                          nn_cfg=cfg.nn_cfg,
-                          z_stars_train=self.z_stars_train,
-                          z_stars_test=self.z_stars_test,
+                        #   nn_cfg=cfg.nn_cfg,
+                        #   z_stars_train=self.z_stars_train,
+                        #   z_stars_test=self.z_stars_test,
                           )
-        self.l2ws_model = ISTAmodel(input_dict)
+        # self.l2ws_model = ISTAmodel(input_dict)
+        self.l2ws_model = ISTAmodel(train_unrolls=self.train_unrolls,
+                                    eval_unrolls=self.eval_unrolls,
+                                    train_inputs=self.train_inputs,
+                                    test_inputs=self.test_inputs,
+                                    regression=cfg.supervised,
+                                    nn_cfg=cfg.nn_cfg,
+                                    z_stars_train=self.z_stars_train,
+                                    z_stars_test=self.z_stars_test,
+                                    algo_dict=input_dict)
 
     def create_gd_model(self, cfg, static_dict):
         # get A, lambd, ista_step
@@ -151,20 +160,20 @@ class Workspace:
         gd_step = static_dict['gd_step']
 
         input_dict = dict(algorithm='gd',
-                          supervised=cfg.supervised,
-                          train_unrolls=self.train_unrolls,
-                          jit=True,
-                          train_inputs=self.train_inputs,
-                          test_inputs=self.test_inputs,
                           c_mat_train=self.q_mat_train,
                           c_mat_test=self.q_mat_test,
                           gd_step=gd_step,
-                          P=P,
-                          nn_cfg=cfg.nn_cfg,
-                          z_stars_train=self.z_stars_train,
-                          z_stars_test=self.z_stars_test,
+                          P=P
                           )
-        self.l2ws_model = GDmodel(input_dict)
+        self.l2ws_model = GDmodel(train_unrolls=self.train_unrolls,
+                                    eval_unrolls=self.eval_unrolls,
+                                    train_inputs=self.train_inputs,
+                                    test_inputs=self.test_inputs,
+                                    regression=cfg.supervised,
+                                    nn_cfg=cfg.nn_cfg,
+                                    z_stars_train=self.z_stars_train,
+                                    z_stars_test=self.z_stars_test,
+                                    algo_dict=input_dict)
 
     def create_extragradient_model(self, cfg, static_dict):
         # get A, lambd, ista_step
@@ -213,14 +222,14 @@ class Workspace:
                               m=m,
                               n=n,
                               factor=factor,
-                              train_inputs=self.train_inputs,
-                              test_inputs=self.test_inputs,
-                              train_unrolls=self.train_unrolls,
-                              eval_unrolls=self.eval_unrolls,
-                              nn_cfg=cfg.nn_cfg,
-                              z_stars_train=self.z_stars_train,
-                              z_stars_test=self.z_stars_test,
-                              jit=True,
+                            #   train_inputs=self.train_inputs,
+                            #   test_inputs=self.test_inputs,
+                            #   train_unrolls=self.train_unrolls,
+                            #   eval_unrolls=self.eval_unrolls,
+                            #   nn_cfg=cfg.nn_cfg,
+                            #   z_stars_train=self.z_stars_train,
+                            #   z_stars_test=self.z_stars_test,
+                            #   jit=True,
                               plateau_decay=cfg.plateau_decay)
         else:
             self.m, self.n = static_dict['m'], static_dict['n']
@@ -277,15 +286,23 @@ class Workspace:
                               test_inputs=self.test_inputs,
                               factors_train=self.factors_train,
                               factors_test=self.factors_test,
-                              train_unrolls=self.train_unrolls,
-                              eval_unrolls=self.eval_unrolls,
-                              nn_cfg=cfg.nn_cfg,
-                              z_stars_train=self.z_stars_train,
-                              z_stars_test=self.z_stars_test,
+                            #   train_unrolls=self.train_unrolls,
+                            #   eval_unrolls=self.eval_unrolls,
+                            #   nn_cfg=cfg.nn_cfg,
+                            #   z_stars_train=self.z_stars_train,
+                            #   z_stars_test=self.z_stars_test,
                               jit=True)
         self.x_stars_train = self.z_stars_train[:, :self.n]
         self.x_stars_test = self.z_stars_test[:, :self.n]
-        self.l2ws_model = OSQPmodel(input_dict)
+        self.l2ws_model = OSQPmodel(train_unrolls=self.train_unrolls,
+                                    eval_unrolls=self.eval_unrolls,
+                                    train_inputs=self.train_inputs,
+                                    test_inputs=self.test_inputs,
+                                    regression=cfg.supervised,
+                                    nn_cfg=cfg.nn_cfg,
+                                    z_stars_train=self.z_stars_train,
+                                    z_stars_test=self.z_stars_test,
+                                    algo_dict=input_dict)
 
     def create_scs_model(self, cfg, static_dict):
         # get_M_q = None
@@ -341,19 +358,19 @@ class Workspace:
         self.psd_size = psd_sizes[0]
 
         algo_dict = {'proj': proj,
-                      'q_mat_train': self.q_mat_train,
-                      'q_mat_test': self.q_mat_test,
-                      'm': self.m,
-                      'n': self.n,
-                      'static_M': static_M,
-                      'static_flag': self.static_flag,
-                      'static_algo_factor': static_algo_factor,
-                      'rho_x': rho_x,
-                      'scale': scale,
-                      'alpha_relax': alpha_relax,
-                      'cones': cones,
-                      'lightweight': cfg.get('lightweight', False)
-                      }
+                     'q_mat_train': self.q_mat_train,
+                     'q_mat_test': self.q_mat_test,
+                     'm': self.m,
+                     'n': self.n,
+                     'static_M': static_M,
+                     'static_flag': self.static_flag,
+                     'static_algo_factor': static_algo_factor,
+                     'rho_x': rho_x,
+                     'scale': scale,
+                     'alpha_relax': alpha_relax,
+                     'cones': cones,
+                     'lightweight': cfg.get('lightweight', False)
+                     }
         self.l2ws_model = SCSmodel(train_unrolls=self.train_unrolls,
                                    eval_unrolls=self.eval_unrolls,
                                    train_inputs=self.train_inputs,
@@ -475,6 +492,9 @@ class Workspace:
             q_mat = jnp.array(load_npz(f"{filename[:-4]}_q.npz").todense())
             self.q_mat_train = q_mat[:N_train, :]
             self.q_mat_test = q_mat[N_train:N, :]
+
+            import pdb
+            pdb.set_trace()
 
             # load factors
             # factors0, factors1 = jnp_load_obj['factors0'], jnp_load_obj['factors1']

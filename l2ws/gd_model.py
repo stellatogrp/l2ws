@@ -5,8 +5,8 @@ from functools import partial
 
 
 class GDmodel(L2WSmodel):
-    def __init__(self, input_dict):
-        super(GDmodel, self).__init__(input_dict)
+    def __init__(self, **kwargs):
+        super(GDmodel, self).__init__(**kwargs)
 
     def initialize_algo(self, input_dict):
         self.factor_static = None

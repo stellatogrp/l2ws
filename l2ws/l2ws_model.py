@@ -100,7 +100,7 @@ class L2WSmodel(object):
         self.static_flag = True
 
     # def setup_optimal_solutions(self, dict):
-    def setup_optimal_solutions(self, z_stars_train, z_stars_test): #, x_stars_train=None, x_stars_test=None, y_stars_train=None, y_stars_test=None):
+    def setup_optimal_solutions(self, z_stars_train, z_stars_test, x_stars_train=None, x_stars_test=None, y_stars_train=None, y_stars_test=None):
         # if dict.get('z_stars_train', None) is not None:
         if z_stars_train is not None:
             self.z_stars_train = jnp.array(z_stars_train) # jnp.array(dict['z_stars_train'])
