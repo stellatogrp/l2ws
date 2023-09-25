@@ -6,7 +6,6 @@ from functools import partial
 
 class GDmodel(L2WSmodel):
     def __init__(self, input_dict):
-        # self.fista = input_dict['algorithm'] == 'fista'
         super(GDmodel, self).__init__(input_dict)
 
     def initialize_algo(self, input_dict):

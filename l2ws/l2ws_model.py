@@ -16,7 +16,7 @@ from scipy.spatial import distance_matrix
 import logging
 # from l2ws.algo_steps import k_steps_train, k_steps_eval, lin_sys_solve, k_steps_train_ista, k_steps_eval_ista
 from functools import partial
-from l2ws.algo_steps import lin_sys_solve
+from l2ws.algo_steps import lin_sys_solve, create_train_fn, create_eval_fn
 # from l2ws.scs_model import SCSmodel
 # from l2ws.scs_model import SCSmodel
 config.update("jax_enable_x64", True)
@@ -27,8 +27,14 @@ class L2WSmodel(object):
         # essential pieces for the model
         self.initialize_essentials(dict)
 
+        # set defaults
+        self.set_defaults()
+
         # initialize algorithm specifics
         self.initialize_algo(dict)
+
+        # post init changes
+        self.post_init_changes()
 
         # optimal solutions (not needed as input)
         self.setup_optimal_solutions(dict)
@@ -41,6 +47,20 @@ class L2WSmodel(object):
 
         # init to track training
         self.init_train_tracking()
+
+    
+    def post_init_changes(self):
+        if not hasattr(self, 'q_mat_train'):
+            self.q_mat_train = self.theta_mat_train
+        if not hasattr(self, 'q_mat_test'):
+            self.q_mat_test = self.theta_mat_test
+
+
+    def set_defaults(self):
+        # unless turned off in the subclass, these are the default settings
+        self.factors_required = False
+        self.factor_static = None
+
 
     def initialize_essentials(self, input_dict):
         self.jit = input_dict.get('jit', True)
@@ -322,6 +342,16 @@ class L2WSmodel(object):
         self.loss_method = dict.get('loss_method', 'fixed_k')
         self.supervised = dict.get('supervised', False)
 
+        if not hasattr(self, 'train_fn') and not hasattr(self, 'k_steps_train_fn'):
+            train_fn = create_train_fn(self.fixed_point_fn)
+            eval_fn = create_eval_fn(self.fixed_point_fn)
+            self.train_fn = partial(train_fn, jit=self.jit)
+            self.eval_fn = partial(eval_fn, jit=self.jit)
+
+        if not hasattr(self, 'train_fn'):
+            self.train_fn = self.k_steps_train_fn
+            self.eval_fn = self.k_steps_eval_fn
+
         e2e_loss_fn = self.create_end2end_loss_fn
 
         # end-to-end loss fn for training
@@ -458,10 +488,11 @@ class L2WSmodel(object):
             #   (loss, iter_losses, angles, primal_residuals, dual_residuals, out)
             #   out = (all_z_, z_next, alpha, all_u, all_v)
             # out_axes = (0, 0, 0, 0)
-            if self.out_axes_length is None:
-                out_axes = (0,) * 4
-            else:
+            # if self.out_axes_length is None:
+            if hasattr(self, 'out_axes_length'):
                 out_axes = (0,) * self.out_axes_length
+            else:
+                out_axes = (0,) * 4
         return out_axes
 
     def predict_2_loss(self, predict, diff_required):
