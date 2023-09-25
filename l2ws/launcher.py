@@ -493,9 +493,6 @@ class Workspace:
             self.q_mat_train = q_mat[:N_train, :]
             self.q_mat_test = q_mat[N_train:N, :]
 
-            import pdb
-            pdb.set_trace()
-
             # load factors
             # factors0, factors1 = jnp_load_obj['factors0'], jnp_load_obj['factors1']
             # factors = (factors0, factors1)
