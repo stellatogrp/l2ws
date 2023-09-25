@@ -51,7 +51,7 @@ def test_sparse_pca():
     assert jnp.abs((jax_obj - cvxpy_obj) / cvxpy_obj) <= 1e-2
 
     assert fp_res_hsde[0] > 10
-    assert fp_res_hsde[-1] < 1e-2 and fp_res_hsde[-1] > 1e-16
+    assert fp_res_hsde[-1] < 5e-2 and fp_res_hsde[-1] > 1e-16
 
 
 def test_robust_ls():

@@ -1,6 +1,5 @@
 from jax import jit, vmap
 import jax.numpy as jnp
-import jax
 from jax import random
 import optax
 import time
@@ -9,8 +8,6 @@ from l2ws.utils.nn_utils import init_network_params, \
     predict_y, batched_predict_y
 from l2ws.utils.generic_utils import unvec_symm
 import numpy as np
-import matplotlib.pyplot as plt
-import pandas as pd
 from jax.config import config
 from scipy.spatial import distance_matrix
 import logging
@@ -23,9 +20,28 @@ config.update("jax_enable_x64", True)
 
 
 class L2WSmodel(object):
-    def __init__(self, dict):
+    # def __init__(self, dict):
+    def __init__(self, 
+                 train_unrolls=5,
+                 train_inputs=None,
+                 test_inputs=None,
+                 regression=False,
+                 nn_cfg={},
+                 plateau_decay={},
+                 jit=True,
+                 eval_unrolls=500,
+                 z_stars_train=None,
+                 z_stars_test=None,
+                 x_stars_train=None,
+                 x_stars_test=None,
+                 y_stars_train=None,
+                 y_stars_test=None,
+                 loss_method='fixed_k',
+                 algo_dict={}):
+        dict = algo_dict
+
         # essential pieces for the model
-        self.initialize_essentials(dict)
+        self.initialize_essentials(jit, eval_unrolls, train_unrolls, train_inputs, test_inputs)
 
         # set defaults
         self.set_defaults()
@@ -37,13 +53,19 @@ class L2WSmodel(object):
         self.post_init_changes()
 
         # optimal solutions (not needed as input)
-        self.setup_optimal_solutions(dict)
+        # self.setup_optimal_solutions(dict)
+        self.setup_optimal_solutions(z_stars_train, z_stars_test, x_stars_train, x_stars_test, y_stars_train, y_stars_test)
 
         # create_all_loss_fns
-        self.create_all_loss_fns(dict)
+        self.create_all_loss_fns(loss_method, regression)
+        # to describe the final loss function (not the end-to-end loss fn)
+        # self.loss_method = dict.get('loss_method', 'fixed_k')
+        # self.supervised = dict.get('supervised', False)
+        # self.create_all_loss_fns(dict)
 
         # neural network setup
-        self.initialize_neural_network(dict)
+        # self.initialize_neural_network(dict)
+        self.initialize_neural_network(nn_cfg, plateau_decay)
 
         # init to track training
         self.init_train_tracking()
@@ -62,21 +84,27 @@ class L2WSmodel(object):
         self.factor_static = None
 
 
-    def initialize_essentials(self, input_dict):
-        self.jit = input_dict.get('jit', True)
-        self.eval_unrolls = input_dict.get('eval_unrolls', 500)
-        self.train_unrolls = input_dict['train_unrolls']
-        self.train_inputs, self.test_inputs = input_dict['train_inputs'], input_dict['test_inputs']
+    # def initialize_essentials(self, input_dict):
+    def initialize_essentials(self, jit, eval_unrolls, train_unrolls, train_inputs, test_inputs):
+        # self.jit = input_dict.get('jit', True)
+        # self.eval_unrolls = input_dict.get('eval_unrolls', 500)
+        # self.train_unrolls = input_dict['train_unrolls']
+        # self.train_inputs, self.test_inputs = input_dict['train_inputs'], input_dict['test_inputs']
+        self.jit = jit
+        self.eval_unrolls = eval_unrolls
+        self.train_unrolls = train_unrolls + 1
+        self.train_inputs, self.test_inputs = train_inputs, test_inputs
         self.N_train, self.N_test = self.train_inputs.shape[0], self.test_inputs.shape[0]
-        self.share_all = input_dict.get('share_all', False)
-        # self.algorithm = input_dict['algorithm']
+        # self.share_all = input_dict.get('share_all', False)
         self.batch_angle = vmap(self.compute_angle, in_axes=(0, 0), out_axes=(0))
         self.static_flag = True
 
-    def setup_optimal_solutions(self, dict):
-        if dict.get('z_stars_train', None) is not None:
-            self.z_stars_train = jnp.array(dict['z_stars_train'])
-            self.z_stars_test = jnp.array(dict['z_stars_test'])
+    # def setup_optimal_solutions(self, dict):
+    def setup_optimal_solutions(self, z_stars_train, z_stars_test): #, x_stars_train=None, x_stars_test=None, y_stars_train=None, y_stars_test=None):
+        # if dict.get('z_stars_train', None) is not None:
+        if z_stars_train is not None:
+            self.z_stars_train = jnp.array(z_stars_train) # jnp.array(dict['z_stars_train'])
+            self.z_stars_test = jnp.array(z_stars_test) # jnp.array(dict['z_stars_test'])
         else:
             self.z_stars_train, self.z_stars_test = None, None
 
@@ -264,21 +292,24 @@ class L2WSmodel(object):
 
         return loss, out, time_per_prob
 
-    def initialize_neural_network(self, input_dict):
-        nn_cfg = input_dict.get('nn_cfg', {})
+    # def initialize_neural_network(self, input_dict):
+    def initialize_neural_network(self, nn_cfg, plateau_decay):
+        # nn_cfg = input_dict.get('nn_cfg', {})
+
 
         # neural network
         self.epochs, self.lr = nn_cfg.get('epochs', 10), nn_cfg.get('lr', 1e-3)
         self.decay_lr, self.min_lr = nn_cfg.get('decay_lr', False), nn_cfg.get('min_lr', 1e-7)
 
         # auto-decay learning rate
-        self.plateau_decay = input_dict.get('plateau_decay')
+        # self.plateau_decay = input_dict.get('plateau_decay')
+        self.plateau_decay = plateau_decay
 
         if self.plateau_decay is None:
             self.plateau_decay = dict(min_lr=1e-7, decay_factor=5,
                                       avg_window_size=50, tolerance=1e-2, patience=2)
 
-        self.dont_decay_until = 2 * self.plateau_decay['avg_window_size']
+        self.dont_decay_until = 2 * self.plateau_decay.get('avg_window_size', 10)
         self.epoch_decay_points = []
 
         # batching
@@ -288,10 +319,11 @@ class L2WSmodel(object):
 
         # layer sizes
         input_size = self.train_inputs.shape[1]
-        if self.share_all:
-            output_size = self.num_clusters
-        else:
-            output_size = self.output_size
+        # if self.share_all:
+        #     output_size = self.num_clusters
+        # else:
+        #     output_size = self.output_size
+        output_size = self.output_size
         hidden_layer_sizes = nn_cfg.get('intermediate_layer_sizes', [])
 
         layer_sizes = [input_size] + hidden_layer_sizes + [output_size]
@@ -309,17 +341,17 @@ class L2WSmodel(object):
                 self.lr), fun=self.loss_fn_train, has_aux=False)
         self.state = self.optimizer.init_state(self.params)
 
-    def setup_share_all(self, dict):
-        if self.share_all:
-            self.num_clusters = dict.get('num_clusters', 10)
-            self.pretrain_alpha = dict.get('pretrain_alpha', False)
-            self.normalize_alpha = dict.get('normalize_alpha', 'none')
-            out = self.cluster_z()
-            self.Z_shared = out[0]
-            self.train_cluster_indices, self.test_cluster_indices = out[1], out[2]
-            self.X_list, self.Y_list = [], []
-            if self.pretrain_alpha:
-                self.pretrain_alphas(1000, None, share_all=True)
+    # def setup_share_all(self, dict):
+    #     if self.share_all:
+    #         self.num_clusters = dict.get('num_clusters', 10)
+    #         self.pretrain_alpha = dict.get('pretrain_alpha', False)
+    #         self.normalize_alpha = dict.get('normalize_alpha', 'none')
+    #         out = self.cluster_z()
+    #         self.Z_shared = out[0]
+    #         self.train_cluster_indices, self.test_cluster_indices = out[1], out[2]
+    #         self.X_list, self.Y_list = [], []
+    #         if self.pretrain_alpha:
+    #             self.pretrain_alphas(1000, None, share_all=True)
 
     # def setup_optimal_solutions(self, dict):
     #     if dict.get('z_stars_train', None) is not None:
@@ -337,10 +369,11 @@ class L2WSmodel(object):
     # def create_end2end_loss_fn(self, bypass_nn, diff_required):
     #     raise NotImplementedError("Subclass needs to define this.")
 
-    def create_all_loss_fns(self, dict):
+    # def create_all_loss_fns(self, dict):
+    def create_all_loss_fns(self, loss_method, supervised):
         # to describe the final loss function (not the end-to-end loss fn)
-        self.loss_method = dict.get('loss_method', 'fixed_k')
-        self.supervised = dict.get('supervised', False)
+        self.loss_method = loss_method
+        self.supervised = supervised
 
         if not hasattr(self, 'train_fn') and not hasattr(self, 'k_steps_train_fn'):
             train_fn = create_train_fn(self.fixed_point_fn)

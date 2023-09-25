@@ -65,21 +65,25 @@ def test_minimal_l2ws_model():
 
     m, n, cones = static_prob_data['m'], static_prob_data['n'], static_prob_data['cones']
     P, A = static_prob_data['P'], static_prob_data['A']
-    zero_cone_size = cones['z']
 
     # enter into the L2WSmodel
-    input_dict = dict(algorithm='scs',
-                      m=m, n=n, hsde=True, static_flag=True, proj=static_prob_data['proj'],
+    algo_dict = dict(algorithm='scs',
+                      m=m, 
+                      n=n, 
+                      proj=static_prob_data['proj'],
                       cones=cones,
-                      train_unrolls=20, jit=True,
-                      q_mat_train=q_mat_train, q_mat_test=q_mat_test,
-                      train_inputs=train_inputs, test_inputs=test_inputs,
+                      q_mat_train=q_mat_train, 
+                      q_mat_test=q_mat_test,
                       static_M=static_prob_data['static_M'],
                       static_algo_factor=static_prob_data['static_algo_factor'],
-                      rho_x=rho_x, scale=scale, alpha_relax=alpha_relax,
-                      zero_cone_size=zero_cone_size)
-    # l2ws_model = L2WSmodel(input_dict)
-    l2ws_model = SCSmodel(input_dict)
+                      rho_x=rho_x, 
+                      scale=scale, 
+                      alpha_relax=alpha_relax)
+
+    l2ws_model = SCSmodel(train_unrolls=20, 
+                     train_inputs=train_inputs, 
+                     test_inputs=test_inputs,
+                     algo_dict=algo_dict)
 
     # evaluate test before training
     init_test_loss, init_time_per_iter = l2ws_model.short_test_eval()

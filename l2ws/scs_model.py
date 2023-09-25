@@ -11,8 +11,8 @@ import cvxpy as cp
 
 
 class SCSmodel(L2WSmodel):
-    def __init__(self, input_dict):
-        super(SCSmodel, self).__init__(input_dict)
+    def __init__(self, **kwargs):
+        super(SCSmodel, self).__init__(**kwargs)
 
     def initialize_algo(self, input_dict):
         """
@@ -65,17 +65,31 @@ class SCSmodel(L2WSmodel):
                                        hsde=True,
                                        lightweight=lightweight)
 
-    def setup_optimal_solutions(self, dict):
-        if dict.get('x_stars_train', None) is not None:
-            self.y_stars_train, self.y_stars_test = dict['y_stars_train'], dict['y_stars_test']
-            self.x_stars_train, self.x_stars_test = dict['x_stars_train'], dict['x_stars_test']
-            self.z_stars_train = jnp.array(dict['z_stars_train'])
-            self.z_stars_test = jnp.array(dict['z_stars_test'])
+    # def setup_optimal_solutions(self, dict):
+    def setup_optimal_solutions(self, 
+                                z_stars_train, 
+                                z_stars_test, 
+                                x_stars_train=None, 
+                                x_stars_test=None, 
+                                y_stars_train=None, 
+                                y_stars_test=None):
+        # if dict.get('x_stars_train', None) is not None:
+        if x_stars_train is not None:
+            # self.y_stars_train, self.y_stars_test = dict['y_stars_train'], dict['y_stars_test']
+            # self.x_stars_train, self.x_stars_test = dict['x_stars_train'], dict['x_stars_test']
+            # self.z_stars_train = jnp.array(dict['z_stars_train'])
+            # self.z_stars_test = jnp.array(dict['z_stars_test'])
+            self.z_stars_train = jnp.array(z_stars_train)
+            self.z_stars_test = jnp.array(z_stars_test)
+            self.x_stars_train = jnp.array(x_stars_train)
+            self.x_stars_test = jnp.array(x_stars_test)
+            self.y_stars_train = jnp.array(y_stars_train)
+            self.y_stars_test = jnp.array(y_stars_test)
             self.u_stars_train = jnp.hstack([self.x_stars_train, self.y_stars_train])
             self.u_stars_test = jnp.hstack([self.x_stars_test, self.y_stars_test])
-        elif dict.get('z_stars_train', None) is not None:
-            self.z_stars_train = jnp.array(dict['z_stars_train'])
-            self.z_stars_test = jnp.array(dict['z_stars_test'])
+        if z_stars_train is not None:
+            self.z_stars_train = z_stars_train
+            self.z_stars_test = z_stars_test
         else:
             self.z_stars_train, self.z_stars_test = None, None
 

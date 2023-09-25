@@ -1,3 +1,4 @@
+import gc
 from jax.config import config
 import csv
 import os
@@ -29,7 +30,6 @@ plt.rcParams.update({
     "font.family": "serif",   # For talks, use sans-serif
     "font.size": 16,
 })
-import gc
 config.update("jax_enable_x64", True)
 
 
@@ -171,7 +171,7 @@ class Workspace:
         # A, lambd = static_dict['A'], static_dict['lambd']
         eg_step = static_dict['eg_step']
         f = static_dict['f']
-        
+
         proj_X, proj_Y = static_dict['proj_X'], static_dict['proj_Y']
         m, n = static_dict['m'], static_dict['n']
 
@@ -225,12 +225,9 @@ class Workspace:
         else:
             self.m, self.n = static_dict['m'], static_dict['n']
             m, n = self.m, self.n
-            print('m, n', m, n)
             rho_vec = jnp.ones(m)
             l0 = self.q_mat_train[0, n: n + m]
             u0 = self.q_mat_train[0, n + m: n + 2 * m]
-            print('l0', l0)
-            print('u0', u0)
             rho_vec = rho_vec.at[l0 == u0].set(1000)
 
             t0 = time.time()
@@ -244,14 +241,16 @@ class Workspace:
             P_tensor = unvec_symm_batch(q_mat[:, 2 * m + n: 2 * m + n + nc2], n)
             A_tensor = jnp.reshape(q_mat[:, 2 * m + n + nc2:], (N, m, n))
             sigma = 1
-            batch_form_osqp_matrix = vmap(form_osqp_matrix, in_axes=(0, 0, None, None), out_axes=(0))
+            batch_form_osqp_matrix = vmap(
+                form_osqp_matrix, in_axes=(0, 0, None, None), out_axes=(0))
 
             # try batching
             cutoff = 4000
-            matrices1 = batch_form_osqp_matrix(P_tensor[:cutoff, :, :], A_tensor[:cutoff, :, :], rho_vec, sigma)
-            matrices2 = batch_form_osqp_matrix(P_tensor[cutoff:, :, :], A_tensor[cutoff:, :, :], rho_vec, sigma)
-            # matrices = 
-
+            matrices1 = batch_form_osqp_matrix(
+                P_tensor[:cutoff, :, :], A_tensor[:cutoff, :, :], rho_vec, sigma)
+            matrices2 = batch_form_osqp_matrix(
+                P_tensor[cutoff:, :, :], A_tensor[cutoff:, :, :], rho_vec, sigma)
+            # matrices =
 
             # do factors
             # factors0, factors1 = self.batch_factors(self.q_mat_train)
@@ -266,7 +265,6 @@ class Workspace:
 
             self.factors_train = (factors0[:N_train, :, :], factors1[:N_train, :])
             self.factors_test = (factors0[N_train:N, :, :], factors1[N_train:N, :])
-
 
             input_dict = dict(factor_static_bool=False,
                               supervised=cfg.supervised,
@@ -342,42 +340,34 @@ class Workspace:
 
         self.psd_size = psd_sizes[0]
 
-        input_dict = {'nn_cfg': cfg.nn_cfg,
-                      'proj': proj,
-                      'train_inputs': self.train_inputs,
-                      'test_inputs': self.test_inputs,
-                      'train_unrolls': self.train_unrolls,
-                      'eval_unrolls': self.eval_unrolls,
-                      'z_stars_train': self.z_stars_train,
-                      'z_stars_test': self.z_stars_test,
+        algo_dict = {'proj': proj,
                       'q_mat_train': self.q_mat_train,
                       'q_mat_test': self.q_mat_test,
-                      'M_tensor_train': M_tensor_train,
-                      'M_tensor_test': M_tensor_test,
                       'm': self.m,
                       'n': self.n,
                       'static_M': static_M,
-                      'y_stars_train': self.y_stars_train,
-                      'y_stars_test': self.y_stars_test,
-                      'x_stars_train': self.x_stars_train,
-                      'x_stars_test': self.x_stars_test,
                       'static_flag': self.static_flag,
                       'static_algo_factor': static_algo_factor,
-                      'matrix_invs_train': matrix_invs_train,
-                      'matrix_invs_test': matrix_invs_test,
-                      'supervised': cfg.get('supervised', False),
-                      'loss_method': cfg.get('loss_method', 'fixed_k'),
-                      'pretrain_alpha': cfg.get('pretrain_alpha'),
-                      'normalize_alpha': cfg.get('normalize_alpha'),
-                      'plateau_decay': cfg.plateau_decay,
                       'rho_x': rho_x,
                       'scale': scale,
                       'alpha_relax': alpha_relax,
-                      'zero_cone_size': cones['z'],
                       'cones': cones,
                       'lightweight': cfg.get('lightweight', False)
                       }
-        self.l2ws_model = SCSmodel(input_dict)
+        self.l2ws_model = SCSmodel(train_unrolls=self.train_unrolls,
+                                   eval_unrolls=self.eval_unrolls,
+                                   train_inputs=self.train_inputs,
+                                   test_inputs=self.test_inputs,
+                                   z_stars_train=self.z_stars_train,
+                                   z_stars_test=self.z_stars_test,
+                                   x_stars_train=self.x_stars_train,
+                                   x_stars_test=self.x_stars_test,
+                                   y_stars_train=self.y_stars_train,
+                                   y_stars_test=self.y_stars_test,
+                                   regression=cfg.get('supervised', False),
+                                   nn_cfg=cfg.nn_cfg,
+                                   algo_dict=algo_dict)
+        # self.l2ws_model = SCSmodel(input_dict)
 
     def setup_opt_sols(self, algo, jnp_load_obj, N_train, N, num_plot=5):
         if algo != 'scs':
@@ -456,9 +446,9 @@ class Workspace:
         if self.normalize_inputs:
             col_sums = thetas.mean(axis=0)
             std_devs = thetas.std(axis=0)
-            inputs_normalized = (thetas - col_sums) / std_devs #thetas.std(axis=0)
+            inputs_normalized = (thetas - col_sums) / std_devs  # thetas.std(axis=0)
             inputs = jnp.array(inputs_normalized)
-            
+
             # save the col_sums and std deviations
             self.normalize_col_sums = col_sums
             self.normalize_std_dev = std_devs
@@ -467,9 +457,8 @@ class Workspace:
         train_inputs = inputs[:N_train, :]
         test_inputs = inputs[N_train:N, :]
 
-        
         return train_inputs, test_inputs
-    
+
     def normalize_theta(self, theta):
         normalized_input = (theta - self.normalize_col_sums) / self.normalize_std_dev
         return normalized_input
@@ -491,12 +480,10 @@ class Workspace:
             # factors0, factors1 = jnp_load_obj['factors0'], jnp_load_obj['factors1']
             # factors = (factors0, factors1)
             # jnp_load_obj['factors'] = factors
-            
 
             # compute factors
             # all_factors_train is a tuple with shapes ((N, n + m, n + m), (N, n + m))
             # factors0, factors1 = self.batch_factors(q_mat)
-
 
             # if we are in the dynamic case, then we need to get q from the sparse format
             # jnp_load_obj['q_mat'] = jnp.array(q_mat_sparse)
@@ -519,7 +506,7 @@ class Workspace:
         if 'ref_traj_tensor' in jnp_load_obj.keys():
             # load all of the goals
             self.closed_loop_rollout_dict['ref_traj_tensor'] = jnp_load_obj['ref_traj_tensor']
-        
+
         return jnp_load_obj
 
     def plot_samples(self, num_plot, thetas, train_inputs, z_stars):
@@ -827,7 +814,7 @@ class Workspace:
         y = z_init[n:n + m]
         s = jnp.zeros(m)
         return x, y, s
-    
+
     def run_closed_loop_rollouts(self, col):
         """
         implements the closed_loop_rollouts
@@ -849,13 +836,14 @@ class Workspace:
         dt, nx = system_constants['dt'], system_constants['nx']
         cd0, T = system_constants['cd0'], system_constants['T']
 
-        Q_ref =  self.closed_loop_rollout_dict['Q_ref']
+        Q_ref = self.closed_loop_rollout_dict['Q_ref']
         obstacle_tol = self.closed_loop_rollout_dict['obstacle_tol']
 
         static_canon_mpc_osqp_partial = self.closed_loop_rollout_dict['static_canon_mpc_osqp_partial']
 
         # setup the qp_solver
-        qp_solver = partial(self.qp_solver, dt=dt, cd0=cd0, nx=nx, method=col, static_canon_mpc_osqp_partial=static_canon_mpc_osqp_partial)
+        qp_solver = partial(self.qp_solver, dt=dt, cd0=cd0, nx=nx, method=col,
+                            static_canon_mpc_osqp_partial=static_canon_mpc_osqp_partial)
 
         num_goals = ref_traj_tensor.shape[1]
         N_train = self.thetas_train.shape[0]
@@ -867,7 +855,7 @@ class Workspace:
         for i in range(num_rollouts):
             # get x_init_traj
             thetas_index = i * rollout_length
-            x_init_traj = self.thetas_test[thetas_index, :nx] # assumes theta = (x0, u0, x_ref)
+            x_init_traj = self.thetas_test[thetas_index, :nx]  # assumes theta = (x0, u0, x_ref)
             print('x_init_traj', x_init_traj)
 
             # old
@@ -876,18 +864,19 @@ class Workspace:
             # ref_traj_dict = dict(case='obstacle_course', traj_list=traj_list, Q=Q_ref, tol=obstacle_tol)
             ref_traj_index = num_train_rollouts + i
             trajectories = ref_traj_tensor[ref_traj_index, :, :]
-            ref_traj_dict = dict(case='loop_path', traj_list=trajectories, Q=Q_ref, tol=obstacle_tol)
+            ref_traj_dict = dict(case='loop_path', traj_list=trajectories,
+                                 Q=Q_ref, tol=obstacle_tol)
 
             # new
             rollout_results = closed_loop_rollout(qp_solver,
-                                rollout_length,
-                                x_init_traj,
-                                u_init_traj,
-                                dynamics,
-                                system_constants,
-                                ref_traj_dict,
-                                budget,
-                                noise_list=None)
+                                                  rollout_length,
+                                                  x_init_traj,
+                                                  u_init_traj,
+                                                  dynamics,
+                                                  system_constants,
+                                                  ref_traj_dict,
+                                                  budget,
+                                                  noise_list=None)
             rollout_results_list.append(rollout_results)
             state_traj_list = rollout_results['state_traj_list']
 
@@ -897,9 +886,10 @@ class Workspace:
             if not os.path.exists(f"rollouts/{col}"):
                 os.mkdir(f"rollouts/{col}")
             traj_list = ref_traj_dict['traj_list']
-            
+
             if plot_traj is not None:
-                plot_traj([state_traj_list], goals=traj_list, labels=[col], filename=f"rollouts/{col}/rollout_{i}")
+                plot_traj([state_traj_list], goals=traj_list, labels=[
+                          col], filename=f"rollouts/{col}/rollout_{i}")
 
     def qp_solver(self, Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, dt, cd0, nx, static_canon_mpc_osqp_partial, method):
         """
@@ -966,8 +956,8 @@ class Workspace:
             fixed_ws = False
             print('inputs', inputs)
 
-        loss, out, time_per_prob  = self.l2ws_model.dynamic_eval(budget, inputs, q_mat, z_stars, factors, tag='test', fixed_ws=fixed_ws)
-        
+        loss, out, time_per_prob = self.l2ws_model.dynamic_eval(
+            budget, inputs, q_mat, z_stars, factors, tag='test', fixed_ws=fixed_ws)
 
         # sol = out[0]
         sol = out[2][0, -1, :]
@@ -983,7 +973,6 @@ class Workspace:
         # w1 = sol[T*nx + nu:T*nx + 2*nu]
 
         return sol, P, A, factor, q
-    
 
     # def custom_visualize(self, x_primals, train, col):
     #     """
@@ -1031,7 +1020,6 @@ class Workspace:
     #         self.custom_visualize_fn(x_primals, x_stars, x_no_learn, x_nn,
     #                                  thetas, self.iterates_visualize, visual_path)
 
-
     def custom_visualize(self, z_all, train, col):
         """
         x_primals has shape [N, eval_iters]
@@ -1063,19 +1051,19 @@ class Workspace:
 
         if col == 'no_train':
             if train:
-                self.z_no_learn_train = z_all #[:self.vis_num, :, :]
+                self.z_no_learn_train = z_all  # [:self.vis_num, :, :]
             else:
-                self.z_no_learn_test = z_all # x_primals[:self.vis_num, :, :]
+                self.z_no_learn_test = z_all  # x_primals[:self.vis_num, :, :]
         elif col == 'nearest_neighbor':
             if train:
-                self.z_nn_train = z_all #x_primals[:self.vis_num, :, :]
+                self.z_nn_train = z_all  # x_primals[:self.vis_num, :, :]
             else:
-                self.z_nn_test = z_all #x_primals[:self.vis_num, :, :]
+                self.z_nn_test = z_all  # x_primals[:self.vis_num, :, :]
         elif col == 'prev_sol':
             if train:
-                self.z_prev_sol_train = z_all #x_primals[:self.vis_num, :, :]
+                self.z_prev_sol_train = z_all  # x_primals[:self.vis_num, :, :]
             else:
-                self.z_prev_sol_test = z_all #x_primals[:self.vis_num, :, :]
+                self.z_prev_sol_test = z_all  # x_primals[:self.vis_num, :, :]
         if train:
             z_no_learn = self.z_no_learn_train
         else:
@@ -1084,16 +1072,15 @@ class Workspace:
         if train:
             if col != 'nearest_neighbor' and col != 'no_train' and col != 'prev_sol':
                 self.custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn,
-                                        thetas, self.iterates_visualize, visual_path)
+                                         thetas, self.iterates_visualize, visual_path)
         else:
             if col != 'nearest_neighbor' and col != 'no_train' and col != 'prev_sol':
                 if z_prev_sol is None:
                     self.custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn,
-                                            thetas, self.iterates_visualize, visual_path, num=self.vis_num)
+                                             thetas, self.iterates_visualize, visual_path, num=self.vis_num)
                 else:
                     self.custom_visualize_fn(z_all, z_stars, z_prev_sol, z_nn,
-                                            thetas, self.iterates_visualize, visual_path, num=self.vis_num)
-
+                                             thetas, self.iterates_visualize, visual_path, num=self.vis_num)
 
     def run(self):
         # setup logging and dataframes
@@ -1194,7 +1181,7 @@ class Workspace:
             #   lax.while_loop and lax.scan.
             batch_indices = lax.dynamic_slice(
                 permutation, (0,), (self.l2ws_model.batch_size,))
-            
+
             train_loss_first, params, state = self.l2ws_model.train_batch(
                 batch_indices, self.l2ws_model.params, self.l2ws_model.state)
 
@@ -1222,14 +1209,15 @@ class Workspace:
         # import pdb
         # pdb.set_trace()
         # body_fn = self.train_over_epochs_body_simple_fn
-        val = lax.fori_loop(start_index, loop_size, self.train_over_epochs_body_simple_fn_jitted, init_val)
+        val = lax.fori_loop(start_index, loop_size,
+                            self.train_over_epochs_body_simple_fn_jitted, init_val)
         epoch_batch_end_time = time.time()
         time_diff = epoch_batch_end_time - epoch_batch_start_time
         time_train_per_epoch = time_diff / self.epochs_jit
         epoch_train_losses, params, state, permutation = val
 
         return params, state, epoch_train_losses, time_train_per_epoch
-    
+
     # @jit
     def train_over_epochs_body_simple_fn(self, batch, val):
         """
@@ -1305,7 +1293,6 @@ class Workspace:
             self.num_samples_test, col, train=False, plot_pretrain=pretrain_on)
         self.evaluate_iters(
             self.num_samples_train, col, train=True, plot_pretrain=pretrain_on)
-        
 
     def write_train_results(self, loop_size, prev_batches, epoch_train_losses,
                             time_train_per_epoch):
@@ -1349,7 +1336,7 @@ class Workspace:
                                                 :] if train else self.l2ws_model.q_mat_test[:num, :]
 
         inputs = self.get_inputs_for_eval(fixed_ws, num, train, col)
-        # if inputs.shape[0] 
+        # if inputs.shape[0]
         # import pdb
         # pdb.set_trace()
 
@@ -1397,7 +1384,7 @@ class Workspace:
 
         flattened_eval_out = (loss, out, time_per_prob)
         return flattened_eval_out
-    
+
     def stack_tuples(self, tuples_list):
         result = []
         num_tuples = len(tuples_list)
@@ -1459,7 +1446,7 @@ class Workspace:
             else:
                 inputs = self.l2ws_model.test_inputs[:num, :]
         return inputs
-    
+
     def theta_2_nearest_neighbor(self, theta):
         """
         given a new theta returns the closest training problem solution
@@ -1471,8 +1458,8 @@ class Workspace:
         test_inputs = jnp.expand_dims(test_input, 0)
 
         distances = distance_matrix(
-                np.array(test_inputs),
-                np.array(self.l2ws_model.train_inputs))
+            np.array(test_inputs),
+            np.array(self.l2ws_model.train_inputs))
         indices = np.argmin(distances, axis=1)
         if isinstance(self.l2ws_model, OSQPmodel):
             return self.l2ws_model.z_stars_train[indices, :self.m + self.n]
@@ -2002,17 +1989,17 @@ class Workspace:
                 if isinstance(self.l2ws_model, OSQPmodel):
                     try:
                         plt.plot(z_all[i, j, :self.l2ws_model.m + self.l2ws_model.n] - self.l2ws_model.z_stars_train[i, :],
-                                label=f"prediction_{j}")
+                                 label=f"prediction_{j}")
                     except:
                         plt.plot(z_all[i, j, :self.l2ws_model.m + self.l2ws_model.n] - self.l2ws_model.z_stars_train[i, :self.l2ws_model.m + self.l2ws_model.n],
-                                label=f"prediction_{j}")
+                                 label=f"prediction_{j}")
                 else:
                     if train:
                         plt.plot(z_all[i, j, :] - self.l2ws_model.z_stars_train[i, :],
-                                label=f"prediction_{j}")
+                                 label=f"prediction_{j}")
                     else:
                         plt.plot(z_all[i, j, :] - self.l2ws_model.z_stars_test[i, :],
-                                label=f"prediction_{j}")
+                                 label=f"prediction_{j}")
             plt.legend()
             plt.title('diffs to optimal')
             plt.savefig(f"{ws_path}/{col}/prob_{i}_diffs_z.pdf")
