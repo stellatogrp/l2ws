@@ -1,7 +1,5 @@
 import logging
 import time
-
-# from l2ws.algo_steps import k_steps_train, k_steps_eval, lin_sys_solve, k_steps_train_ista, k_steps_eval_ista
 from functools import partial
 
 import jax.numpy as jnp
@@ -54,7 +52,8 @@ class L2WSmodel(object):
 
         # optimal solutions (not needed as input)
         # self.setup_optimal_solutions(dict)
-        self.setup_optimal_solutions(z_stars_train, z_stars_test, x_stars_train, x_stars_test, y_stars_train, y_stars_test)
+        self.setup_optimal_solutions(z_stars_train, z_stars_test, x_stars_train, x_stars_test, 
+                                     y_stars_train, y_stars_test)
 
         # create_all_loss_fns
         self.create_all_loss_fns(loss_method, regression)
@@ -86,10 +85,6 @@ class L2WSmodel(object):
 
     # def initialize_essentials(self, input_dict):
     def initialize_essentials(self, jit, eval_unrolls, train_unrolls, train_inputs, test_inputs):
-        # self.jit = input_dict.get('jit', True)
-        # self.eval_unrolls = input_dict.get('eval_unrolls', 500)
-        # self.train_unrolls = input_dict['train_unrolls']
-        # self.train_inputs, self.test_inputs = input_dict['train_inputs'], input_dict['test_inputs']
         self.jit = jit
         self.eval_unrolls = eval_unrolls
         self.train_unrolls = train_unrolls + 1
@@ -100,7 +95,8 @@ class L2WSmodel(object):
         self.static_flag = True
 
     # def setup_optimal_solutions(self, dict):
-    def setup_optimal_solutions(self, z_stars_train, z_stars_test, x_stars_train=None, x_stars_test=None, y_stars_train=None, y_stars_test=None):
+    def setup_optimal_solutions(self, z_stars_train, z_stars_test, x_stars_train=None, 
+                                x_stars_test=None, y_stars_train=None, y_stars_test=None):
         # if dict.get('z_stars_train', None) is not None:
         if z_stars_train is not None:
             self.z_stars_train = jnp.array(z_stars_train) # jnp.array(dict['z_stars_train'])
@@ -212,7 +208,8 @@ class L2WSmodel(object):
 
     def evaluate(self, k, inputs, b, z_stars, fixed_ws, factors=None, tag='test', light=False):
         if self.factors_required and not self.factor_static_bool:
-            return self.dynamic_eval(k, inputs, b, z_stars, factors=factors, tag=tag, fixed_ws=fixed_ws)
+            return self.dynamic_eval(k, inputs, b, z_stars, 
+                                     factors=factors, tag=tag, fixed_ws=fixed_ws)
         else:
             return self.static_eval(k, inputs, b, z_stars, tag=tag, fixed_ws=fixed_ws, light=light)
 
@@ -481,7 +478,6 @@ class L2WSmodel(object):
         batch_indices = jnp.arange(self.N_train)
         return self.train_batch(batch_indices, params, state)
 
-    # def predict_warm_start(self, params, input, bypass_nn, hsde=None, share_all=False, Z_shared=None, normalize_alpha=None):
     def predict_warm_start(self, params, input, bypass_nn):
         """
         gets the warm-start
@@ -578,7 +574,7 @@ class L2WSmodel(object):
         else:
             # for either of the following cases
             #   1. no factors are needed (pass in None as a static argument)
-            #   2. factor is constant for all problems (pass in the same factor as a static argument)
+            #   2. factor is constant for all problems (pass in the same factor as static argument)
             predict_partial = partial(predict, factor=self.factor_static)
             batch_predict = vmap(predict_partial,
                                  in_axes=(None, 0, 0, None, 0),

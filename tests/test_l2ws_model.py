@@ -111,7 +111,7 @@ def test_minimal_l2ws_model():
     assert final_time_per_iter < .1 * init_time_per_iter
 
     # evaluate the training set for a different number of iterations
-    dynamic_factor, M_dynamic = None, None
+    # dynamic_factor, M_dynamic = None, None
     # loss, eval_out, time_per_prob = l2ws_model.evaluate(300, train_inputs, dynamic_factor,
     #                                                     M_dynamic, q_mat_train,
     #                                                     z_stars=None, fixed_ws=False, tag='train')
@@ -119,7 +119,7 @@ def test_minimal_l2ws_model():
                                                         z_stars=None, fixed_ws=False, tag='train')
     
     # out, losses, iter_losses, angles, primal_residuals, dual_residuals = eval_out
-    losses, iter_losses, z_all_plus_1, angles, primal_residuals, dual_residuals, u_all, v_all = eval_out
+    losses, iter_losses, z_all_plus_1, angles, primal_residuals, dual_residuals, u_all, v_all = eval_out # noqa
     # z_all_plus_1, z_final, alpha, u_all, v_all = out
 
     # warm-start SCS with z0 from all_z_plus_1

@@ -24,16 +24,21 @@ class EGmodel(L2WSmodel):
 
         self.output_size = m + n
         self.out_axes_length = 5
-        # self.k_steps_train_fn = partial(k_steps_train_extragrad, Q=Q, R=R, eg_step=eg_step, jit=self.jit)
+        # self.k_steps_train_fn = partial(k_steps_train_extragrad, Q=Q, R=R, 
+        #                                 eg_step=eg_step, jit=self.jit)
         self.k_steps_train_fn = partial(
-            k_steps_train_extragrad, f=f, proj_X=proj_X, proj_Y=proj_Y, n=n, eg_step=eg_step, jit=self.jit)
+            k_steps_train_extragrad, f=f, proj_X=proj_X, proj_Y=proj_Y, n=n, 
+            eg_step=eg_step, jit=self.jit)
         self.k_steps_eval_fn = partial(k_steps_eval_extragrad,
-                                       f=f, proj_X=proj_X, proj_Y=proj_Y, n=n, eg_step=eg_step, jit=self.jit)
+                                       f=f, proj_X=proj_X, proj_Y=proj_Y, n=n, 
+                                       eg_step=eg_step, jit=self.jit)
 
         # old
         # self.q_mat_train, self.q_mat_test = input_dict['q_mat_train'], input_dict['q_mat_test']
         # m = R.shape[0]
         # n = Q.shape[0]
         # Q, R = input_dict['Q'], input_dict['R']
-        # self.k_steps_train_fn = partial(k_steps_train_extragrad, Q=Q, R=R, eg_step=eg_step, jit=self.jit)
-        # self.k_steps_eval_fn = partial(k_steps_eval_extragrad, Q=Q, R=R, eg_step=eg_step, jit=self.jit)
+        # self.k_steps_train_fn = partial(k_steps_train_extragrad, Q=Q, R=R, 
+        #                                 eg_step=eg_step, jit=self.jit)
+        # self.k_steps_eval_fn = partial(k_steps_eval_extragrad, Q=Q, R=R, 
+        #                                eg_step=eg_step, jit=self.jit)

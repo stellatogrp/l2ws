@@ -31,7 +31,8 @@ def test_sparse_pca():
     max_iters = 800
     c, b = q_mat[0, :n], q_mat[0, n:]
     data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_ws, y=y_ws, s=s_ws)
-    sol_hsde = scs_jax(data, hsde=True, rho_x=rho_x, scale=scale, alpha=alpha, iters=max_iters, plot=False)
+    sol_hsde = scs_jax(data, hsde=True, rho_x=rho_x, scale=scale, alpha=alpha, 
+                       iters=max_iters, plot=False)
     x_jax = sol_hsde['x']
     fp_res_hsde = sol_hsde['fixed_point_residuals']
 

@@ -349,7 +349,7 @@ def fixed_point_osqp(z, factor, A, q, rho, sigma):
     # z = (x, y, w) w is the z variable in osqp terminology
     m, n = A.shape
     x, y, w = z[:n], z[n:n + m], z[n + m:]
-    c, l, u = q[:n], q[n:n + m], q[n + m:]
+    c, l_bound, u_bound = q[:n], q[n:n + m], q[n + m:]
 
     # update (x, nu)
     rhs = sigma * x - c + A.T @ (rho * w - y)
@@ -360,7 +360,7 @@ def fixed_point_osqp(z, factor, A, q, rho, sigma):
     w_tilde = w + (nu - y) / rho
 
     # update w
-    w_next = jnp.clip(w_tilde + y / rho, a_min=l, a_max=u)
+    w_next = jnp.clip(w_tilde + y / rho, a_min=l_bound, a_max=u_bound)
 
     # update y
     y_next = y + rho * (w_tilde - w_next)
@@ -700,7 +700,8 @@ def k_steps_eval_scs(k, z0, q, factor, proj, P, A, supervised, z_star, jit, hsde
 
     # return z_final, iter_losses, primal_residuals, dual_residuals, all_z_plus_1, all_u, all_v
     if lightweight:
-        return z_final, iter_losses, all_z_plus_1[:10, :], primal_residuals, dual_residuals, all_u[:10, :], all_v[:10, :]
+        return z_final, iter_losses, all_z_plus_1[:10, :], primal_residuals, \
+            dual_residuals, all_u[:10, :], all_v[:10, :]
     return z_final, iter_losses, all_z_plus_1, primal_residuals, dual_residuals, all_u, all_v
 
 

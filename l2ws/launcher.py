@@ -250,7 +250,7 @@ class Workspace:
             # form matrices (N, m + n, m + n) to be factored
             nc2 = int(n * (n + 1) / 2)
             q_mat = jnp.vstack([self.q_mat_train, self.q_mat_test])
-            N_train, N_test = self.q_mat_train.shape[0], self.q_mat_test[0]
+            N_train, _ = self.q_mat_train.shape[0], self.q_mat_test[0]
             N = q_mat.shape[0]
             unvec_symm_batch = vmap(unvec_symm, in_axes=(0, None), out_axes=(0))
             P_tensor = unvec_symm_batch(q_mat[:, 2 * m + n: 2 * m + n + nc2], n)
@@ -323,8 +323,8 @@ class Workspace:
             # call get_q_mat
             # if get_M_q is not None:
             #     q_mat = get_M_q(thetas)
-            M_tensor_train, M_tensor_test = None, None
-            matrix_invs_train, matrix_invs_test = None, None
+            # M_tensor_train, M_tensor_test = None, None
+            # matrix_invs_train, matrix_invs_test = None, None
 
             # M_plus_I = static_M + jnp.eye(n + m)
             # static_algo_factor = jsp.linalg.lu_factor(M_plus_I)
@@ -511,8 +511,10 @@ class Workspace:
             # if we are in the dynamic case, then we need to get q from the sparse format
             # jnp_load_obj['q_mat'] = jnp.array(q_mat_sparse)
 
-            # self.factors_train = (jnp.array(factors0[:N_train, :, :]), jnp.array(factors1[:N_train, :]))
-            # self.factors_test = (jnp.array(factors0[N_train:N, :, :]), jnp.array(factors1[N_train:N, :]))
+            # self.factors_train = (jnp.array(factors0[:N_train, :, :]), 
+            #                       jnp.array(factors1[:N_train, :]))
+            # self.factors_test = (jnp.array(factors0[N_train:N, :, :]), 
+            #                      jnp.array(factors1[N_train:N, :]))
 
         if 'q_mat' in jnp_load_obj.keys():
             q_mat = jnp.array(jnp_load_obj['q_mat'])
@@ -857,12 +859,12 @@ class Workspace:
         ref_traj_tensor = self.closed_loop_rollout_dict['ref_traj_tensor']
         budget = self.closed_loop_rollout_dict['closed_loop_budget']
         dt, nx = system_constants['dt'], system_constants['nx']
-        cd0, T = system_constants['cd0'], system_constants['T']
+        cd0, _ = system_constants['cd0'], system_constants['T']
 
         Q_ref = self.closed_loop_rollout_dict['Q_ref']
         obstacle_tol = self.closed_loop_rollout_dict['obstacle_tol']
 
-        static_canon_mpc_osqp_partial = self.closed_loop_rollout_dict['static_canon_mpc_osqp_partial']
+        static_canon_mpc_osqp_partial = self.closed_loop_rollout_dict['static_canon_mpc_osqp_partial']  # noqa
 
         # setup the qp_solver
         qp_solver = partial(self.qp_solver, dt=dt, cd0=cd0, nx=nx, method=col,
@@ -884,7 +886,7 @@ class Workspace:
             # old
             # ref_traj_index = num_train_rollouts + i
             # traj_list = [ref_traj_tensor[ref_traj_index, i, :] for i in range(num_goals)]
-            # ref_traj_dict = dict(case='obstacle_course', traj_list=traj_list, Q=Q_ref, tol=obstacle_tol)
+            # ref_traj_dict = dict(case='obstacle_course', traj_list=traj_list, Q=Q_ref, tol=obstacle_tol) # noqa
             ref_traj_index = num_train_rollouts + i
             trajectories = ref_traj_tensor[ref_traj_index, :, :]
             ref_traj_dict = dict(case='loop_path', traj_list=trajectories,
@@ -914,7 +916,8 @@ class Workspace:
                 plot_traj([state_traj_list], goals=traj_list, labels=[
                           col], filename=f"rollouts/{col}/rollout_{i}")
 
-    def qp_solver(self, Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, dt, cd0, nx, static_canon_mpc_osqp_partial, method):
+    def qp_solver(self, Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, dt, cd0, nx, 
+                  static_canon_mpc_osqp_partial, method):
         """
         method could be one of the following
         - cold-start
@@ -933,7 +936,7 @@ class Workspace:
 
         # get (P, A, c, l, u)
         out_dict = static_canon_mpc_osqp_partial(ref_traj, x0, Ad, Bd, cd=cd, u_prev=u0)
-        P, A, c, l, u = out_dict['P'], out_dict['A'], out_dict['c'], out_dict['l'], out_dict['u']
+        P, A, c, l, u = out_dict['P'], out_dict['A'], out_dict['c'], out_dict['l'], out_dict['u']  # noqa
         m, n = A.shape
         q = jnp.concatenate([c, l, u])
         # print('q', q[:30])
@@ -1100,10 +1103,12 @@ class Workspace:
             if col != 'nearest_neighbor' and col != 'no_train' and col != 'prev_sol':
                 if z_prev_sol is None:
                     self.custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn,
-                                             thetas, self.iterates_visualize, visual_path, num=self.vis_num)
+                                             thetas, self.iterates_visualize, visual_path, 
+                                             num=self.vis_num)
                 else:
                     self.custom_visualize_fn(z_all, z_stars, z_prev_sol, z_nn,
-                                             thetas, self.iterates_visualize, visual_path, num=self.vis_num)
+                                             thetas, self.iterates_visualize, visual_path, 
+                                             num=self.vis_num)
 
     def run(self):
         # setup logging and dataframes
@@ -1210,7 +1215,7 @@ class Workspace:
 
             epoch_train_losses = epoch_train_losses.at[0].set(train_loss_first)
             start_index = 1
-            # self.train_over_epochs_body_simple_fn_jitted = jit(self.train_over_epochs_body_simple_fn)
+            # self.train_over_epochs_body_simple_fn_jitted = jit(self.train_over_epochs_body_simple_fn)  # noqa
             self.train_over_epochs_body_simple_fn_jitted = self.train_over_epochs_body_simple_fn
         else:
             start_index = 0
@@ -1343,12 +1348,15 @@ class Workspace:
         if self.l2ws_model.z_stars_train is None:
             z_stars = None
         else:
-            z_stars = self.l2ws_model.z_stars_train[:num,
-                                                    :] if train else self.l2ws_model.z_stars_test[:num,
-                                                                                                  :]
+            if train:
+                z_stars = self.l2ws_model.z_stars_train[:num, :] 
+            else: 
+                z_stars = self.l2ws_model.z_stars_test[:num, :]
         if col == 'prev_sol':
-            q_mat_full = self.l2ws_model.q_mat_train[:num,
-                                                     :] if train else self.l2ws_model.q_mat_test[:num, :]
+            if train:
+                q_mat_full = self.l2ws_model.q_mat_train[:num, :] 
+            else:
+                q_mat_full = self.l2ws_model.q_mat_test[:num, :]
             non_first_indices = jnp.mod(jnp.arange(num), self.traj_length) != 0
             q_mat = q_mat_full[non_first_indices, :]
             z_stars = z_stars[non_first_indices, :]
@@ -1387,7 +1395,8 @@ class Workspace:
             else:
                 curr_z_stars = None
             eval_out = self.l2ws_model.evaluate(
-                self.eval_unrolls, curr_inputs, curr_q_mat, curr_z_stars, fixed_ws, factors=curr_factors, tag=tag)
+                self.eval_unrolls, curr_inputs, curr_q_mat, curr_z_stars, fixed_ws, 
+                factors=curr_factors, tag=tag)
             # full_eval_out.append(eval_out)
             # eval_out_cpu = tuple(item.copy_to_host() for item in eval_out)
             # full_eval_out.append(eval_out_cpu)
@@ -1727,7 +1736,7 @@ class Workspace:
         #     plt.plot(iters_df['pretrain'], 'r-', label='pretraining')
 
         # plot the learned warm-start if applicable
-        if col != 'no_train' and col != 'pretrain' and col != 'nearest_neighbor' and col != 'prev_sol':
+        if col != 'no_train' and col != 'pretrain' and col != 'nearest_neighbor' and col != 'prev_sol':  # noqa
             plt.plot(df[col], label=f"train k={self.train_unrolls}")
         plt.yscale('log')
         plt.xlabel('evaluation iterations')
@@ -1770,7 +1779,7 @@ class Workspace:
     #     #     plt.plot(iters_df['pretrain'], 'r-', label='pretraining')
 
     #     # plot the learned warm-start if applicable
-    #     if col != 'no_train' and col != 'pretrain' and col != 'nearest_neighbor' and col != 'prev_sol':
+    #     if col != 'no_train' and col != 'pretrain' and col != 'nearest_neighbor' and col != 'prev_sol':  # noqa
     #         plt.plot(iters_df[col], label=f"train k={self.train_unrolls}")
     #     plt.yscale('log')
     #     plt.xlabel('evaluation iterations')
@@ -2011,10 +2020,12 @@ class Workspace:
             for j in self.plot_iterates:
                 if isinstance(self.l2ws_model, OSQPmodel):
                     try:
-                        plt.plot(z_all[i, j, :self.l2ws_model.m + self.l2ws_model.n] - self.l2ws_model.z_stars_train[i, :],
+                        plt.plot(z_all[i, j, :self.l2ws_model.m + self.l2ws_model.n] - 
+                                 self.l2ws_model.z_stars_train[i, :],
                                  label=f"prediction_{j}")
                     except:
-                        plt.plot(z_all[i, j, :self.l2ws_model.m + self.l2ws_model.n] - self.l2ws_model.z_stars_train[i, :self.l2ws_model.m + self.l2ws_model.n],
+                        plt.plot(z_all[i, j, :self.l2ws_model.m + self.l2ws_model.n] - 
+                                 self.l2ws_model.z_stars_train[i, :self.l2ws_model.m + self.l2ws_model.n],  # noqa
                                  label=f"prediction_{j}")
                 else:
                     if train:

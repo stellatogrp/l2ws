@@ -41,8 +41,6 @@ class OSQPmodel(L2WSmodel):
             self.k_steps_eval_fn = partial(k_steps_eval_osqp, P=self.P,
                                            A=self.A, rho=self.rho, sigma=self.sigma, jit=self.jit)
         else:
-            # q_mat_train and q_mat_test hold (c, b, vecsymm(P), vec(A))
-            # self.k_steps_train_fn = partial(k_steps_train_osqp, rho=rho, sigma=sigma, jit=self.jit)
             self.k_steps_train_fn = self.create_k_steps_train_fn_dynamic()
             self.k_steps_eval_fn = self.create_k_steps_eval_fn_dynamic()
             # self.k_steps_eval_fn = partial(k_steps_eval_osqp, rho=rho, sigma=sigma, jit=self.jit)
@@ -50,8 +48,10 @@ class OSQPmodel(L2WSmodel):
             self.factors_train = input_dict['factors_train']
             self.factors_test = input_dict['factors_test']
 
-        # self.k_steps_train_fn = partial(k_steps_train_osqp, factor=factor, A=self.A, rho=rho, sigma=sigma, jit=self.jit)
-        # self.k_steps_eval_fn = partial(k_steps_eval_osqp, factor=factor, P=self.P, A=self.A, rho=rho, sigma=sigma, jit=self.jit)
+        # self.k_steps_train_fn = partial(k_steps_train_osqp, factor=factor, A=self.A, rho=rho, 
+        #                                 sigma=sigma, jit=self.jit)
+        # self.k_steps_eval_fn = partial(k_steps_eval_osqp, factor=factor, P=self.P, A=self.A, 
+        #                                rho=rho, sigma=sigma, jit=self.jit)
         self.out_axes_length = 6
 
     def create_k_steps_train_fn_dynamic(self):
@@ -109,11 +109,13 @@ class OSQPmodel(L2WSmodel):
         
 
         # q = q_mat[0, :]
-        c, l, u = np.zeros(n), np.zeros(m), np.zeros(m)
+        c, l, u = np.zeros(n), np.zeros(m), np.zeros(m)  # noqa
         
         rho = 1
-        osqp_solver.setup(P=P_sparse, q=c, A=A_sparse, l=l, u=u, alpha=self.alpha, rho=rho, sigma=self.sigma, polish=False,
-                          adaptive_rho=False, scaling=0, max_iter=max_iter, verbose=True, eps_abs=abs_tol, eps_rel=rel_tol)
+        osqp_solver.setup(P=P_sparse, q=c, A=A_sparse, l=l, u=u, alpha=self.alpha, rho=rho, 
+                          sigma=self.sigma, polish=False,
+                          adaptive_rho=False, scaling=0, max_iter=max_iter, verbose=True, 
+                          eps_abs=abs_tol, eps_rel=rel_tol)
 
         num = z0_mat.shape[0]
         solve_times = np.zeros(num)
@@ -124,19 +126,21 @@ class OSQPmodel(L2WSmodel):
             if not self.factor_static_bool:
                 P = unvec_symm(q_mat[i, 2 * m + n: 2 * m + n + nc2], n)
                 A = jnp.reshape(q_mat[i, 2 * m + n + nc2:], (m, n))
-                c, l, u = np.array(q_mat[i, :n]), np.array(q_mat[i, n:n + m]),  np.array(q_mat[i, n + m:n + 2 * m])
+                c, l, u = np.array(q_mat[i, :n]), np.array(q_mat[i, n:n + m]),  np.array(q_mat[i, n + m:n + 2 * m])  # noqa
                 
                 P_sparse, A_sparse = csc_matrix(np.array(P)), csc_matrix(np.array(A))
                 # Px = sparse.triu(P_sparse).data
                 # import pdb
                 # pdb.set_trace()
                 osqp_solver = osqp.OSQP()
-                osqp_solver.setup(P=P_sparse, q=c, A=A_sparse, l=l, u=u, alpha=self.alpha, rho=rho, sigma=self.sigma, polish=False,
-                          adaptive_rho=False, scaling=0, max_iter=max_iter, verbose=True, eps_abs=abs_tol, eps_rel=rel_tol)
+                osqp_solver.setup(P=P_sparse, q=c, A=A_sparse, l=l, u=u, alpha=self.alpha, rho=rho, 
+                                  sigma=self.sigma, polish=False,
+                                  adaptive_rho=False, scaling=0, max_iter=max_iter, verbose=True, 
+                                  eps_abs=abs_tol, eps_rel=rel_tol)
                 # osqp_solver.update(Px=P_sparse, Ax=csc_matrix(np.array(A)))
             else:
                 # set c, l, u
-                c, l, u = q_mat[i, :n], q_mat[i, n:n + m], q_mat[i, n + m:n + 2 * m]
+                c, l, u = q_mat[i, :n], q_mat[i, n:n + m], q_mat[i, n + m:n + 2 * m]  # noqa
                 osqp_solver.update(q=np.array(c))
                 osqp_solver.update(l=np.array(l), u=np.array(u))
 

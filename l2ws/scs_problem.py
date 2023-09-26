@@ -105,7 +105,8 @@ def scs_jax(data, hsde=True, rho_x=1e-6, scale=.1, alpha=1.5, iters=5000, jit=Tr
         q_r = q
 
     # eval_out = k_steps_eval_scs(iters, z, q_r, algo_factor, proj, P, A,
-    #                         c, b, jit, hsde, zero_cone_size, rho_x=rho_x, scale=scale, alpha=alpha)
+    #                             c, b, jit, hsde, zero_cone_size, rho_x=rho_x, 
+    #                             scale=scale, alpha=alpha)
     supervised, z_star = False, None
     eval_out = k_steps_eval_scs(iters, z, q_r, algo_factor, proj, P, A, supervised, z_star,
                             jit, hsde, zero_cone_size, rho_x=rho_x, scale=scale, alpha=alpha)

@@ -234,7 +234,8 @@ def plot_l4dc(cfg):
     axes[0].plot(om_nws, 'm-.')
     example = 'mpc'
     for datetime in cfg_om.output_datetimes:
-        # train_yaml_filename = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/.hydra/config.yaml"
+        # train_yaml_filename = f"{orig_cwd}/outputs/{example}/train_outputs/
+        #                         {datetime}/.hydra/config.yaml"
         # with open(train_yaml_filename, "r") as stream:
         #     try:
         #         out_dict = yaml.safe_load(stream)
@@ -427,7 +428,8 @@ def get_all_data(example, cfg, train=False):
     #     for the fully trained models, track the k value
     #     - to do this, load the train_yaml file
     #     '''
-    #     train_yaml_filename = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/.hydra/config.yaml"
+    #     train_yaml_filename = f"{orig_cwd}/outputs/{example}/train_outputs/
+    #                           {datetime}/.hydra/config.yaml"
     #     with open(train_yaml_filename, "r") as stream:
     #         try:
     #             out_dict = yaml.safe_load(stream)
@@ -526,9 +528,8 @@ def get_eval_array(df, title):
     return data
 
 
-def load_learned_data(datetime):
-    return metric, timings
-
+# def load_learned_data(datetime):
+#     return metric, timings
 
 
 def create_fixed_point_residual_table(metrics_fp, titles, accs):
@@ -643,13 +644,17 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             marker = titles_2_markers[title]
             mark_start = titles_2_marker_starts[title]
             if title[:3] != 'reg':
-                axes[0, 0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
+                axes[0, 0].plot(np.array(curr_metric[j])[start:eval_iters + start], 
+                                linestyle=style, marker=marker, color=color, 
+                                markevery=(2 * mark_start, 2 * 25))
                 # if vert_lines:
                 #     if title[0] == 'k':
                 #         k = int(title[1:])
                 #         axes[i].axvline(k, color=color)
             if title[:3] != 'obj':
-                axes[0, 1].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
+                axes[0, 1].plot(np.array(curr_metric[j])[start:eval_iters + start], 
+                                linestyle=style, marker=marker, color=color, 
+                                markevery=(2 * mark_start, 2 * 25))
                 # if vert_lines:
                 #     if title[0] == 'k':
                 #         k = int(title[1:])
@@ -671,11 +676,14 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             if j == 0:
                 cs = np.array(curr_metric[j])[start:eval_iters + start]
             else:
-                gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], a_min=0, a_max=1500)
+                gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], 
+                               a_min=0, a_max=1500)
                 if title[:3] != 'reg':
-                    axes[1, 0].plot(gain, linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
+                    axes[1, 0].plot(gain, linestyle=style, marker=marker, color=color, 
+                                    markevery=(2 * mark_start, 2 * 25))
                 if title[:3] != 'obj':
-                    axes[1, 1].plot(gain, linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
+                    axes[1, 1].plot(gain, linestyle=style, marker=marker, color=color, 
+                                    markevery=(2 * mark_start, 2 * 25))
 
             # if vert_lines:
             #     if title[0] == 'k':
@@ -758,10 +766,12 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             style = titles_2_styles[title]
             if title[:3] != 'reg' and i == 0:
                 # either obj or baselines
-                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, color=color)
+                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], 
+                             linestyle=style, color=color)
             if title[:3] != 'obj' and  i == 1:
                 # either reg or baselines
-                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, color=color)
+                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], 
+                             linestyle=style, color=color)
 
         for j in range(len(curr_metric)):
             title = titles[j]
@@ -769,7 +779,8 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             style = titles_2_styles[title]
             if j == 0:
                 cs = np.array(curr_metric[j])[start:eval_iters + start]
-            gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], a_min=0, a_max=1500)
+            gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], 
+                           a_min=0, a_max=1500)
             if title[:3] != 'reg' and i == 0:
                 axes[1].plot(gain, linestyle=style, color=color)
             if title[:3] != 'obj' and i == 1:
@@ -783,7 +794,7 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
 
 
 def get_loss_type(orig_cwd, example, datetime):
-    train_yaml_filename = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/.hydra/config.yaml"
+    train_yaml_filename = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/.hydra/config.yaml" # noqa
     with open(train_yaml_filename, "r") as stream:
         try:
             out_dict = yaml.safe_load(stream)
@@ -796,7 +807,7 @@ def get_loss_type(orig_cwd, example, datetime):
 
 
 def get_k(orig_cwd, example, datetime):
-    train_yaml_filename = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/.hydra/config.yaml"
+    train_yaml_filename = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/.hydra/config.yaml" # noqa
     with open(train_yaml_filename, "r") as stream:
         try:
             out_dict = yaml.safe_load(stream)
@@ -1033,7 +1044,7 @@ def plot_eval_iters(example, cfg, train=False):
         iters_file = "iters_compared_test.csv"
 
     # no learning
-    no_learning_path = f"{orig_cwd}/outputs/{example}/train_outputs/{no_learning_datetime}/{iters_file}"
+    no_learning_path = f"{orig_cwd}/outputs/{example}/train_outputs/{no_learning_datetime}/{iters_file}"  # noqa
     no_learning_df = read_csv(no_learning_path)
     last_column = no_learning_df['no_train']
     plt.plot(last_column[:eval_iters], 'k-.', label='no learning')
@@ -1052,7 +1063,7 @@ def plot_eval_iters(example, cfg, train=False):
 
     # pretraining
     if pretrain_datetime != '':
-        pretrain_path = f"{orig_cwd}/outputs/{example}/train_outputs/{pretrain_datetime}/{iters_file}"
+        pretrain_path = f"{orig_cwd}/outputs/{example}/train_outputs/{pretrain_datetime}/{iters_file}" # noqa
         pretrain_df = read_csv(pretrain_path)
         last_column = pretrain_df['pretrain']
         plt.plot(last_column[:eval_iters], 'r+', label='pretrain')
@@ -1069,7 +1080,7 @@ def plot_eval_iters(example, cfg, train=False):
         for the fully trained models, track the k value
         - to do this, load the train_yaml file
         '''
-        train_yaml_filename = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/.hydra/config.yaml"
+        train_yaml_filename = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/.hydra/config.yaml" # noqa
         with open(train_yaml_filename, "r") as stream:
             try:
                 out_dict = yaml.safe_load(stream)
@@ -1127,8 +1138,8 @@ def plot_eval_iters(example, cfg, train=False):
     '''
     # plot 1
     plt.plot(second_derivs_no_learn[5:], label="no learning")
-    if pretrain_datetime != '':
-        plt.plot(second_derivs_pretrain, label="pretraining")
+    # if pretrain_datetime != '':
+    #     plt.plot(second_derivs_pretrain, label="pretraining")
 
     max_second_derivs = np.zeros(len(datetimes))
     for i in range(len(datetimes)):

@@ -129,8 +129,10 @@ class SCSmodel(L2WSmodel):
 
         # q = q_mat[0, :]
         # c, l, u = np.zeros(n), np.zeros(m), np.zeros(m)
-        # osqp_solver.setup(P=P_sparse, q=c, A=A_sparse, l=l, u=u, alpha=1, rho=1, sigma=1, polish=False,
-        #                   adaptive_rho=False, scaling=0, max_iter=max_iter, verbose=True, eps_abs=abs_tol, eps_rel=rel_tol)
+        # osqp_solver.setup(P=P_sparse, q=c, A=A_sparse, l=l, u=u, alpha=1, 
+        #                   rho=1, sigma=1, polish=False,
+        #                   adaptive_rho=False, scaling=0, max_iter=max_iter, 
+        #                   verbose=True, eps_abs=abs_tol, eps_rel=rel_tol)
 
         num = z0_mat.shape[0]
         solve_times = np.zeros(num)
