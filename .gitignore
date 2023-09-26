@@ -156,3 +156,6 @@ rollout_2_flight_ps.gif
 combined_gif.gif
 .envrc
 .direnv/
+
+# SCM version
+l2ws/_version.py
