@@ -3,7 +3,7 @@ import numpy as np
 import cvxpy as cp
 import yaml
 from l2ws.launcher import Workspace
-from examples.solve_script import gd_setup_script
+from l2ws.examples.solve_script import gd_setup_script
 import os
 
 

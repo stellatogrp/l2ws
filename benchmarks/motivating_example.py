@@ -13,8 +13,8 @@ import pandas as pd
 import math
 import matplotlib.colors as mcolors
 from l2ws.utils.data_utils import recover_last_datetime
-from examples.robust_kalman import multiple_random_robust_kalman
-from examples.sparse_pca import multiple_random_sparse_pca
+from l2ws.examples.robust_kalman import multiple_random_robust_kalman
+from l2ws.examples.sparse_pca import multiple_random_sparse_pca
 from l2ws.scs_problem import scs_jax
 from l2ws.algo_steps import k_steps_train_scs, lin_sys_solve, create_M, create_projection_fn, get_scaled_vec_and_factor
 import pdb

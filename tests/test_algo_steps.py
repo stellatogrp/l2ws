@@ -1,7 +1,7 @@
 import time
-from examples.robust_ls import random_robust_ls
-from examples.sparse_pca import multiple_random_sparse_pca
-from examples.robust_kalman import multiple_random_robust_kalman
+from l2ws.examples.robust_ls import random_robust_ls
+from l2ws.examples.sparse_pca import multiple_random_sparse_pca
+from l2ws.examples.robust_kalman import multiple_random_robust_kalman
 import jax.numpy as jnp
 from l2ws.scs_problem import scs_jax
 import scs
