@@ -31,8 +31,9 @@ dependencies = [
     "trajax @ git+https://github.com/google/trajax",
 ]
 
-[tool.setuptools]
-packages = ["l2ws"]
+[tool.setuptools.packages.find]
+include = ["l2ws*"]
+exclude = ["tutorials*", "benchmarks*", "tests*"]
 
 [tool.setuptools_scm]
 # To infer version automatically from git
