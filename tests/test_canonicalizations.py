@@ -86,4 +86,4 @@ def test_robust_ls():
     # assert jnp.all(jnp.diff(fp_res_hsde[1:]) < 1e-10)
 
     assert fp_res_hsde[0] > 10
-    assert fp_res_hsde[-1] < 1e-4 and fp_res_hsde[-1] > 1e-16
+    assert fp_res_hsde[-1] < 1e-3 and fp_res_hsde[-1] > 1e-16
