@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "l2ws"
+description="A package for warm-starting optimization algorithms, using data."
+readme = "README.md"
+license = {text = "Apache 2.0"}
+dynamic = ["version"]
+authors = [
+{name = "Rajiv Samvbharya", email="rajivs@princeton.edu"},
+{name = "Brandon Amos", email="bda@meta.com"},
+{name = "Georgina Hall", email="georgina.hall@insead.edu"},
+{name = "Bartolomeo Stellato", email="bstellato@princeton.edu"}
+]
+dependencies = [
+    "numpy",
+    "scipy",
+    "cvxpy>=1.3.0",
+    "matplotlib",
+    "jax",
+    "jaxopt",
+    "optax",
+    "matplotlib",
+    # TODO: these dependenceis are not necessary to run the package, we should remove them or move them to dev below. They should not be imported by default though
+    "pandas", "jupyterlab", "hydra-core",
+    # TODO: these dependencies are problem-specific. We should remove them
+    "quandl", 
+    "trajax @ git+https://github.com/google/trajax",
+]
+
+[tool.setuptools]
+packages = ["l2ws"]
+
+[tool.setuptools_scm]
+# To infer version automatically from git
+write_to = "l2ws/_version.py"
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "ruff-lsp", "black"]
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+
+[tool.ruff]
+select = ["E", "F", "I"]
+line-length = 100
+exclude = ["build", "examples", "instances", "docs", "*__init__.py"]
+target-version = "py310"
+
+[tool.pytest.ini_options]
+# Add root path to include examples/ folder
+pythonpath = ["."]
