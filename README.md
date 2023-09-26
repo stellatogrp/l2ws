@@ -17,7 +17,7 @@ We introduce a machine-learning framework to warm-start fixed-point optimization
 ## Installation
 To install the package, run
 ```
-pip install l2ws
+$ pip install git+https://github.com/stellatogrp/l2ws
 ```
 
 ## Getting started
