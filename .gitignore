@@ -154,6 +154,9 @@ rollout_2_flight_nn.gif
 rollout_2_flight_ps_old.gif
 rollout_2_flight_ps.gif
 combined_gif.gif
+perturb_plots/*
+
+# Direnv
 .envrc
 .direnv/
 
