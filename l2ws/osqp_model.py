@@ -1,13 +1,12 @@
-from l2ws.l2ws_model import L2WSmodel
-import time
-import jax.numpy as jnp
-from l2ws.algo_steps import k_steps_eval_osqp, k_steps_train_osqp, vec_symm, unvec_symm
 from functools import partial
-from jax import vmap, jit
-import osqp
+
+import jax.numpy as jnp
 import numpy as np
+import osqp
 from scipy.sparse import csc_matrix
-from scipy import sparse
+
+from l2ws.algo_steps import k_steps_eval_osqp, k_steps_train_osqp, unvec_symm
+from l2ws.l2ws_model import L2WSmodel
 
 
 class OSQPmodel(L2WSmodel):
@@ -67,7 +66,7 @@ class OSQPmodel(L2WSmodel):
         def k_steps_train_osqp_dynamic(k, z0, q, factor, supervised, z_star):
             nc2 = int(n * (n + 1) / 2)
             q_bar = q[:2 * m + n]
-            P = unvec_symm(q[2 * m + n: 2 * m + n + nc2], n)
+            unvec_symm(q[2 * m + n: 2 * m + n + nc2], n)
             A = jnp.reshape(q[2 * m + n + nc2:], (m, n))
             return k_steps_train_osqp(k=k, z0=z0, q=q_bar,
                                       factor=factor, A=A, rho=self.rho, sigma=self.sigma,

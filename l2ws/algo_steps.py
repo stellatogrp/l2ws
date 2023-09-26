@@ -1,9 +1,11 @@
-import jax.numpy as jnp
-from jax import lax, vmap, jit, grad
-from l2ws.utils.generic_utils import vec_symm, unvec_symm
 from functools import partial
+
+import jax.numpy as jnp
 import jax.scipy as jsp
-from l2ws.utils.generic_utils import python_fori_loop
+from jax import grad, jit, lax, vmap
+
+from l2ws.utils.generic_utils import python_fori_loop, unvec_symm, vec_symm
+
 TAU_FACTOR = 10
 
 

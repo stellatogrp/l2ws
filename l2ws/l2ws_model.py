@@ -1,19 +1,19 @@
-from jax import jit, vmap
-import jax.numpy as jnp
-from jax import random
-import optax
-import time
-from jaxopt import OptaxSolver
-from l2ws.utils.nn_utils import init_network_params, \
-    predict_y, batched_predict_y
-from l2ws.utils.generic_utils import unvec_symm
-import numpy as np
-from jax.config import config
-from scipy.spatial import distance_matrix
 import logging
+import time
+
 # from l2ws.algo_steps import k_steps_train, k_steps_eval, lin_sys_solve, k_steps_train_ista, k_steps_eval_ista
 from functools import partial
-from l2ws.algo_steps import lin_sys_solve, create_train_fn, create_eval_fn
+
+import jax.numpy as jnp
+import numpy as np
+import optax
+from jax import jit, random, vmap
+from jax.config import config
+from jaxopt import OptaxSolver
+
+from l2ws.algo_steps import create_eval_fn, create_train_fn, lin_sys_solve
+from l2ws.utils.nn_utils import init_network_params, predict_y
+
 # from l2ws.scs_model import SCSmodel
 # from l2ws.scs_model import SCSmodel
 config.update("jax_enable_x64", True)
@@ -116,9 +116,8 @@ class L2WSmodel(object):
             if self.algo == 'scs':
                 # q = lin_sys_solve(self.factor, q)
                 q = lin_sys_solve(factor, q)
-                hsde = self.hsde
             else:
-                hsde = False
+                pass
             # z0, alpha = self.predict_warm_start(params, input, bypass_nn, hsde=hsde)
             z0 = self.predict_warm_start(params, input, bypass_nn)
 

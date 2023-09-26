@@ -1,11 +1,10 @@
+import logging
+
+import jax
+import jax.numpy as jnp
 import numpy as np
 from scipy import sparse
-import jax.numpy as jnp
-from scipy.sparse import csc_matrix
-import jax.scipy as jsp
-import logging
 from trajax import integrators
-import jax
 
 log = logging.getLogger(__name__)
 
@@ -78,7 +77,7 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, u0, dynamics, system_co
     # m = T * (2 * nx + 2 * nu)
     prev_sol = jnp.zeros(m + n)
 
-    u00 = jnp.array([9.8, 0, 0, 0])
+    jnp.array([9.8, 0, 0, 0])
 
     violations = 0
     diffs = np.zeros(sim_len)

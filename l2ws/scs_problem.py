@@ -1,11 +1,17 @@
-import jax.scipy as jsp
-import jax.numpy as jnp
 import cvxpy as cp
-from matplotlib import pyplot as plt
-from jax import random
 import jax
-from l2ws.algo_steps import create_M, create_projection_fn, lin_sys_solve, \
-    extract_sol, k_steps_eval_scs, get_scale_vec, get_scaled_vec_and_factor
+import jax.numpy as jnp
+from jax import random
+from matplotlib import pyplot as plt
+
+from l2ws.algo_steps import (
+    create_M,
+    create_projection_fn,
+    extract_sol,
+    get_scaled_vec_and_factor,
+    k_steps_eval_scs,
+    lin_sys_solve,
+)
 
 
 class SCSinstance(object):

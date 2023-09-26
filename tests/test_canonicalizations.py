@@ -1,10 +1,10 @@
+import cvxpy as cp
+import jax.numpy as jnp
+import numpy as np
+
 from l2ws.examples.robust_ls import multiple_random_robust_ls
 from l2ws.examples.sparse_pca import multiple_random_sparse_pca
-from l2ws.examples.phase_retrieval import multiple_random_phase_retrieval
-import jax.numpy as jnp
 from l2ws.scs_problem import scs_jax
-import numpy as np
-import cvxpy as cp
 
 
 def test_phase_retrieval():

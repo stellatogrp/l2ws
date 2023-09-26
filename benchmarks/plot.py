@@ -1,18 +1,14 @@
-from cProfile import label
-import matplotlib.pyplot as plt
-from pandas import read_csv
 import sys
-import jax.numpy as jnp
-import pdb
-import yaml
-import os
-from pathlib import Path
+
 import hydra
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import math
-import matplotlib.colors as mcolors
+import yaml
+from pandas import read_csv
+
 from l2ws.utils.data_utils import recover_last_datetime
+
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
@@ -225,7 +221,6 @@ def quadcopter_plot_eval_iters(cfg):
 @hydra.main(config_path='configs/all', config_name='plot.yaml')
 def plot_l4dc(cfg):
     orig_cwd = hydra.utils.get_original_cwd()
-    examples = []
     fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(18, 6), sharey=True)
     axes[0].set_yscale('log')
     axes[1].set_yscale('log')
@@ -360,7 +355,6 @@ def determine_scs_or_osqp(example):
 def get_all_data(example, cfg, train=False):
     # setup
     orig_cwd = hydra.utils.get_original_cwd()
-    eval_iters = cfg.eval_iters
 
     # get the datetimes
     learn_datetimes = cfg.output_datetimes
@@ -589,11 +583,9 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
     note that we do not explicitly care about the k values
         we will manually create the legend in latex later
     """
-    fig_width = 9
     fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(20, 12), sharey='row')
     # fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(30, 13), sharey='row')
     # fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(18, 12), sharey='row')
-    plt_titles = ['fixed-point residuals', 'gain to cold start']
 
     # for i in range(2):
 
@@ -736,7 +728,6 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
     for i in range(2):
         # fig_width = 9
         fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(18, 12), sharey='row') #, sharey=True)
-        plt_titles = ['fixed-point residuals', 'gain to cold start']
 
         # for i in range(2):
 
@@ -1056,7 +1047,7 @@ def plot_eval_iters(example, cfg, train=False):
     last_column = naive_ws_df['nearest_neighbor']
     # plt.plot(last_column[:eval_iters], 'm-.', label='naive warm start')
     plt.plot(last_column[:eval_iters], 'm-.', label='nearest neighbor')
-    second_derivs_naive_ws = second_derivative_fn(np.log(last_column[:eval_iters]))
+    second_derivative_fn(np.log(last_column[:eval_iters]))
     df_acc = update_acc(df_acc, accs, 'naive_ws', last_column[:eval_iters])
 
     # pretraining
@@ -1135,9 +1126,9 @@ def plot_eval_iters(example, cfg, train=False):
         for plot 2: ignore no-learning, pretraining
     '''
     # plot 1
-    plt.plot(second_derivs_no_learn[5:], label=f"no learning")
+    plt.plot(second_derivs_no_learn[5:], label="no learning")
     if pretrain_datetime != '':
-        plt.plot(second_derivs_pretrain, label=f"pretraining")
+        plt.plot(second_derivs_pretrain, label="pretraining")
 
     max_second_derivs = np.zeros(len(datetimes))
     for i in range(len(datetimes)):

@@ -1,30 +1,36 @@
-import gc
-from jax.config import config
 import csv
+import gc
 import os
+import time
+from functools import partial
+
+import hydra
+import jax.numpy as jnp
+import jax.scipy as jsp
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from l2ws.l2ws_model import L2WSmodel
+import scs
+from jax import lax, vmap
+from jax.config import config
+from scipy.sparse import csc_matrix, load_npz
+from scipy.spatial import distance_matrix
+
+from l2ws.algo_steps import (
+    create_projection_fn,
+    form_osqp_matrix,
+    get_psd_sizes,
+    unvec_symm,
+    vec_symm,
+)
+from l2ws.eg_model import EGmodel
 from l2ws.gd_model import GDmodel
 from l2ws.ista_model import ISTAmodel
 from l2ws.osqp_model import OSQPmodel
 from l2ws.scs_model import SCSmodel
-from l2ws.eg_model import EGmodel
-import jax.numpy as jnp
-import jax.scipy as jsp
-from jax import lax, jit
-import hydra
-import time
-from scipy.spatial import distance_matrix
-from l2ws.algo_steps import create_projection_fn, get_psd_sizes, vec_symm, form_osqp_matrix, unvec_symm
-from l2ws.utils.generic_utils import sample_plot, setup_permutation, count_files_in_directory
-import scs
-from scipy.sparse import csc_matrix
-from functools import partial
-from scipy.sparse import csc_matrix, save_npz, load_npz
+from l2ws.utils.generic_utils import count_files_in_directory, sample_plot, setup_permutation
 from l2ws.utils.mpc_utils import closed_loop_rollout
-from jax import vmap
+
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
@@ -634,7 +640,7 @@ class Workspace:
         z_all = out_train[2]
 
         if isinstance(self.l2ws_model, SCSmodel):
-            u_all = out_train[6]
+            out_train[6]
         # u_all = out_train[0][3]
         # z_all = out_train[0][0]
         # self.plot_warm_starts(u_all, z_all, train, col)
@@ -862,7 +868,7 @@ class Workspace:
         qp_solver = partial(self.qp_solver, dt=dt, cd0=cd0, nx=nx, method=col,
                             static_canon_mpc_osqp_partial=static_canon_mpc_osqp_partial)
 
-        num_goals = ref_traj_tensor.shape[1]
+        ref_traj_tensor.shape[1]
         N_train = self.thetas_train.shape[0]
         # num_train_rollouts = int(N_train / (rollout_length - T))
         num_train_rollouts = int(N_train / (rollout_length))

@@ -1,15 +1,11 @@
-import time
-from l2ws.examples.robust_ls import random_robust_ls, multiple_random_robust_ls
 import jax.numpy as jnp
-from l2ws.scs_problem import scs_jax
-import scs
 import numpy as np
+import scs
 from scipy.sparse import csc_matrix
-from l2ws.l2ws_model import L2WSmodel
+
+from l2ws.algo_steps import create_M, create_projection_fn, get_scaled_vec_and_factor
+from l2ws.examples.robust_ls import multiple_random_robust_ls
 from l2ws.scs_model import SCSmodel
-from l2ws.algo_steps import create_projection_fn, create_M, get_scaled_vec_and_factor
-import jax.scipy as jsp
-import matplotlib.pyplot as plt
 
 
 def multiple_random_robust_ls_setup(m_orig, n_orig, rho, b_center, b_range, N_train, N_test, rho_x,

@@ -1,7 +1,7 @@
-from l2ws.l2ws_model import L2WSmodel
-import jax.numpy as jnp
-from l2ws.algo_steps import k_steps_eval_gd, k_steps_train_gd
 from functools import partial
+
+from l2ws.algo_steps import k_steps_eval_gd, k_steps_train_gd
+from l2ws.l2ws_model import L2WSmodel
 
 
 class GDmodel(L2WSmodel):
