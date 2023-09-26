@@ -339,7 +339,29 @@ class L2WSmodel(object):
         elif self.optimizer_method == 'sgd':
             self.optimizer = OptaxSolver(opt=optax.sgd(
                 self.lr), fun=self.loss_fn_train, has_aux=False)
-        self.state = self.optimizer.init_state(self.params)
+        # self.state = self.optimizer.init_state(self.params)
+
+        # Initialize state with first elements of training data as inputs
+        batch_indices = jnp.arange(self.N_train)
+        input_init = self.train_inputs[batch_indices, :]
+        q_init = self.q_mat_train[batch_indices, :]
+        z_stars_init = self.z_stars_train[batch_indices, :] if self.supervised else None
+
+        if self.factors_required and not self.factor_static_bool:
+            batch_factors = (self.factors_train[0][batch_indices, :, :], 
+                             self.factors_train[1][batch_indices, :])
+            self.state = self.optimizer.init_state(init_params=self.params,
+                                                   inputs=input_init,
+                                                   b=q_init,
+                                                   iters=self.train_unrolls,
+                                                   z_stars=z_stars_init,
+                                                   factors=batch_factors)
+        else:
+            self.state = self.optimizer.init_state(init_params=self.params,
+                                                   inputs=input_init,
+                                                   b=q_init,
+                                                   iters=self.train_unrolls,
+                                                   z_stars=z_stars_init)
 
     # def setup_share_all(self, dict):
     #     if self.share_all:

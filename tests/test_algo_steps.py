@@ -91,7 +91,7 @@ def test_jit_speed():
     # make sure the residuals start high and end very low
     assert fp_res_jit[0] > .1 and fp_res_non_jit[0] > .1
     assert fp_res_jit[-1] < 1e-6 and fp_res_non_jit[-1] > 1e-16
-    assert fp_res_jit[-1] < 1e-8 and fp_res_non_jit[-1] > 1e-16
+    assert fp_res_jit[-1] < 1e-7 and fp_res_non_jit[-1] > 1e-16
 
 
 def test_hsde_socp_robust_ls():

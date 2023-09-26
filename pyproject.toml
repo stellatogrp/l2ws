@@ -22,7 +22,7 @@ dependencies = [
     "matplotlib",
     "jax",
     "jaxopt",
-    "optax",
+    "optax==0.1.5",
     "matplotlib",
     # TODO: these dependenceis are not necessary to run the package, we should remove them or move them to dev below. They should not be imported by default though
     "pandas", "jupyterlab", "hydra-core",
@@ -50,7 +50,3 @@ select = ["E", "F", "I"]
 line-length = 100
 exclude = ["build", "examples", "instances", "docs", "*__init__.py"]
 target-version = "py310"
-
-[tool.pytest.ini_options]
-# Add root path to include examples/ folder
-pythonpath = ["."]
