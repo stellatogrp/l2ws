@@ -29,6 +29,8 @@ dependencies = [
     # TODO: these dependencies are problem-specific. We should remove them
     "quandl", 
     "trajax @ git+https://github.com/google/trajax",
+    "emnist",
+    "imageio"
 ]
 
 [tool.setuptools.packages.find]
