@@ -1,13 +1,18 @@
-from l2ws.l2ws_model import L2WSmodel
-import time
-import jax.numpy as jnp
-from l2ws.algo_steps import k_steps_eval_scs, k_steps_train_scs, lin_sys_solve, create_M, get_scaled_vec_and_factor
 from functools import partial
-from jax import vmap, jit
+
+import cvxpy as cp
+import jax.numpy as jnp
 import numpy as np
 import scs
 from scipy.sparse import csc_matrix
-import cvxpy as cp
+
+from l2ws.algo_steps import (
+    create_M,
+    get_scaled_vec_and_factor,
+    k_steps_eval_scs,
+    k_steps_train_scs,
+)
+from l2ws.l2ws_model import L2WSmodel
 
 
 class SCSmodel(L2WSmodel):
@@ -124,8 +129,10 @@ class SCSmodel(L2WSmodel):
 
         # q = q_mat[0, :]
         # c, l, u = np.zeros(n), np.zeros(m), np.zeros(m)
-        # osqp_solver.setup(P=P_sparse, q=c, A=A_sparse, l=l, u=u, alpha=1, rho=1, sigma=1, polish=False,
-        #                   adaptive_rho=False, scaling=0, max_iter=max_iter, verbose=True, eps_abs=abs_tol, eps_rel=rel_tol)
+        # osqp_solver.setup(P=P_sparse, q=c, A=A_sparse, l=l, u=u, alpha=1, 
+        #                   rho=1, sigma=1, polish=False,
+        #                   adaptive_rho=False, scaling=0, max_iter=max_iter, 
+        #                   verbose=True, eps_abs=abs_tol, eps_rel=rel_tol)
 
         num = z0_mat.shape[0]
         solve_times = np.zeros(num)
@@ -212,7 +219,7 @@ def solve_cvxpy_get_params(prob, cp_param, theta_values):
     y_stars = np.zeros((N, m))
     for i in range(N):
         cp_param.value = theta_values[i]
-        sol = prob.solve()
+        prob.solve()
         data, _, __ = prob.get_problem_data(cp.SCS)
         c, b = data['c'], data['b']
 

@@ -1,25 +1,22 @@
-from cProfile import label
-import matplotlib.pyplot as plt
-from pandas import read_csv
-import sys
-import jax.numpy as jnp
-import pdb
-import yaml
 import os
-from pathlib import Path
-import hydra
-import numpy as np
-import pandas as pd
-import math
-import matplotlib.colors as mcolors
-from l2ws.utils.data_utils import recover_last_datetime
-from examples.robust_kalman import multiple_random_robust_kalman
-from examples.sparse_pca import multiple_random_sparse_pca
-from l2ws.scs_problem import scs_jax
-from l2ws.algo_steps import k_steps_train_scs, lin_sys_solve, create_M, create_projection_fn, get_scaled_vec_and_factor
-import pdb
-import jax
+
 import imageio
+import jax
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+
+from l2ws.algo_steps import (
+    create_M,
+    create_projection_fn,
+    get_scaled_vec_and_factor,
+    k_steps_train_scs,
+    lin_sys_solve,
+)
+from l2ws.examples.robust_kalman import multiple_random_robust_kalman
+from l2ws.examples.sparse_pca import multiple_random_sparse_pca
+from l2ws.scs_problem import scs_jax
+
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
@@ -49,9 +46,7 @@ def contractive_plot():
     rho_x, scale, alpha, max_iters = 1, 1, 1, 500
     sol_hsde = scs_jax(data, hsde=True, iters=max_iters, jit=False,
                        rho_x=rho_x, scale=scale, alpha=alpha, plot=False)
-    x_jax, y_jax, s_jax = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
     fp_res_hsde = sol_hsde['fixed_point_residuals']
-    # plt.plot(fp_res_hsde)
     beta = (fp_res_hsde[200] / fp_res_hsde[100]) ** (.01)
 
     deltas = [1,10]
@@ -78,7 +73,6 @@ def linearly_regular_plot():
     rho_x, scale, alpha, max_iters = 1, 1, 1, 210
     sol_hsde = scs_jax(data, hsde=True, iters=max_iters, jit=False,
                        rho_x=rho_x, scale=scale, alpha=alpha, plot=False)
-    x_jax, y_jax, s_jax = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
     fp_res_hsde = sol_hsde['fixed_point_residuals']
     # plt.plot(fp_res_hsde)
     beta = (fp_res_hsde[200] / fp_res_hsde[100]) ** (.01)
@@ -104,9 +98,9 @@ def averaged_plot():
     P, A, cones, q_mat, theta_mat_jax, A_tensor = multiple_random_sparse_pca(
         n_orig=30, k=10, r=10, N=5)
     m, n = A.shape
-    c, b = q_mat[0, :n], q_mat[0, n:]
+    # c, d = q_mat[0, :n], q_mat[0, n:]
     
-    rho_x, scale, alpha, max_iters = 1, 1, 1, 500
+    rho_x, scale, _, max_iters = 1, 1, 1, 500
 
     zero_cone_size = cones['z']
 
@@ -114,7 +108,7 @@ def averaged_plot():
     hsde = True
 
     factor, scale_vec = get_scaled_vec_and_factor(M, rho_x, scale, m, n, zero_cone_size,
-                                                       hsde=hsde)
+                                                  hsde=hsde)
     q_r = lin_sys_solve(factor, q_mat[0, :])
     proj = create_projection_fn(cones, n)
 
@@ -125,22 +119,24 @@ def averaged_plot():
     jit = True
     z_star = None
     z0 = jnp.ones(m + n + 1)
-    q = q_mat[0, :]
-    eval_out = k_steps_train_scs(2000, z0, q_r, factor, supervised, z_star, proj, jit, hsde, m, n, zero_cone_size)
+    q_mat[0, :]
+    eval_out = k_steps_train_scs(2000, z0, q_r, factor, supervised, z_star, 
+                                 proj, jit, hsde, m, n, zero_cone_size)
     z_star, iter_losses = eval_out
 
     supervised = True
     z0 = jnp.ones(m + n + 1)
-    eval_out_sup = k_steps_train_scs(max_iters, z0, q_r, factor, supervised, z_star, proj, jit, hsde, m, n, zero_cone_size)
+    eval_out_sup = k_steps_train_scs(max_iters, z0, q_r, factor, supervised, z_star, 
+                                     proj, jit, hsde, m, n, zero_cone_size)
     z_final, opt_losses = eval_out_sup
 
     supervised = False
-    eval_out = k_steps_train_scs(max_iters, z0, q_r, factor, supervised, z_star, proj, jit, hsde, m, n, zero_cone_size)
+    eval_out = k_steps_train_scs(max_iters, z0, q_r, factor, supervised, z_star, 
+                                 proj, jit, hsde, m, n, zero_cone_size)
     z_star, iter_losses = eval_out
     import pdb
     pdb.set_trace()
 
-    # x_jax, y_jax, s_jax = sol_hsde['x'], sol_hsde['y'], sol_hsde['s']
 
 
 def create_toy_example(gif=False):
@@ -211,7 +207,8 @@ def create_toy_example(gif=False):
     # turn off axes and show xstar
     # plt.scatter(0, 0)
     plt.scatter(np.zeros(1), np.zeros(1), marker='x', color='black', s=1000)
-    ax.text(-1.5, -1, r'$z^\star$', fontsize=48, verticalalignment='center', horizontalalignment='center')
+    ax.text(-1.5, -1, r'$z^\star$', fontsize=48, verticalalignment='center', 
+            horizontalalignment='center')
     plt.axis('off')
     
     plt.tight_layout()
@@ -254,7 +251,8 @@ def create_toy_example(gif=False):
     # turn off axes and show xstar
     # plt.scatter(0, 0)
     axs[0].scatter(np.zeros(1), np.zeros(1), marker='*', color='black', s=500)
-    axs[0].text(-2, -1, r'$z^\star$', fontsize=24, verticalalignment='center', horizontalalignment='center')
+    axs[0].text(-2, -1, r'$z^\star$', fontsize=24, verticalalignment='center', 
+                horizontalalignment='center')
     axs[0].axis('off')
 
     # fill the non-negative orthant
@@ -325,7 +323,7 @@ def create_toy_example(gif=False):
             plt.clf()
 
         # create the gif
-        with imageio.get_writer(f"motivating_example/paths.gif", mode='I') as writer:
+        with imageio.get_writer("motivating_example/paths.gif", mode='I') as writer:
             for filename in filenames:
                 image = imageio.imread(filename)
                 writer.append_data(image)
@@ -363,7 +361,7 @@ def run_prox_gd(x_init, grad, step_size, num_steps):
 
 def combine_gifs():
     import imageio
-    import numpy as np    
+    import numpy as np
     from PIL import Image, ImageDraw, ImageFont
 
     #Create reader object for the gif
@@ -377,7 +375,6 @@ def combine_gifs():
     #Create writer object
     new_gif = imageio.get_writer('output.gif')
 
-    captions = ["Caption 1", "Caption 2", "Caption 3"]
 
     for frame_number in range(number_of_frames):
         img1 = gif1.get_next_data()
@@ -388,9 +385,8 @@ def combine_gifs():
 
         # Add captions to the new_image using Pillow
         pil_image = Image.fromarray(new_image)
-        draw = ImageDraw.Draw(pil_image)
-        font = ImageFont.load_default()
-        font_size = 48
+        ImageDraw.Draw(pil_image)
+        ImageFont.load_default()
         # font = ImageFont.truetype("arial.ttf", font_size)
         # caption = captions[frame_number] if frame_number < len(captions) else ""
         # caption = captions[0]
@@ -465,7 +461,8 @@ def combine_gifs():
 
     # # Caption for GIF 3
     # caption3 = "Caption for GIF 3"
-    # draw.text((gif1.width + gif2.width + 10, combined_height - 20), caption3, fill="white", font=font)
+    # draw.text((gif1.width + gif2.width + 10, combined_height - 20), caption3, 
+    #           fill="white", font=font)
 
     # # Save the combined GIF with captions
     # combined_gif.save("combined_with_captions.gif")

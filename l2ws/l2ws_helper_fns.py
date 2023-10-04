@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 from jax import lax
 
+
 def train_jitted_epochs(model, permutation, num_batches, epochs_jit, epoch=0):
     """
     train self.epochs_jit at a time

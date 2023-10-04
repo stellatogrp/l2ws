@@ -1,4 +1,4 @@
-# l2ws_fixed_point
+# L2WS
 This repository is by
 [Rajiv Sambharya](https://rajivsambharya.github.io/),
 [Georgina Hall](https://sites.google.com/view/georgina-hall),
@@ -6,23 +6,32 @@ This repository is by
 and [Bartolomeo Stellato](https://stellato.io/),
 and contains the Python source code to
 reproduce the experiments in our paper
-"[Learning to Warm-Start Fixed-Point Optimization Algorithms]()."
+"[Learning to Warm-Start Fixed-Point Optimization Algorithms](https://arxiv.org/pdf/2309.07835.pdf)."
+For an earlier conference version targeting QPs only, check out [this repo](https://github.com/stellatogrp/l2ws_qp).
 
-If you find this repository helpful in your publications,
-please consider citing our paper.
+If you find this repository helpful in your publications, please consider citing our papers.
 
 # Abstract
 We introduce a machine-learning framework to warm-start fixed-point optimization algorithms. Our architecture consists of a neural network mapping problem parameters to warm starts, followed by a predefined number of fixed-point iterations. We propose two loss functions designed to either minimize the fixed-point residual or the distance to a ground truth solution. In this way, the neural network predicts warm starts with the end-to-end goal of minimizing the downstream loss. An important feature of our architecture is its flexibility, in that it can predict a warm start for fixed-point algorithms run for any number of steps, without being limited to the number of steps it has been trained on. We provide PAC- Bayes generalization bounds on unseen data for common classes of fixed-point operators: contractive, linearly convergent, and averaged. Applying this framework to well-known applications in control, statistics, and signal processing, we observe a significant reduction in the number of iterations and solution time required to solve these problems, through learned warm starts.
 
-## Dependencies
-Install dependencies with
+## Installation
+To install the package, run
 ```
-pip install -r requirements.txt
+$ pip install git+https://github.com/stellatogrp/l2ws
 ```
 
-## Instructions
+## Getting started
+
+### Intro tutorials
+You can find introductory tutorials on how to use `l2ws` in the folder `tutorials/`.
+
+
 ### Running experiments
-Experiments can from the root folder using the commands below for the quadcopter example.
+To download the experiments, you should clone this repository with
+```
+git clone https://github.com/stellatogrp/l2ws_fixed_point.git
+```
+Experiments can from the `benchmarks/` folder using the commands below:
 ```
 python l2ws_setup.py <example> local
 python l2ws_train.py <example> local
@@ -42,7 +51,7 @@ sparse_pca
 ```
 
 ***
-### ```l2ws_setup.py```
+#### ```l2ws_setup.py```
 
 The first script ```l2ws_setup.py``` creates all of the problem instances and solves them.
 The number of problems that are being solved is set in the setup config file.
@@ -55,7 +64,7 @@ outputs/quadcopter/data_setup_outputs/2022-06-03/14-54-32/
 ```
 
 ***
-### ```l2ws_train.py```
+#### ```l2ws_train.py```
 
 The second script ```l2ws_train.py``` does the actual training using the output from the prevous setup command.
 In particular, in the config file, it takes a datetime that points to the setup output.
@@ -102,9 +111,9 @@ In the train config file, we can set the accuracies that we set OSQP and SCS to 
 
 
 ***
-### ```plot_script.py```
+#### ```plot.py```
 
-The third script ```plot_script.py``` plots the results across many different training runs.
+The third script ```plot.py``` plots the results across many different training runs.
 Each train run creates a new folder 
 ```
 outputs/quadcopter/plots/2022-06-04/15-14-05/
@@ -125,7 +134,7 @@ We automatically use the most recent output after each stage, but the specific d
 # Important files in the backend
 To reproduce our results, this part is not needed.
 
-- The ```examples``` folder holds the code for each of the numerical experiments we run. The main purpose is to be used in conjunction with the ```l2ws_setup_script.py```.
+- The ```l2ws/examples``` folder holds the code for each of the numerical experiments we run. The main purpose is to be used in conjunction with the ```l2ws_setup.py```.
 
 - An important note is that the code is set to periodically evaluate the train and test sets; this is set in the ```eval_every_x_epochs``` entry in the run config file.
 When we evaluate, the fixed-point curves are updated (see the above files for the run config).

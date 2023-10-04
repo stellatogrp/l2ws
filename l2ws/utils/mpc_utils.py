@@ -1,21 +1,21 @@
+import logging
+
+import jax
+import jax.numpy as jnp
 import numpy as np
 from scipy import sparse
-import jax.numpy as jnp
-from scipy.sparse import csc_matrix
-import jax.scipy as jsp
-import logging
 from trajax import integrators
-import jax
 
 log = logging.getLogger(__name__)
 
 
-def closed_loop_rollout(qp_solver, sim_len, x_init_traj, u0, dynamics, system_constants, ref_traj_dict, budget, noise_list):
+def closed_loop_rollout(qp_solver, sim_len, x_init_traj, u0, dynamics, 
+                        system_constants, ref_traj_dict, budget, noise_list):
     """
     Runs a closed loop rollout for a control problem where we solve an mpc problem at each iteration
         and run the first control input
-    The policy is given by the qp_solver which runs a first order method (osqp or scs) with a fixed number of steps
-        which we specify as the budget
+    The policy is given by the qp_solver which runs a first order method (osqp or scs) with 
+        a fixed number of steps which we specify as the budget
 
     The ode gives the dynamics of the system
         - to solve the mpc problem we linearize the dynamics from the current point
@@ -23,14 +23,16 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, u0, dynamics, system_co
         - want to linearize around x0, u0: use automatic differentiation
 
     implements a closed loop rollout of the mpc problem
-    min .5 \sum_{t=0]^{T-1} (x_t - x_t^ref)^T Q (x_t - x_t^ref) + (x_T - x_T^ref)^T Q (x_T - x_T^ref)
+    min .5 \sum_{t=0]^{T-1} (x_t - x_t^ref)^T Q (x_t - x_t^ref) + 
+            (x_T - x_T^ref)^T Q (x_T - x_T^ref)
         s.t. x_{t+1} = f(x)
 
     arguments
     qp_solver: input: A, B, x0, u0, ref_traj, budget
-        output: qp solution - primal and dual solutions stacked together (i.e. the z vector that is used as the fixed point)
-        important: the qp_solver must already be customized to work with the lower and upper bounds of x and u
-            and the cost matrices Q, QT, and R must already be set
+        output: qp solution - primal and dual solutions stacked together 
+        (i.e. the z vector that is used as the fixed point)
+        important: the qp_solver must already be customized to work with the 
+        lower and upper bounds of x and u and the cost matrices Q, QT, and R must already be set
 
     system_constants: dictionary that includes (T, nx, nu, x_min, x_max, u_min, u_max, dt)
         T: mpc horizon length
@@ -78,7 +80,7 @@ def closed_loop_rollout(qp_solver, sim_len, x_init_traj, u0, dynamics, system_co
     # m = T * (2 * nx + 2 * nu)
     prev_sol = jnp.zeros(m + n)
 
-    u00 = jnp.array([9.8, 0, 0, 0])
+    jnp.array([9.8, 0, 0, 0])
 
     violations = 0
     diffs = np.zeros(sim_len)
@@ -207,60 +209,63 @@ def get_curr_ref_traj(ref_traj_dict, t, obstacle_num, T):
     elif ref_traj_dict['case'] == 'loop_path':
         return ref_traj_dict['traj_list'][t: t + T]
 
-def simulate_fwd_l2ws(sim_len, l2ws_model, k, noise_vec_list, q_init, x_init, A, Ad, Bd, T, nx, nu, prev_sol=False):
-    """
-    does the forward simulation
-
-    returns
-    """
-    m, n = A.shape
-    # get the first test_input and q_mat_test
-    input = x_init
-    q_mat = q_init
-
-    opt_sols = []
-    state_traj = [x_init]
-
-    opt_sol = np.zeros(n + 2 * m)
-
-    for i in range(sim_len):
-        # evaluate
-        if prev_sol:
-            # get the shifted previous solution
-            prev_z_shift = shifted_sol(opt_sol[:m + n], T, nx, nu, m, n)
-            final_eval_out = l2ws_model.evaluate(
-                k, prev_z_shift[None, :], q_mat[None, :], z_stars=None, fixed_ws=True, tag='test')
-            # z_star = final_eval_out[1][2][0, -1, :]
-        else:
-            final_eval_out = l2ws_model.evaluate(
-                k, input[None, :], q_mat[None, :], z_stars=None, fixed_ws=False, tag='test')
-        print('loss', k, prev_sol, final_eval_out[1][0])
-
-        # get the first control input
-        # final_eval_out[1][2] will have shape (1, k, n + 2 * m)
-        opt_sol = final_eval_out[1][2][0, -1, :]
-
-        u0 = opt_sol[T * nx: T * nx + nu]
-
-        # input the first control to get the next state and perturb it
-        x_init = Ad @ x_init + Bd @ u0 + noise_vec_list[i]
-
-        # set test_input and q_mat_test
-        input = x_init
-        c, l, u = q_mat[:n], q_mat[n:n + m], q_mat[n + m:]
-        Ad_x_init = Ad @ x_init
-        l = l.at[:nx].set(-Ad_x_init)
-        u = u.at[:nx].set(-Ad_x_init)
-        q_mat = q_mat.at[n:n + m].set(l)
-        q_mat = q_mat.at[n + m:].set(u)
-
-        # append to the optimal solutions
-        opt_sols.append(opt_sol)
-
-        # append to the state trajectory
-        state_traj.append(x_init)
-
-    return opt_sols, state_traj
+# INFO: I have commented this because shifted_sol was not defined anywhere. 
+# It seems this function is not used anywhere else in the code.
+# def simulate_fwd_l2ws(sim_len, l2ws_model, k, noise_vec_list, q_init, x_init, 
+#                       A, Ad, Bd, T, nx, nu, prev_sol=False):
+#     """
+#     does the forward simulation
+#
+#     returns
+#     """
+#     m, n = A.shape
+#     # get the first test_input and q_mat_test
+#     input = x_init
+#     q_mat = q_init
+#
+#     opt_sols = []
+#     state_traj = [x_init]
+#
+#     opt_sol = np.zeros(n + 2 * m)
+#
+#     for i in range(sim_len):
+#         # evaluate
+#         if prev_sol:
+#             # get the shifted previous solution
+#             prev_z_shift = shifted_sol(opt_sol[:m + n], T, nx, nu, m, n)
+#             final_eval_out = l2ws_model.evaluate(
+#                 k, prev_z_shift[None, :], q_mat[None, :], z_stars=None, fixed_ws=True, tag='test')
+#             # z_star = final_eval_out[1][2][0, -1, :]
+#         else:
+#             final_eval_out = l2ws_model.evaluate(
+#                 k, input[None, :], q_mat[None, :], z_stars=None, fixed_ws=False, tag='test')
+#         print('loss', k, prev_sol, final_eval_out[1][0])
+#
+#         # get the first control input
+#         # final_eval_out[1][2] will have shape (1, k, n + 2 * m)
+#         opt_sol = final_eval_out[1][2][0, -1, :]
+#
+#         u0 = opt_sol[T * nx: T * nx + nu]
+#
+#         # input the first control to get the next state and perturb it
+#         x_init = Ad @ x_init + Bd @ u0 + noise_vec_list[i]
+#
+#         # set test_input and q_mat_test
+#         input = x_init
+#         c, l, u = q_mat[:n], q_mat[n:n + m], q_mat[n + m:]  # noqa
+#         Ad_x_init = Ad @ x_init
+#         l = l.at[:nx].set(-Ad_x_init)
+#         u = u.at[:nx].set(-Ad_x_init)
+#         q_mat = q_mat.at[n:n + m].set(l)
+#         q_mat = q_mat.at[n + m:].set(u)
+#
+#         # append to the optimal solutions
+#         opt_sols.append(opt_sol)
+#
+#         # append to the state trajectory
+#         state_traj.append(x_init)
+#
+#     return opt_sols, state_traj
 
 
 def extract_first_control(sol, T, nx, nu, control_num=0):
@@ -271,7 +276,8 @@ def static_canon_mpc_osqp(x_ref, x0, Ad, Bd, cd, T, nx, nu, x_min, x_max, u_min,
                           delta_u=None, u_prev=None):
     """
     given the mpc problem
-    min (x_t - x_t^{ref})^T Q_T (x_t - x_t^{ref}) + sum_{i=1}^{T-1} (x_t - x_t^{ref})^T Q (x_t - x_t^{ref}) + u_t^T R u_t
+    min (x_t - x_t^{ref})^T Q_T (x_t - x_t^{ref}) + 
+             sum_{i=1}^{T-1} (x_t - x_t^{ref})^T Q (x_t - x_t^{ref}) + u_t^T R u_t
         s.t. x_{t+1} = Ad x_t + Bd u_t
              x_min <= x_t <= x_max
              u_min <= u_t <= u_max
@@ -397,8 +403,8 @@ def static_canon_mpc_osqp(x_ref, x0, Ad, Bd, cd, T, nx, nu, x_min, x_max, u_min,
     cd_tiled = np.tile(cd, T)
     beq = beq - cd_tiled
 
-    l = np.hstack([beq, b_lower])
-    u = np.hstack([beq, b_upper])
+    l = np.hstack([beq, b_lower])  # noqa
+    u = np.hstack([beq, b_upper])  # noqa
 
     cones = dict(z=T * nx, l=2 * (T * nx + T * nu))
 

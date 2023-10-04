@@ -18,7 +18,7 @@ import pandas as pd
 import matplotlib.colors as mc
 import colorsys
 from l2ws.algo_steps import get_scaled_vec_and_factor
-from examples.solve_script import setup_script
+from l2ws.examples.solve_script import setup_script
 
 
 plt.rcParams.update(

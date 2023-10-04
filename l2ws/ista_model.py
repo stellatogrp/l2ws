@@ -1,7 +1,10 @@
-from l2ws.l2ws_model import L2WSmodel
-import jax.numpy as jnp
-from l2ws.algo_steps import k_steps_eval_ista, k_steps_train_ista, k_steps_eval_fista, k_steps_train_fista
 from functools import partial
+
+from l2ws.algo_steps import (
+    k_steps_eval_ista,
+    k_steps_train_ista,
+)
+from l2ws.l2ws_model import L2WSmodel
 
 
 class ISTAmodel(L2WSmodel):
@@ -19,6 +22,8 @@ class ISTAmodel(L2WSmodel):
         m, n = A.shape
         self.output_size = n
 
-        self.k_steps_train_fn = partial(k_steps_train_ista, A=A, lambd=lambd, ista_step=ista_step, jit=self.jit)
-        self.k_steps_eval_fn = partial(k_steps_eval_ista, A=A, lambd=lambd, ista_step=ista_step, jit=self.jit)
+        self.k_steps_train_fn = partial(k_steps_train_ista, A=A, lambd=lambd, 
+                                        ista_step=ista_step, jit=self.jit)
+        self.k_steps_eval_fn = partial(k_steps_eval_ista, A=A, lambd=lambd, 
+                                       ista_step=ista_step, jit=self.jit)
         self.out_axes_length = 5

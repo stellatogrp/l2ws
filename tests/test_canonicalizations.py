@@ -1,10 +1,10 @@
-from examples.robust_ls import multiple_random_robust_ls
-from examples.sparse_pca import multiple_random_sparse_pca
-from examples.phase_retrieval import multiple_random_phase_retrieval
-import jax.numpy as jnp
-from l2ws.scs_problem import scs_jax
-import numpy as np
 import cvxpy as cp
+import jax.numpy as jnp
+import numpy as np
+
+from l2ws.examples.robust_ls import multiple_random_robust_ls
+from l2ws.examples.sparse_pca import multiple_random_sparse_pca
+from l2ws.scs_problem import scs_jax
 
 
 def test_phase_retrieval():
@@ -31,7 +31,8 @@ def test_sparse_pca():
     max_iters = 800
     c, b = q_mat[0, :n], q_mat[0, n:]
     data = dict(P=P, A=A, c=c, b=b, cones=cones, x=x_ws, y=y_ws, s=s_ws)
-    sol_hsde = scs_jax(data, hsde=True, rho_x=rho_x, scale=scale, alpha=alpha, iters=max_iters, plot=False)
+    sol_hsde = scs_jax(data, hsde=True, rho_x=rho_x, scale=scale, alpha=alpha, 
+                       iters=max_iters, plot=False)
     x_jax = sol_hsde['x']
     fp_res_hsde = sol_hsde['fixed_point_residuals']
 

@@ -1,16 +1,9 @@
-from fileinput import filename
+import pdb
+
 import numpy as np
 import pandas as pd
-import csv
-import quandl
-import pdb
-import datetime as dt
-import os
-import time
-from get_all_tickers import get_tickers as gt
 import yfinance as yf
-from yahoofinancials import YahooFinancials
-import matplotlib.pyplot as plt
+
 # quandl.ApiConfig.api_key = os.environ['QUANDL_API_KEY']
 
 

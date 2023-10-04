@@ -12,7 +12,7 @@ import cvxpy as cp
 import jax.scipy as jsp
 from l2ws.algo_steps import create_M
 from scipy.sparse import csc_matrix
-from examples.solve_script import setup_script
+from l2ws.examples.solve_script import setup_script
 from l2ws.launcher import Workspace
 from l2ws.algo_steps import get_scaled_vec_and_factor
 

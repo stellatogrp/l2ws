@@ -1,15 +1,11 @@
-import time
-from examples.robust_ls import random_robust_ls, multiple_random_robust_ls
 import jax.numpy as jnp
-from l2ws.scs_problem import scs_jax
-import scs
 import numpy as np
+import scs
 from scipy.sparse import csc_matrix
-from l2ws.l2ws_model import L2WSmodel
+
+from l2ws.algo_steps import create_M, create_projection_fn, get_scaled_vec_and_factor
+from l2ws.examples.robust_ls import multiple_random_robust_ls
 from l2ws.scs_model import SCSmodel
-from l2ws.algo_steps import create_projection_fn, create_M, get_scaled_vec_and_factor
-import jax.scipy as jsp
-import matplotlib.pyplot as plt
 
 
 def multiple_random_robust_ls_setup(m_orig, n_orig, rho, b_center, b_range, N_train, N_test, rho_x,
@@ -115,7 +111,7 @@ def test_minimal_l2ws_model():
     assert final_time_per_iter < .1 * init_time_per_iter
 
     # evaluate the training set for a different number of iterations
-    dynamic_factor, M_dynamic = None, None
+    # dynamic_factor, M_dynamic = None, None
     # loss, eval_out, time_per_prob = l2ws_model.evaluate(300, train_inputs, dynamic_factor,
     #                                                     M_dynamic, q_mat_train,
     #                                                     z_stars=None, fixed_ws=False, tag='train')
@@ -123,7 +119,7 @@ def test_minimal_l2ws_model():
                                                         z_stars=None, fixed_ws=False, tag='train')
     
     # out, losses, iter_losses, angles, primal_residuals, dual_residuals = eval_out
-    losses, iter_losses, z_all_plus_1, angles, primal_residuals, dual_residuals, u_all, v_all = eval_out
+    losses, iter_losses, z_all_plus_1, angles, primal_residuals, dual_residuals, u_all, v_all = eval_out # noqa
     # z_all_plus_1, z_final, alpha, u_all, v_all = out
 
     # warm-start SCS with z0 from all_z_plus_1

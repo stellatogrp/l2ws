@@ -2,12 +2,12 @@ import numpy as np
 import jax.numpy as jnp
 import jax.scipy as jsp
 from scipy.linalg import solve_discrete_are
-from examples.osc_mass import static_canon_osqp
+from l2ws.examples.osc_mass import static_canon_osqp
 import cvxpy as cp
 import yaml
 from l2ws.launcher import Workspace
 import os
-from examples.solve_script import osqp_setup_script
+from l2ws.examples.solve_script import osqp_setup_script
 import matplotlib.pyplot as plt
 from functools import partial
 from jax import vmap
