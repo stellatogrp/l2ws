@@ -24,13 +24,6 @@ dependencies = [
     "jaxopt",
     "optax==0.1.5",
     "matplotlib",
-    # TODO: these dependenceis are not necessary to run the package, we should remove them or move them to dev below. They should not be imported by default though
-    "pandas", "jupyterlab", "hydra-core",
-    # TODO: these dependencies are problem-specific. We should remove them
-    "quandl", 
-    "trajax @ git+https://github.com/google/trajax",
-    "emnist",
-    "imageio"
 ]
 
 [tool.setuptools.packages.find]
@@ -42,7 +35,8 @@ exclude = ["tutorials*", "benchmarks*", "tests*"]
 write_to = "l2ws/_version.py"
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff", "ruff-lsp", "black"]
+dev = ["pytest", "ruff", "ruff-lsp", "black", "pandas", "jupyterlab", "hydra-core"]
+
 
 [tool.black]
 line-length = 100
