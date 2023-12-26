@@ -1156,7 +1156,7 @@ def inertia_matrix_inverse(quaternion):
     return R @ I_inv @ R.T
 
 
-def plot_traj_3d(state_traj_list, goals, labels, T=10, goal_bound=1, filename=None, create_gif=True, gif_time=1):
+def plot_traj_3d(state_traj_list, goals, labels, T=10, goal_bound=1, filename=None, create_gif=True, gif_time=1, title=None):
     """
     state_traj_list is a list of lists
     """
@@ -1340,6 +1340,14 @@ def plot_traj_3d(state_traj_list, goals, labels, T=10, goal_bound=1, filename=No
             #     # ax.scatter(x, y, z, cmap='Reds_r', c=weights[i], label=f"goal {i}")
             #     ax.scatter(x, y, z, label=f"goal {i}", c='black', s=1)
             ax.plot(goal_xs[:-T], goal_ys[:-T], goal_zs[:-T], 'black')
+            
+            if title == 'nearest_neighbor':
+                title = 'nearest neighbor'
+            elif title == 'prev_sol':
+                title = 'previous solution'
+            elif title[:5] == 'train':
+                title = 'learned'
+            ax.set_title(title)
             frame_name = f"{filename}/frame_{i}.png"
             filenames.append(frame_name)
             # plt.savefig(frame_name)

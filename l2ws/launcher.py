@@ -899,7 +899,7 @@ class Workspace:
             traj_list = ref_traj_dict['traj_list']
             
             if plot_traj is not None:
-                plot_traj([state_traj_list], goals=traj_list, labels=[col], filename=f"rollouts/{col}/rollout_{i}")
+                plot_traj([state_traj_list], goals=traj_list, labels=[col], filename=f"rollouts/{col}/rollout_{i}", title=col)
 
     def qp_solver(self, Ac, Bc, x0, u0, x_dot, ref_traj, budget, prev_sol, dt, cd0, nx, static_canon_mpc_osqp_partial, method):
         """

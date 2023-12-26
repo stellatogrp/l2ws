@@ -745,14 +745,16 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
         # axes[0, 1].set_yscale('log')
 
         # x-label
-        axes[0].set_xlabel('evaluation iterations')
+        # axes[0].set_xlabel('evaluation iterations', fontsize=fontsize)
         # axes[0, 1].set_xlabel('evaluation iterations')
-        axes[1].set_xlabel('evaluation iterations')
+        axes[1].set_xlabel('evaluation iterations', fontsize=fontsize)
         # axes[1, 1].set_xlabel('evaluation iterations')
 
         # y-label
-        axes[0].set_ylabel('fixed-point residual')
-        axes[1].set_ylabel('gain to cold start')
+        axes[0].set_ylabel('fixed-point residual', fontsize=fontsize)
+        axes[1].set_ylabel('gain to cold start', fontsize=fontsize)
+
+        axes[0].set_xticklabels([])
 
         # axes[0, 0].set_title('fixed-point residual losses')
         # axes[0, 1].set_title('regression losses')
@@ -765,24 +767,30 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             title = titles[j]
             color = titles_2_colors[title]
             style = titles_2_styles[title]
+            marker = titles_2_markers[title]
+            mark_start = titles_2_marker_starts[title]
             if title[:3] != 'reg' and i == 0:
                 # either obj or baselines
-                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, color=color)
+                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
             if title[:3] != 'obj' and  i == 1:
                 # either reg or baselines
-                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, color=color)
+                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style,   marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
+
+                
 
         for j in range(len(curr_metric)):
             title = titles[j]
             color = titles_2_colors[title]
             style = titles_2_styles[title]
+            marker = titles_2_markers[title]
+            mark_start = titles_2_marker_starts[title]
             if j == 0:
                 cs = np.array(curr_metric[j])[start:eval_iters + start]
             gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], a_min=0, a_max=1500)
             if title[:3] != 'reg' and i == 0:
-                axes[1].plot(gain, linestyle=style, color=color)
+                axes[1].plot(gain, linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
             if title[:3] != 'obj' and i == 1:
-                axes[1].plot(gain, linestyle=style, color=color)
+                axes[1].plot(gain, linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
 
         if i == 0:
             plt.savefig('fixed_point_residual_loss.pdf', bbox_inches='tight')
