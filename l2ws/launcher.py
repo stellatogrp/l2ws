@@ -30,6 +30,7 @@ from l2ws.osqp_model import OSQPmodel
 from l2ws.scs_model import SCSmodel
 from l2ws.utils.generic_utils import count_files_in_directory, sample_plot, setup_permutation
 from l2ws.utils.mpc_utils import closed_loop_rollout
+from l2ws.utils.nn_utils import compute_KL_penalty
 
 plt.rcParams.update({
     "text.usetex": True,
@@ -51,6 +52,15 @@ class Workspace:
         static_dict holds the data that doesn't change from problem to problem
         example is the string (e.g. 'robust_kalman')
         '''
+        self.sigma_nn_grid = np.array(cfg.get('sigma_nn', []))
+        self.sigma_beta_grid = np.array(cfg.get('sigma_beta', []))
+        self.pac_bayes_num_samples = cfg.get('pac_bayes_num_samples', 50)
+        self.pac_bayes_hyperparameter_opt_flag = cfg.get('pac_bayes_flag', False)
+        self.delta = 0.01
+
+        # self.pretrain_cfg = cfg.pretrain
+        self.key_count = 0
+
         self.algo = algo
         self.static_flag = static_flag
         self.example = example
@@ -442,6 +452,82 @@ class Workspace:
         for i, params in enumerate(nn_weights):
             weight_matrix, bias_vector = params
             jnp.savez(f"nn_weights/layer_{i}_params.npz", weight=weight_matrix, bias=bias_vector)
+
+    def pac_bayes_hyperparameter_opt(self, num_samples, sigma_nn_grid, sigma_beta_grid):
+        """
+        num_samples is the number of samples we use for the weights 
+            to approximate the expectation
+        sigma_nn_grid and sigma_beta_grid are arrays of the same size
+            and they account for post and prior (to change later)
+        """
+        num_sigmas = sigma_nn_grid.size
+        pac_bayes_bounds = np.zeros((num_sigmas, self.l2ws_model.eval_unrolls))
+
+        nn_params = self.l2ws_model.params
+        # beta = 3
+
+        for i in range(num_sigmas):
+            expected_losses = np.zeros((num_samples, self.l2ws_model.eval_unrolls))
+            for j in range(num_samples):
+                # get the fraction of problems that are solved
+                # frac_solved = 0 ## todo
+
+                # update the sigma l2c model variables
+                self.l2ws_model.sigma = sigma_nn_grid[i]
+
+                self.l2ws_model.beta_sigma = sigma_beta_grid[i]
+                self.l2ws_model.key += 1
+
+
+                eval_out = self.evaluate_only(fixed_ws=False, 
+                                         num=10, train=False, col='pac_bayes', batch_size=10)
+                loss_train, out_train, train_time = eval_out
+                beta = out_train[-1]
+                print('beta', beta[0][0])
+
+                # import pdb
+                # pdb.set_trace()
+
+                # import pdb
+                # pdb.set_trace()
+
+                
+                fs = (out_train[1] < 1e-3)
+                frac_solved = fs.mean(axis=0)
+
+
+                expected_losses[j, :] = frac_solved
+
+
+            # compute the penalty term
+            post_sigma_nn, prior_sigma_nn = sigma_nn_grid[i], sigma_nn_grid[i]
+            post_sigma_beta, prior_sigma_beta = sigma_beta_grid[i], sigma_beta_grid[i]
+            kl_penalty_term = compute_KL_penalty(nn_params, beta, post_sigma_nn, 
+                               post_sigma_beta, prior_sigma_nn, prior_sigma_beta)
+            N = self.l2ws_model.z_stars_train.shape[0]
+            total_pen = kl_penalty_term + np.log(N * np.pi ** 2 / (6 * self.delta))
+            
+            # compute pac_bayes_bound
+            pac_bayes_bounds[i, :] = expected_losses.mean(axis=0) - \
+                np.sqrt(total_pen / (2 * N))
+            
+            # now plot the results
+            plt.plot(expected_losses.mean(axis=0))
+            plt.plot(pac_bayes_bounds[i,:])
+            pac_bayes_path = 'pac_bayes'
+            if not os.path.exists(pac_bayes_path):
+                os.mkdir(pac_bayes_path)
+            plt.savefig(f"{pac_bayes_path}/bounds_{i}.pdf", bbox_inches='tight')
+            plt.clf()
+
+        # plot all combined
+        for i in range(num_sigmas):
+            plt.plot(pac_bayes_bounds[i,:])
+        plt.savefig(f"{pac_bayes_path}/bounds_all.pdf", bbox_inches='tight')
+        plt.clf()
+
+        import pdb
+        pdb.set_trace()
 
     def load_weights(self, example, datetime):
         # get the appropriate folder
@@ -1156,6 +1242,10 @@ class Workspace:
 
         # key_count updated to get random permutation for each epoch
         # key_count = 0
+
+        if self.pac_bayes_hyperparameter_opt_flag:
+            self.pac_bayes_hyperparameter_opt(self.pac_bayes_num_samples, 
+                                              self.sigma_nn_grid, self.sigma_beta_grid)
 
         for epoch_batch in range(num_epochs_jit):
             epoch = int(epoch_batch * self.epochs_jit)

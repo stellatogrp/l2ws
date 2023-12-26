@@ -498,8 +498,9 @@ class L2WSmodel(object):
             perturb = get_perturbed_weights(random.PRNGKey(key), self.layer_sizes, self.sigma)
             perturbed_weights = [(perturb[i][0] + params[i][0], 
                                   perturb[i][1] + params[i][1]) for i in range(len(params))]
-            predict_y(perturbed_weights, input)
-            nn_output = predict_y(params, input)
+
+            nn_output = predict_y(perturbed_weights, input)
+            # nn_output = predict_y(params, input)
             z0 = nn_output
         if self.algo == 'scs':
             z0_full = jnp.ones(z0.size + 1)

@@ -6,6 +6,32 @@ from jax import jit, random, vmap
 from scipy.spatial import distance_matrix
 
 
+def compute_weight_norm_squared(nn_params):
+    weight_norms = np.zeros(len(nn_params))
+    nn_weights = nn_params
+    num_weights = 0
+    for i, params in enumerate(nn_weights):
+        weight_matrix, bias_vector = params
+        weight_norms[i] = jnp.linalg.norm(weight_matrix) ** 2 + jnp.linalg.norm(bias_vector) ** 2
+        num_weights += weight_matrix.size + bias_vector.size
+    return weight_norms.sum(), num_weights
+
+def compute_KL_penalty(nn_params, beta, post_sigma_nn, post_sigma_beta, 
+                       prior_sigma_nn, prior_sigma_beta):
+    # num_weights = get_num_weights(nn_params)
+    weight_norm_squared, num_weights = compute_weight_norm_squared(nn_params)
+    kl_nn = compute_subset_KL_penalty(num_weights, weight_norm_squared, 
+                                      post_sigma_nn, prior_sigma_nn)
+    kl_beta = compute_subset_KL_penalty(1, beta[0][0][0] ** 2, 
+                                        post_sigma_beta, prior_sigma_beta)
+    return kl_nn + kl_beta
+
+
+def compute_subset_KL_penalty(d, weight_norm_squared, post_sigma, prior_sigma):
+    return .5 * (weight_norm_squared / prior_sigma + \
+                 d * (-1 + post_sigma / prior_sigma + np.log(prior_sigma / post_sigma)))
+
+
 def get_perturbed_weights(key, sizes, sigma):
     keys = random.split(key, len(sizes))
     return [random_layer_params(m, n, k, sigma) for m, n, k in zip(sizes[:-1], sizes[1:], keys)]
