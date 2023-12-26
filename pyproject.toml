@@ -24,6 +24,10 @@ dependencies = [
     "jaxopt",
     "optax==0.1.5",
     "matplotlib",
+    "hydra-core", 
+    "trajax @ git+https://github.com/google/trajax", 
+    "emnist", 
+    "imageio"
 ]
 
 [tool.setuptools.packages.find]
@@ -35,7 +39,7 @@ exclude = ["tutorials*", "benchmarks*", "tests*"]
 write_to = "l2ws/_version.py"
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff", "ruff-lsp", "black", "pandas", "jupyterlab", "hydra-core", "trajax @ git+https://github.com/google/trajax", "emnist", "imageio"]
+dev = ["pytest", "ruff", "ruff-lsp", "black", "pandas", "jupyterlab"]
 
 
 [tool.black]
