@@ -6,6 +6,11 @@ from jax import jit, random, vmap
 from scipy.spatial import distance_matrix
 
 
+def get_perturbed_weights(key, sizes, sigma):
+    keys = random.split(key, len(sizes))
+    return [random_layer_params(m, n, k, sigma) for m, n, k in zip(sizes[:-1], sizes[1:], keys)]
+
+
 def get_nearest_neighbors(train_inputs, test_inputs, z_stars_train):
     distances = distance_matrix(np.array(test_inputs), np.array(train_inputs))
     indices = np.argmin(distances, axis=1)
