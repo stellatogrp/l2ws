@@ -449,7 +449,7 @@ def lighten_color(color, amount=0.5):
     return colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
 
 
-def plot_positions_overlay(traj, labels, num_dots=2, grayscales=[.8, .3, 1.0, 0.7, 1.0], axis=None, filename=None, legend=False):
+def plot_positions_overlay(traj, labels, num_dots=2, grayscales=[.8, .3, 1.0, 0.7, 1.0], axis=None, filename=None, legend=False, noise_only=False):
     '''
     show point clouds for true, observed, and recovered positions
 
@@ -458,19 +458,23 @@ def plot_positions_overlay(traj, labels, num_dots=2, grayscales=[.8, .3, 1.0, 0.
     '''
     n = len(traj)
 
-    # colors = ['green', 'red', 'gray', 'orange', 'blue']
-    cmap = plt.cm.Set1
-    colors = [cmap.colors[0], cmap.colors[1], cmap.colors[2], cmap.colors[3], cmap.colors[4]]
+    colors = ['green', 'red', 'gray', 'orange', 'blue']
+    # cmap = plt.cm.Set1
+    # colors = [cmap.colors[0], cmap.colors[1], cmap.colors[2], cmap.colors[3], cmap.colors[4]]
     linestyles = ['o', 'o', '-.', ':', '--']
 
-    # for i in range(n - 2):
-    #     shade = (i + 1) / (n - 2)
-    #     colors.append(lighten_color('blue', shade))
+    for i in range(n - 2):
+        shade = (i + 1) / (n - 2)
+        colors.append(lighten_color('blue', shade))
 
     for i, x in enumerate(traj):
-        alpha = 1 #grayscales[i]
+        alpha = grayscales[i] #1 #grayscales[i]
         if i < num_dots:
-            plt.plot(x[0, :], x[1, :], 'o', color=colors[i], alpha=alpha, label=labels[i])
+            if noise_only:
+                if i > 0:
+                    plt.plot(x[0, :], x[1, :], 'o', color=colors[i], alpha=alpha, label=labels[i])
+            else:
+                plt.plot(x[0, :], x[1, :], 'o', color=colors[i], alpha=alpha, label=labels[i])
         else:
             plt.plot(x[0, :], x[1, :], color=colors[i], linestyle=linestyles[i], alpha=alpha, label=labels[i])
 
@@ -844,7 +848,7 @@ def setup_probs(setup_cfg):
 
     os.mkdir("states_plots")
     os.mkdir("positions_plots")
-    for i in range(5):
+    for i in range(25):
         x_state = x_stars[i, :cfg.T * 4]
         x1_kalman = x_state[0::4]
         x2_kalman = x_state[1::4]
@@ -858,6 +862,10 @@ def setup_probs(setup_cfg):
         x_kalman_rotated = x_kalman_rotated_transpose.T
 
         # plot original
+        plot_positions_overlay([x_kalman_rotated, y_mat[i, :, :]],
+                               ['True', 'KF recovery', 'Noisy'],
+                               filename=f"positions_plots/positions_{i}_noise.pdf",
+                               noise_only=True)
         plot_positions_overlay([x_kalman_rotated, y_mat[i, :, :]],
                                ['True', 'KF recovery', 'Noisy'],
                                filename=f"positions_plots/positions_{i}.pdf")
