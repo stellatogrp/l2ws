@@ -1,9 +1,11 @@
-import jax.numpy as jnp
-from jax import lax, vmap, jit, grad
-from l2ws.utils.generic_utils import vec_symm, unvec_symm
 from functools import partial
+
+import jax.numpy as jnp
 import jax.scipy as jsp
-from l2ws.utils.generic_utils import python_fori_loop
+from jax import grad, jit, lax, vmap
+
+from l2ws.utils.generic_utils import python_fori_loop, unvec_symm, vec_symm
+
 TAU_FACTOR = 10
 
 
@@ -19,6 +21,99 @@ TAU_FACTOR = 10
 #     x2 = x0 - eg_step * (2 * Q @ x1 + A.T @ y1 + c)
 #     y2 = y0 + eg_step * (-2 * R @ y1 + A @ x1 - b)
 #     return jnp.concatenate([x2, y2])
+
+
+def cold_start_solve(fixed_point_fn, n, b_mat):
+    N, m = b_mat.shape
+    train_fn = create_train_fn(fixed_point_fn)
+    batch_train_fn_proj_gd = vmap(train_fn, in_axes=(None, 0, 0, None, None, None), out_axes=(0, 0))
+    z0_init_mat = jnp.zeros((N, n))
+    z_finals, iter_losses = batch_train_fn_proj_gd(1000, z0_init_mat, b_mat, False, None, False)
+    return z_finals, iter_losses
+
+
+def create_train_fn(fixed_point_fn):
+    def fp_train_generic(i, val, supervised, z_star, theta):
+        z, loss_vec = val
+        z_next = fixed_point_fn(z, theta)
+        if supervised:
+            diff = jnp.linalg.norm(z - z_star)
+        else:
+            diff = jnp.linalg.norm(z_next - z)
+        loss_vec = loss_vec.at[i].set(diff)
+        return z_next, loss_vec
+
+    def k_steps_train(k, z0, q, supervised, z_star, jit):
+        iter_losses = jnp.zeros(k)
+        fp_train_partial = partial(fp_train_generic, supervised=supervised, z_star=z_star, theta=q)
+        val = z0, iter_losses
+        start_iter = 0
+        if jit:
+            out = lax.fori_loop(start_iter, k, fp_train_partial, val)
+        else:
+            out = python_fori_loop(start_iter, k, fp_train_partial, val)
+        z_final, iter_losses = out
+        return z_final, iter_losses
+    return k_steps_train
+
+
+def create_eval_fn(fixed_point_fn):
+    def fp_train_generic(i, val, supervised, z_star, theta):
+        z, loss_vec, z_all = val
+        z_next = fixed_point_fn(z, theta)
+        if supervised:
+            diff = jnp.linalg.norm(z - z_star)
+        else:
+            diff = jnp.linalg.norm(z_next - z)
+        loss_vec = loss_vec.at[i].set(diff)
+        z_all = z_all.at[i, :].set(z_next)
+        return z_next, loss_vec, z_all
+
+    def k_steps_train(k, z0, q, supervised, z_star, jit):
+        iter_losses = jnp.zeros(k)
+        z_all_plus_1 = jnp.zeros((k + 1, z0.size))
+        z_all_plus_1 = z_all_plus_1.at[0, :].set(z0)
+        fp_train_partial = partial(fp_train_generic, supervised=supervised, z_star=z_star, theta=q)
+        z_all = jnp.zeros((k, z0.size))
+        val = z0, iter_losses, z_all
+        start_iter = 0
+        if jit:
+            out = lax.fori_loop(start_iter, k, fp_train_partial, val)
+        else:
+            out = python_fori_loop(start_iter, k, fp_train_partial, val)
+        z_final, iter_losses, z_all = out
+        z_all_plus_1 = z_all_plus_1.at[1:, :].set(z_all)
+        return z_final, iter_losses, z_all_plus_1
+    return k_steps_train
+
+
+# def create_k_steps_eval(fixed_point_fn):
+#     iter_losses, obj_diffs = jnp.zeros(k), jnp.zeros(k)
+#     z_all_plus_1 = jnp.zeros((k + 1, z0.size))
+#     z_all_plus_1 = z_all_plus_1.at[0, :].set(z0)
+
+#     f_theta = partial(f, theta=q)
+
+#     fp_eval_partial = partial(fp_eval_extragrad,
+#                               supervised=supervised,
+#                               z_star=z_star,
+#                               f=f_theta,
+#                               proj_X=proj_X,
+#                               proj_Y=proj_Y,
+#                               eg_step=eg_step,
+#                               n=n
+#                               )
+#     z_all = jnp.zeros((k, z0.size))
+#     val = z0, iter_losses, z_all, obj_diffs
+#     start_iter = 0
+#     if jit:
+#         out = lax.fori_loop(start_iter, k, fp_eval_partial, val)
+#     else:
+#         out = python_fori_loop(start_iter, k, fp_eval_partial, val)
+#     z_final, iter_losses, z_all, obj_diffs = out
+#     z_all_plus_1 = z_all_plus_1.at[1:, :].set(z_all)
+#     return z_final, iter_losses, z_all_plus_1
+
 
 def k_steps_eval_extragrad(k, z0, q, f, proj_X, proj_Y, n, eg_step, supervised, z_star, jit):
     iter_losses, obj_diffs = jnp.zeros(k), jnp.zeros(k)
@@ -254,7 +349,7 @@ def fixed_point_osqp(z, factor, A, q, rho, sigma):
     # z = (x, y, w) w is the z variable in osqp terminology
     m, n = A.shape
     x, y, w = z[:n], z[n:n + m], z[n + m:]
-    c, l, u = q[:n], q[n:n + m], q[n + m:]
+    c, l_bound, u_bound = q[:n], q[n:n + m], q[n + m:]
 
     # update (x, nu)
     rhs = sigma * x - c + A.T @ (rho * w - y)
@@ -265,7 +360,7 @@ def fixed_point_osqp(z, factor, A, q, rho, sigma):
     w_tilde = w + (nu - y) / rho
 
     # update w
-    w_next = jnp.clip(w_tilde + y / rho, a_min=l, a_max=u)
+    w_next = jnp.clip(w_tilde + y / rho, a_min=l_bound, a_max=u_bound)
 
     # update y
     y_next = y + rho * (w_tilde - w_next)
@@ -605,7 +700,8 @@ def k_steps_eval_scs(k, z0, q, factor, proj, P, A, supervised, z_star, jit, hsde
 
     # return z_final, iter_losses, primal_residuals, dual_residuals, all_z_plus_1, all_u, all_v
     if lightweight:
-        return z_final, iter_losses, all_z_plus_1[:10, :], primal_residuals, dual_residuals, all_u[:10, :], all_v[:10, :]
+        return z_final, iter_losses, all_z_plus_1[:10, :], primal_residuals, \
+            dual_residuals, all_u[:10, :], all_v[:10, :]
     return z_final, iter_losses, all_z_plus_1, primal_residuals, dual_residuals, all_u, all_v
 
 

@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "l2ws"
+description="A package for warm-starting optimization algorithms, using data."
+readme = "README.md"
+license = {text = "Apache 2.0"}
+dynamic = ["version"]
+authors = [
+{name = "Rajiv Samvbharya", email="rajivs@princeton.edu"},
+{name = "Brandon Amos", email="bda@meta.com"},
+{name = "Georgina Hall", email="georgina.hall@insead.edu"},
+{name = "Bartolomeo Stellato", email="bstellato@princeton.edu"}
+]
+dependencies = [
+    "numpy",
+    "scipy",
+    "cvxpy>=1.3.0",
+    "matplotlib",
+    "jax",
+    "jaxopt",
+    "optax==0.1.5",
+    "matplotlib",
+    "hydra-core", 
+    "trajax @ git+https://github.com/google/trajax", 
+    "emnist", 
+    "imageio"
+]
+
+[tool.setuptools.packages.find]
+include = ["l2ws*"]
+exclude = ["tutorials*", "benchmarks*", "tests*"]
+
+[tool.setuptools_scm]
+# To infer version automatically from git
+write_to = "l2ws/_version.py"
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "ruff-lsp", "black", "pandas", "jupyterlab"]
+
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+
+[tool.ruff]
+select = ["E", "F", "I"]
+ignore = ["E722"]
+line-length = 100
+exclude = ["build", "examples", "instances", "docs", "*__init__.py"]
+target-version = "py310"

@@ -1,11 +1,17 @@
-import jax.scipy as jsp
-import jax.numpy as jnp
 import cvxpy as cp
-from matplotlib import pyplot as plt
-from jax import random
 import jax
-from l2ws.algo_steps import create_M, create_projection_fn, lin_sys_solve, \
-    extract_sol, k_steps_eval_scs, get_scale_vec, get_scaled_vec_and_factor
+import jax.numpy as jnp
+from jax import random
+from matplotlib import pyplot as plt
+
+from l2ws.algo_steps import (
+    create_M,
+    create_projection_fn,
+    extract_sol,
+    get_scaled_vec_and_factor,
+    k_steps_eval_scs,
+    lin_sys_solve,
+)
 
 
 class SCSinstance(object):
@@ -99,7 +105,8 @@ def scs_jax(data, hsde=True, rho_x=1e-6, scale=.1, alpha=1.5, iters=5000, jit=Tr
         q_r = q
 
     # eval_out = k_steps_eval_scs(iters, z, q_r, algo_factor, proj, P, A,
-    #                         c, b, jit, hsde, zero_cone_size, rho_x=rho_x, scale=scale, alpha=alpha)
+    #                             c, b, jit, hsde, zero_cone_size, rho_x=rho_x, 
+    #                             scale=scale, alpha=alpha)
     supervised, z_star = False, None
     eval_out = k_steps_eval_scs(iters, z, q_r, algo_factor, proj, P, A, supervised, z_star,
                             jit, hsde, zero_cone_size, rho_x=rho_x, scale=scale, alpha=alpha)

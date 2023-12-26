@@ -1,8 +1,9 @@
-import jax.numpy as jnp
-import numpy as np
-import matplotlib.pyplot as plt
-from jax import random
 import os
+
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+from jax import random
 
 
 def count_files_in_directory(directory):

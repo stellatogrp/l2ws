@@ -147,3 +147,18 @@ examples/cifar-10-batches-py/
 examples/mri_data/
 motivating_example/
 examples/mri_data2/
+rollout_2_flight_learned_old.gif
+rollout_2_flight_learned.gif
+rollout_2_flight_nn_old.gif
+rollout_2_flight_nn.gif
+rollout_2_flight_ps_old.gif
+rollout_2_flight_ps.gif
+combined_gif.gif
+perturb_plots/*
+
+# Direnv
+.envrc
+.direnv/
+
+# SCM version
+l2ws/_version.py

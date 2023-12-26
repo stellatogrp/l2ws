@@ -1,6 +1,5 @@
-import scs
 import numpy as np
-from l2ws.algo_steps import lin_sys_solve, proj
+import scs
 from scipy.sparse import csc_matrix
 
 

@@ -1,18 +1,17 @@
-from l2ws.l2ws_model import L2WSmodel
-import time
-import jax.numpy as jnp
-from l2ws.algo_steps import k_steps_eval_osqp, k_steps_train_osqp, vec_symm, unvec_symm
 from functools import partial
-from jax import vmap, jit
-import osqp
+
+import jax.numpy as jnp
 import numpy as np
+import osqp
 from scipy.sparse import csc_matrix
-from scipy import sparse
+
+from l2ws.algo_steps import k_steps_eval_osqp, k_steps_train_osqp, unvec_symm
+from l2ws.l2ws_model import L2WSmodel
 
 
 class OSQPmodel(L2WSmodel):
-    def __init__(self, input_dict):
-        super(OSQPmodel, self).__init__(input_dict)
+    def __init__(self, **kwargs):
+        super(OSQPmodel, self).__init__(**kwargs)
 
     def initialize_algo(self, input_dict):
         # self.m, self.n = self.A.shape
@@ -42,8 +41,6 @@ class OSQPmodel(L2WSmodel):
             self.k_steps_eval_fn = partial(k_steps_eval_osqp, P=self.P,
                                            A=self.A, rho=self.rho, sigma=self.sigma, jit=self.jit)
         else:
-            # q_mat_train and q_mat_test hold (c, b, vecsymm(P), vec(A))
-            # self.k_steps_train_fn = partial(k_steps_train_osqp, rho=rho, sigma=sigma, jit=self.jit)
             self.k_steps_train_fn = self.create_k_steps_train_fn_dynamic()
             self.k_steps_eval_fn = self.create_k_steps_eval_fn_dynamic()
             # self.k_steps_eval_fn = partial(k_steps_eval_osqp, rho=rho, sigma=sigma, jit=self.jit)
@@ -51,8 +48,10 @@ class OSQPmodel(L2WSmodel):
             self.factors_train = input_dict['factors_train']
             self.factors_test = input_dict['factors_test']
 
-        # self.k_steps_train_fn = partial(k_steps_train_osqp, factor=factor, A=self.A, rho=rho, sigma=sigma, jit=self.jit)
-        # self.k_steps_eval_fn = partial(k_steps_eval_osqp, factor=factor, P=self.P, A=self.A, rho=rho, sigma=sigma, jit=self.jit)
+        # self.k_steps_train_fn = partial(k_steps_train_osqp, factor=factor, A=self.A, rho=rho, 
+        #                                 sigma=sigma, jit=self.jit)
+        # self.k_steps_eval_fn = partial(k_steps_eval_osqp, factor=factor, P=self.P, A=self.A, 
+        #                                rho=rho, sigma=sigma, jit=self.jit)
         self.out_axes_length = 6
 
     def create_k_steps_train_fn_dynamic(self):
@@ -67,7 +66,7 @@ class OSQPmodel(L2WSmodel):
         def k_steps_train_osqp_dynamic(k, z0, q, factor, supervised, z_star):
             nc2 = int(n * (n + 1) / 2)
             q_bar = q[:2 * m + n]
-            P = unvec_symm(q[2 * m + n: 2 * m + n + nc2], n)
+            unvec_symm(q[2 * m + n: 2 * m + n + nc2], n)
             A = jnp.reshape(q[2 * m + n + nc2:], (m, n))
             return k_steps_train_osqp(k=k, z0=z0, q=q_bar,
                                       factor=factor, A=A, rho=self.rho, sigma=self.sigma,
@@ -110,11 +109,13 @@ class OSQPmodel(L2WSmodel):
         
 
         # q = q_mat[0, :]
-        c, l, u = np.zeros(n), np.zeros(m), np.zeros(m)
+        c, l, u = np.zeros(n), np.zeros(m), np.zeros(m)  # noqa
         
         rho = 1
-        osqp_solver.setup(P=P_sparse, q=c, A=A_sparse, l=l, u=u, alpha=self.alpha, rho=rho, sigma=self.sigma, polish=False,
-                          adaptive_rho=False, scaling=0, max_iter=max_iter, verbose=True, eps_abs=abs_tol, eps_rel=rel_tol)
+        osqp_solver.setup(P=P_sparse, q=c, A=A_sparse, l=l, u=u, alpha=self.alpha, rho=rho, 
+                          sigma=self.sigma, polish=False,
+                          adaptive_rho=False, scaling=0, max_iter=max_iter, verbose=True, 
+                          eps_abs=abs_tol, eps_rel=rel_tol)
 
         num = z0_mat.shape[0]
         solve_times = np.zeros(num)
@@ -125,19 +126,21 @@ class OSQPmodel(L2WSmodel):
             if not self.factor_static_bool:
                 P = unvec_symm(q_mat[i, 2 * m + n: 2 * m + n + nc2], n)
                 A = jnp.reshape(q_mat[i, 2 * m + n + nc2:], (m, n))
-                c, l, u = np.array(q_mat[i, :n]), np.array(q_mat[i, n:n + m]),  np.array(q_mat[i, n + m:n + 2 * m])
+                c, l, u = np.array(q_mat[i, :n]), np.array(q_mat[i, n:n + m]),  np.array(q_mat[i, n + m:n + 2 * m])  # noqa
                 
                 P_sparse, A_sparse = csc_matrix(np.array(P)), csc_matrix(np.array(A))
                 # Px = sparse.triu(P_sparse).data
                 # import pdb
                 # pdb.set_trace()
                 osqp_solver = osqp.OSQP()
-                osqp_solver.setup(P=P_sparse, q=c, A=A_sparse, l=l, u=u, alpha=self.alpha, rho=rho, sigma=self.sigma, polish=False,
-                          adaptive_rho=False, scaling=0, max_iter=max_iter, verbose=True, eps_abs=abs_tol, eps_rel=rel_tol)
+                osqp_solver.setup(P=P_sparse, q=c, A=A_sparse, l=l, u=u, alpha=self.alpha, rho=rho, 
+                                  sigma=self.sigma, polish=False,
+                                  adaptive_rho=False, scaling=0, max_iter=max_iter, verbose=True, 
+                                  eps_abs=abs_tol, eps_rel=rel_tol)
                 # osqp_solver.update(Px=P_sparse, Ax=csc_matrix(np.array(A)))
             else:
                 # set c, l, u
-                c, l, u = q_mat[i, :n], q_mat[i, n:n + m], q_mat[i, n + m:n + 2 * m]
+                c, l, u = q_mat[i, :n], q_mat[i, n:n + m], q_mat[i, n + m:n + 2 * m]  # noqa
                 osqp_solver.update(q=np.array(c))
                 osqp_solver.update(l=np.array(l), u=np.array(u))
 
