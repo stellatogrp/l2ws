@@ -495,12 +495,12 @@ class L2WSmodel(object):
             z0 = input
         else:
             # stochastic
-            # perturb = get_perturbed_weights(random.PRNGKey(key), self.layer_sizes, self.sigma)
-            # perturbed_weights = [(perturb[i][0] + params[i][0], 
-            #                       perturb[i][1] + params[i][1]) for i in range(len(params))]
-
-            # nn_output = predict_y(perturbed_weights, input)
-            nn_output = predict_y(params, input)
+            perturb = get_perturbed_weights(random.PRNGKey(key), self.layer_sizes, self.sigma)
+            perturbed_weights = [(perturb[i][0] + params[i][0], 
+                                  perturb[i][1] + params[i][1]) for i in range(len(params))]
+            print('perturbed_weights', perturbed_weights)
+            nn_output = predict_y(perturbed_weights, input)
+            # nn_output = predict_y(params, input)
             z0 = nn_output
         if self.algo == 'scs':
             z0_full = jnp.ones(z0.size + 1)
@@ -596,6 +596,7 @@ class L2WSmodel(object):
 
             @partial(jit, static_argnums=(3,))
             def loss_fn(params, inputs, b, iters, z_stars, key):
+                ee = jnp.zeros(iters)
                 if diff_required:
                     losses = batch_predict(params, inputs, b, iters, z_stars, key)
                     return losses.mean()

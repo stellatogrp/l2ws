@@ -467,20 +467,21 @@ class Workspace:
         # beta = 3
 
         for i in range(num_sigmas):
+            self.l2ws_model.sigma = sigma_nn_grid[i]
             expected_losses = np.zeros((num_samples, self.l2ws_model.eval_unrolls))
             for j in range(num_samples):
                 # get the fraction of problems that are solved
                 # frac_solved = 0 ## todo
 
                 # update the sigma l2c model variables
-                self.l2ws_model.sigma = sigma_nn_grid[i]
+                
 
                 # self.l2ws_model.beta_sigma = sigma_beta_grid[i]
                 self.l2ws_model.key += 1
 
 
                 eval_out = self.evaluate_only(fixed_ws=False, 
-                                         num=10, train=False, col='pac_bayes', batch_size=10)
+                                         num=100, train=False, col='pac_bayes', batch_size=100)
                 loss_train, out_train, train_time = eval_out
                 beta = out_train[-1]
                 print('beta', beta[0][0])
@@ -527,6 +528,9 @@ class Workspace:
         plt.clf()
 
         self.l2ws_model.sigma = 0
+
+        import pdb
+        pdb.set_trace()
 
 
     def load_weights(self, example, datetime):
