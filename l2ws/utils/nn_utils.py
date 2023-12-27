@@ -16,15 +16,18 @@ def compute_weight_norm_squared(nn_params):
         num_weights += weight_matrix.size + bias_vector.size
     return weight_norms.sum(), num_weights
 
-def compute_KL_penalty(nn_params, beta, post_sigma_nn, post_sigma_beta, 
-                       prior_sigma_nn, prior_sigma_beta):
+def compute_KL_penalty(nn_params, post_sigma, prior_sigma):
+                    #    post_sigma_nn, post_sigma_beta, 
+                    #    prior_sigma_nn, prior_sigma_beta):
     # num_weights = get_num_weights(nn_params)
+    
     weight_norm_squared, num_weights = compute_weight_norm_squared(nn_params)
+    print('weight_norm_squared', weight_norm_squared)
     kl_nn = compute_subset_KL_penalty(num_weights, weight_norm_squared, 
-                                      post_sigma_nn, prior_sigma_nn)
-    kl_beta = compute_subset_KL_penalty(1, beta[0][0][0] ** 2, 
-                                        post_sigma_beta, prior_sigma_beta)
-    return kl_nn + kl_beta
+                                      post_sigma, prior_sigma)
+    # kl_beta = compute_subset_KL_penalty(1, beta[0][0][0] ** 2, 
+    #                                     post_sigma_beta, prior_sigma_beta)
+    return kl_nn #+ kl_beta
 
 
 def compute_subset_KL_penalty(d, weight_norm_squared, post_sigma, prior_sigma):
