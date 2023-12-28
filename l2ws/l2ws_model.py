@@ -15,6 +15,7 @@ from l2ws.utils.nn_utils import get_perturbed_weights, init_network_params, pred
 # from l2ws.scs_model import SCSmodel
 # from l2ws.scs_model import SCSmodel
 config.update("jax_enable_x64", True)
+# config.update('jax_disable_jit', True)
 
 
 class L2WSmodel(object):
@@ -499,6 +500,7 @@ class L2WSmodel(object):
             perturbed_weights = [(perturb[i][0] + params[i][0], 
                                   perturb[i][1] + params[i][1]) for i in range(len(params))]
             print('perturbed_weights', perturbed_weights)
+
             nn_output = predict_y(perturbed_weights, input)
             # nn_output = predict_y(params, input)
             z0 = nn_output

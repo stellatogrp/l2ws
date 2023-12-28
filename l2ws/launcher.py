@@ -470,6 +470,7 @@ class Workspace:
             self.l2ws_model.sigma = sigma_nn_grid[i]
             expected_losses = np.zeros((num_samples, self.l2ws_model.eval_unrolls))
             for j in range(num_samples):
+                print('sample', j)
                 # get the fraction of problems that are solved
                 # frac_solved = 0 ## todo
 
@@ -484,10 +485,10 @@ class Workspace:
                                          num=100, train=False, col='pac_bayes', batch_size=100)
                 loss_train, out_train, train_time = eval_out
                 beta = out_train[-1]
-                print('beta', beta[0][0])
+                print('first', out_train[1][0,:5])
+                print('first warm', out_train[2][:5,0,:5])
+                # print('beta', beta[0][0])
 
-                # import pdb
-                # pdb.set_trace()
 
                 # import pdb
                 # pdb.set_trace()
@@ -499,6 +500,8 @@ class Workspace:
 
                 expected_losses[j, :] = frac_solved
 
+                # import pdb
+                # pdb.set_trace()
 
             # compute the penalty term
             post_sigma_nn, prior_sigma_nn = sigma_nn_grid[i], sigma_nn_grid[i]
@@ -512,12 +515,18 @@ class Workspace:
             pac_bayes_bounds[i, :] = expected_losses.mean(axis=0) - \
                 np.sqrt(total_pen / (2 * N))
             
+            pac_bayes_df = pd.DataFrame()
+            pac_bayes_df['fp_res'] = out_train[1].mean(axis=0)
+
+            
             # now plot the results
             plt.plot(expected_losses.mean(axis=0))
             plt.plot(pac_bayes_bounds[i,:])
             pac_bayes_path = 'pac_bayes'
             if not os.path.exists(pac_bayes_path):
                 os.mkdir(pac_bayes_path)
+
+            pac_bayes_df.to_csv(f"{pac_bayes_path}/bounds_{i}.csv")
             plt.savefig(f"{pac_bayes_path}/bounds_{i}.pdf", bbox_inches='tight')
             plt.clf()
 
