@@ -470,7 +470,7 @@ class Workspace:
             self.l2ws_model.sigma = sigma_nn_grid[i]
             expected_losses = np.zeros((num_samples, self.l2ws_model.eval_unrolls))
             for j in range(num_samples):
-                print('sample', j)
+                print('sample', j, 'sigma', self.l2ws_model.sigma)
                 # get the fraction of problems that are solved
                 # frac_solved = 0 ## todo
 

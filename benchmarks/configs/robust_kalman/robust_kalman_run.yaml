@@ -61,9 +61,9 @@ supervised: False
 train_unrolls: 5
 skip_startup: True
 
-sigma_nn: [.1, 1, 10, 100, 1000]
+sigma_nn: [0.0, .1, 1, 10, 100, 1000]
 # sigma_beta: [.01, .1, 1]
-pac_bayes_num_samples: 20
+pac_bayes_num_samples: 5
 pac_bayes_flag: True
 
 # output_datetimes: 
