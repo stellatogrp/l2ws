@@ -484,7 +484,7 @@ class Workspace:
 
         weights_df['means_bias'] = mean_weights[:, 1]
         weights_df['std_dev_bias'] = std_dev_weights[:, 1]
-        weights_df['norm_sq_weights'] = mean_weights[:, 1]
+        weights_df['norm_sq_bias'] = mean_weights[:, 1]
         weights_df['min_bias'] = min_weights[:, 1]
         weights_df['max_bias'] = max_weights[:, 1]
         weights_df.to_csv('weights_stats.csv')
