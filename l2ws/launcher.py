@@ -462,6 +462,7 @@ class Workspace:
         min_weights = np.zeros((num_layers, 2))
         max_weights = np.zeros((num_layers, 2))
         std_dev_weights = np.zeros((num_layers, 2))
+        norm_sq_weights = np.zeros((num_layers, 2))
         for i, params in enumerate(self.l2ws_model.params):
             weight_matrix, bias_vector = params
             mean_weights[i, 0] = weight_matrix.mean()
@@ -472,15 +473,20 @@ class Workspace:
             min_weights[i, 1] = bias_vector.min()
             std_dev_weights[i, 0] = weight_matrix.std()
             std_dev_weights[i, 1] = bias_vector.std()
+
+            norm_sq_weights[i, 0] = jnp.linalg.norm(weight_matrix) ** 2
+            norm_sq_weights[i, 1] = jnp.linalg.norm(bias_vector) ** 2
         weights_df['means_weights'] = mean_weights[:, 0]
         weights_df['std_dev_weights'] = std_dev_weights[:, 0]
-        weights_df['max_weights'] = max_weights[:, 0]
+        weights_df['norm_sq_weights'] = mean_weights[:, 0]
         weights_df['min_weghts'] = min_weights[:, 0]
+        weights_df['max_weights'] = max_weights[:, 0]
 
         weights_df['means_bias'] = mean_weights[:, 1]
         weights_df['std_dev_bias'] = std_dev_weights[:, 1]
-        weights_df['max_bias'] = max_weights[:, 1]
+        weights_df['norm_sq_weights'] = mean_weights[:, 1]
         weights_df['min_bias'] = min_weights[:, 1]
+        weights_df['max_bias'] = max_weights[:, 1]
         weights_df.to_csv('weights_stats.csv')
 
     def pac_bayes_hyperparameter_opt(self, num_samples, sigma_nn_grid, sigma_beta_grid):
