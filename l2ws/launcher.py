@@ -484,7 +484,7 @@ class Workspace:
 
         weights_df['means_bias'] = mean_weights[:, 1]
         weights_df['std_dev_bias'] = std_dev_weights[:, 1]
-        weights_df['norm_sq_weights'] = norm_sq_weights[:, 1]
+        weights_df['norm_sq_bias'] = norm_sq_weights[:, 1]
         weights_df['min_bias'] = min_weights[:, 1]
         weights_df['max_bias'] = max_weights[:, 1]
         weights_df.to_csv('weights_stats.csv')
@@ -538,8 +538,6 @@ class Workspace:
 
                 expected_losses[j, :] = frac_solved
 
-                import pdb
-                pdb.set_trace()
 
             # compute the penalty term
             post_sigma_nn, prior_sigma_nn = sigma_nn_grid[i], sigma_nn_grid[i]
