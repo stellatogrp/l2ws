@@ -478,13 +478,13 @@ class Workspace:
             norm_sq_weights[i, 1] = jnp.linalg.norm(bias_vector) ** 2
         weights_df['means_weights'] = mean_weights[:, 0]
         weights_df['std_dev_weights'] = std_dev_weights[:, 0]
-        weights_df['norm_sq_weights'] = mean_weights[:, 0]
+        weights_df['norm_sq_weights'] = norm_sq_weights[:, 0]
         weights_df['min_weghts'] = min_weights[:, 0]
         weights_df['max_weights'] = max_weights[:, 0]
 
         weights_df['means_bias'] = mean_weights[:, 1]
         weights_df['std_dev_bias'] = std_dev_weights[:, 1]
-        weights_df['norm_sq_weights'] = mean_weights[:, 1]
+        weights_df['norm_sq_weights'] = norm_sq_weights[:, 1]
         weights_df['min_bias'] = min_weights[:, 1]
         weights_df['max_bias'] = max_weights[:, 1]
         weights_df.to_csv('weights_stats.csv')
