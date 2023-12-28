@@ -453,6 +453,36 @@ class Workspace:
             weight_matrix, bias_vector = params
             jnp.savez(f"nn_weights/layer_{i}_params.npz", weight=weight_matrix, bias=bias_vector)
 
+    def weight_stats(self):
+        # record statistics about the weights
+        weights_df = pd.DataFrame()
+
+        num_layers = len(self.l2ws_model.params)
+        mean_weights = np.zeros((num_layers, 2))
+        min_weights = np.zeros((num_layers, 2))
+        max_weights = np.zeros((num_layers, 2))
+        std_dev_weights = np.zeros((num_layers, 2))
+        for i, params in enumerate(self.l2ws_model.params):
+            weight_matrix, bias_vector = params
+            mean_weights[i, 0] = weight_matrix.mean()
+            mean_weights[i, 1] = bias_vector.mean()
+            max_weights[i, 0] = weight_matrix.max()
+            max_weights[i, 1] = bias_vector.max()
+            min_weights[i, 0] = weight_matrix.min()
+            min_weights[i, 1] = bias_vector.min()
+            std_dev_weights[i, 0] = weight_matrix.std()
+            std_dev_weights[i, 1] = bias_vector.std()
+        weights_df['means_weights'] = mean_weights[:, 0]
+        weights_df['std_dev_weights'] = std_dev_weights[:, 0]
+        weights_df['max_weights'] = max_weights[:, 0]
+        weights_df['min_weghts'] = min_weights[:, 0]
+
+        weights_df['means_bias'] = mean_weights[:, 1]
+        weights_df['std_dev_bias'] = std_dev_weights[:, 1]
+        weights_df['max_bias'] = max_weights[:, 1]
+        weights_df['min_bias'] = min_weights[:, 1]
+        weights_df.to_csv('weights_stats.csv')
+
     def pac_bayes_hyperparameter_opt(self, num_samples, sigma_nn_grid, sigma_beta_grid):
         """
         num_samples is the number of samples we use for the weights 
@@ -466,11 +496,13 @@ class Workspace:
         nn_params = self.l2ws_model.params
         # beta = 3
 
+        self.weight_stats()
+
         for i in range(num_sigmas):
             self.l2ws_model.sigma = sigma_nn_grid[i]
             expected_losses = np.zeros((num_samples, self.l2ws_model.eval_unrolls))
             for j in range(num_samples):
-                print('sample', j)
+                print('sample', j, 'sigma', self.l2ws_model.sigma)
                 # get the fraction of problems that are solved
                 # frac_solved = 0 ## todo
 
@@ -500,8 +532,8 @@ class Workspace:
 
                 expected_losses[j, :] = frac_solved
 
-                # import pdb
-                # pdb.set_trace()
+                import pdb
+                pdb.set_trace()
 
             # compute the penalty term
             post_sigma_nn, prior_sigma_nn = sigma_nn_grid[i], sigma_nn_grid[i]
@@ -515,17 +547,21 @@ class Workspace:
             pac_bayes_bounds[i, :] = expected_losses.mean(axis=0) - \
                 np.sqrt(total_pen / (2 * N))
             
-            pac_bayes_df = pd.DataFrame()
-            pac_bayes_df['fp_res'] = out_train[1].mean(axis=0)
+            
 
             
-            # now plot the results
+            
             plt.plot(expected_losses.mean(axis=0))
             plt.plot(pac_bayes_bounds[i,:])
             pac_bayes_path = 'pac_bayes'
             if not os.path.exists(pac_bayes_path):
                 os.mkdir(pac_bayes_path)
 
+            
+            
+            # plot the results
+            pac_bayes_df = pd.DataFrame()
+            pac_bayes_df['fp_res'] = out_train[1].mean(axis=0)
             pac_bayes_df.to_csv(f"{pac_bayes_path}/bounds_{i}.csv")
             plt.savefig(f"{pac_bayes_path}/bounds_{i}.pdf", bbox_inches='tight')
             plt.clf()
