@@ -30,6 +30,24 @@ def compute_KL_penalty(nn_params, post_sigma, prior_sigma):
     return kl_nn #+ kl_beta
 
 
+
+def compute_all_params_KL(mean_params, sigma_params, lambd):
+    total_pen = 0
+    for i, params in enumerate(mean_params):
+        weight_matrix, bias_vector = params
+        weight_sigma, bias_sigma = sigma_params[i][0], sigma_params[i][1]
+        total_pen += compute_single_param_KL(weight_matrix, jnp.exp(weight_sigma), jnp.exp(lambd))
+        total_pen += compute_single_param_KL(bias_vector, jnp.exp(bias_sigma), jnp.exp(lambd))
+    return total_pen
+
+
+def compute_single_param_KL(mean_params, sigma_params, lambd):
+    weight_norm_squared, d = jnp.linalg.norm(mean_params) ** 2, mean_params.size
+    pen = weight_norm_squared / lambd - d + jnp.sum(sigma_params) / lambd + \
+                                             d * jnp.log(lambd) - jnp.sum(jnp.log(sigma_params))
+    return .5 * pen
+
+
 def compute_subset_KL_penalty(d, weight_norm_squared, post_sigma, prior_sigma):
     return .5 * (weight_norm_squared / prior_sigma + \
                  d * (-1 + post_sigma / prior_sigma + np.log(prior_sigma / post_sigma)))

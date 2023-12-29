@@ -11,6 +11,7 @@ from jaxopt import OptaxSolver
 
 from l2ws.algo_steps import create_eval_fn, create_train_fn, lin_sys_solve
 from l2ws.utils.nn_utils import (
+    compute_all_params_KL,
     get_perturbed_weights,
     init_network_params,
     init_variance_network_params,
@@ -175,6 +176,11 @@ class L2WSmodel(object):
 
             loss = self.final_loss(loss_method, z_final, iter_losses, supervised, z0, z_star)
 
+            pi_pen = jnp.log(jnp.pi ** 2 * self.N_train / (6 * 0.01))
+            log_pen = 2 * jnp.log(100 * jnp.log(0.1 / jnp.exp(params[2])))
+            penalty_loss = compute_all_params_KL(params[0], params[1], params[2]) + pi_pen
+            loss = loss + jnp.sqrt(penalty_loss / (2 * self.N_train))
+
             if diff_required:
                 return loss
             else:
@@ -322,7 +328,8 @@ class L2WSmodel(object):
         init_var, init_stddev_var = 0.1, 0.001
         self.sigma_params = init_variance_network_params(layer_sizes, init_var, random.PRNGKey(1), 
                                                           init_stddev_var)
-        self.params = [self.mean_params, self.sigma_params]
+        self.prior_param = jnp.log(init_var)
+        self.params = [self.mean_params, self.sigma_params, self.prior_param]
 
         # initializes the optimizer
         self.optimizer_method = nn_cfg.get('method', 'adam')
@@ -491,9 +498,7 @@ class L2WSmodel(object):
             # print('perturbed_weights', perturbed_weights)
 
             # new stochastic
-            import pdb
-            pdb.set_trace()
-            mean_params, sigma_params = params[0], params[1]
+            mean_params, sigma_params, prior_var = params[0], params[1], params[2]
             perturb = get_perturbed_weights(random.PRNGKey(key), self.layer_sizes, 1)
             perturbed_weights = [(perturb[i][0] * jnp.exp(sigma_params[i][0]) + mean_params[i][0], 
                                   perturb[i][1] * jnp.exp(sigma_params[i][1]) + mean_params[i][1]) for i in range(len(mean_params))]
