@@ -10,7 +10,12 @@ from jax.config import config
 from jaxopt import OptaxSolver
 
 from l2ws.algo_steps import create_eval_fn, create_train_fn, lin_sys_solve
-from l2ws.utils.nn_utils import get_perturbed_weights, init_network_params, predict_y
+from l2ws.utils.nn_utils import (
+    get_perturbed_weights,
+    init_network_params,
+    init_variance_network_params,
+    predict_y,
+)
 
 # from l2ws.scs_model import SCSmodel
 # from l2ws.scs_model import SCSmodel
@@ -111,14 +116,14 @@ class L2WSmodel(object):
         supervised = self.supervised and diff_required
         loss_method = self.loss_method
 
-        def predict(params, input, q, iters, z_star, key, sigma, factor):
+        def predict(params, input, q, iters, z_star, key, factor):
             if self.algo == 'scs':
                 # q = lin_sys_solve(self.factor, q)
                 q = lin_sys_solve(factor, q)
             else:
                 pass
-            # z0, alpha = self.predict_warm_start(params, input, bypass_nn, hsde=hsde)
-            z0 = self.predict_warm_start(params, input, key, sigma, bypass_nn)
+            # z0 = self.predict_warm_start(params, input, key, sigma, bypass_nn)
+            z0 = self.predict_warm_start(params, input, key, bypass_nn)
 
             # if self.out_axes_length == 8:
             # if isinstance(self, SCSmodel):
@@ -201,14 +206,17 @@ class L2WSmodel(object):
             #   1. factors needed, but are the same for all problems
             #   2. no factors are needed
             key = state.iter_num
+            # nn_params, sigma_params = params[0], params[1]
+            # import pdb
+            # pdb.set_trace()
+
             results = self.optimizer.update(params=params,
                                             state=state,
                                             inputs=batch_inputs,
                                             b=batch_q_data,
                                             iters=self.train_unrolls,
                                             z_stars=batch_z_stars,
-                                            key=key,
-                                            sigma=sigma)
+                                            key=key)
         params, state = results
         return state.value, params, state
 
@@ -217,7 +225,7 @@ class L2WSmodel(object):
             return self.dynamic_eval(k, inputs, b, z_stars, 
                                      factors=factors, tag=tag, fixed_ws=fixed_ws)
         else:
-            return self.static_eval(k, inputs, b, z_stars, self.key, self.sigma, tag=tag, 
+            return self.static_eval(k, inputs, b, z_stars, self.key, tag=tag, 
                                     fixed_ws=fixed_ws, light=light)
 
     def short_test_eval(self):
@@ -235,8 +243,7 @@ class L2WSmodel(object):
                                                                   self.test_inputs,
                                                                   self.q_mat_test,
                                                                   z_stars_test,
-                                                                  self.key,
-                                                                  self.sigma)
+                                                                  self.key)
 
         self.te_losses.append(test_loss)
 
@@ -257,33 +264,7 @@ class L2WSmodel(object):
 
         return loss, out, time_per_prob
 
-    def static_eval(self, k, inputs, b, z_stars, key, sigma, tag='test', fixed_ws=False, light=False):
-        # if light:
-        #     if fixed_ws:
-        #         curr_loss_fn = self.loss_fn_fixed_ws_light
-        #     else:
-        #         curr_loss_fn = self.loss_fn_train
-        #     num_probs, _ = inputs.shape
-
-        #     test_time0 = time.time()
-
-        #     loss, out = curr_loss_fn(self.params, inputs, b, k, z_stars)
-        #     time_per_prob = (time.time() - test_time0)/num_probs
-
-        #     return loss, out, time_per_prob
-        # else:
-        #     if fixed_ws:
-        #         curr_loss_fn = self.loss_fn_eval
-        #     else:
-        #         curr_loss_fn = self.loss_fn_fixed_ws
-        #     num_probs, _ = inputs.shape
-
-        #     test_time0 = time.time()
-
-        #     loss, out = curr_loss_fn(self.params, inputs, b, k, z_stars)
-        #     time_per_prob = (time.time() - test_time0)/num_probs
-
-        #     return loss, out, time_per_prob
+    def static_eval(self, k, inputs, b, z_stars, key, tag='test', fixed_ws=False, light=False):
         if fixed_ws:
             curr_loss_fn = self.loss_fn_fixed_ws
         else:
@@ -292,7 +273,7 @@ class L2WSmodel(object):
 
         test_time0 = time.time()
 
-        loss, out = curr_loss_fn(self.params, inputs, b, k, z_stars, key, sigma)
+        loss, out = curr_loss_fn(self.params, inputs, b, k, z_stars, key)
         time_per_prob = (time.time() - test_time0)/num_probs
 
         return loss, out, time_per_prob
@@ -335,7 +316,13 @@ class L2WSmodel(object):
         self.layer_sizes = layer_sizes
 
         # initialize weights of neural network
-        self.params = init_network_params(layer_sizes, random.PRNGKey(0))
+        self.mean_params = init_network_params(layer_sizes, random.PRNGKey(0))
+
+        # initialize the stddev
+        init_var, init_stddev_var = 0.1, 0.001
+        self.sigma_params = init_variance_network_params(layer_sizes, init_var, random.PRNGKey(1), 
+                                                          init_stddev_var)
+        self.params = [self.mean_params, self.sigma_params]
 
         # initializes the optimizer
         self.optimizer_method = nn_cfg.get('method', 'adam')
@@ -345,7 +332,6 @@ class L2WSmodel(object):
         elif self.optimizer_method == 'sgd':
             self.optimizer = OptaxSolver(opt=optax.sgd(
                 self.lr), fun=self.loss_fn_train, has_aux=False)
-        # self.state = self.optimizer.init_state(self.params)
 
         # Initialize state with first elements of training data as inputs
         batch_indices = jnp.arange(self.N_train)
@@ -369,8 +355,7 @@ class L2WSmodel(object):
                                                    b=q_init,
                                                    iters=self.train_unrolls,
                                                    z_stars=z_stars_init,
-                                                   key=self.key,
-                                                   sigma=self.sigma)
+                                                   key=self.key)
 
     # def setup_share_all(self, dict):
     #     if self.share_all:
@@ -491,7 +476,7 @@ class L2WSmodel(object):
         batch_indices = jnp.arange(self.N_train)
         return self.train_batch(batch_indices, params, state)
 
-    def predict_warm_start(self, params, input, key, sigma, bypass_nn):
+    def predict_warm_start(self, params, input, key, bypass_nn):
         """
         gets the warm-start
         bypass_nn means we ignore the neural network and set z0=input
@@ -499,13 +484,23 @@ class L2WSmodel(object):
         if bypass_nn:
             z0 = input
         else:
-            # stochastic
-            perturb = get_perturbed_weights(random.PRNGKey(key), self.layer_sizes, jnp.sqrt(sigma))
-            perturbed_weights = [(perturb[i][0] + params[i][0], 
-                                  0*perturb[i][1] + params[i][1]) for i in range(len(params))]
-            print('perturbed_weights', perturbed_weights)
+            # old stochastic
+            # perturb = get_perturbed_weights(random.PRNGKey(key), self.layer_sizes, jnp.sqrt(sigma))
+            # perturbed_weights = [(perturb[i][0] + params[i][0], 
+            #                       0*perturb[i][1] + params[i][1]) for i in range(len(params))]
+            # print('perturbed_weights', perturbed_weights)
+
+            # new stochastic
+            import pdb
+            pdb.set_trace()
+            mean_params, sigma_params = params[0], params[1]
+            perturb = get_perturbed_weights(random.PRNGKey(key), self.layer_sizes, 1)
+            perturbed_weights = [(perturb[i][0] * jnp.exp(sigma_params[i][0]) + mean_params[i][0], 
+                                  perturb[i][1] * jnp.exp(sigma_params[i][1]) + mean_params[i][1]) for i in range(len(mean_params))]
 
             nn_output = predict_y(perturbed_weights, input)
+
+            # deterministic
             # nn_output = predict_y(params, input)
             z0 = nn_output
         if self.algo == 'scs':
@@ -597,17 +592,17 @@ class L2WSmodel(object):
             #   2. factor is constant for all problems (pass in the same factor as static argument)
             predict_partial = partial(predict, factor=self.factor_static)
             batch_predict = vmap(predict_partial,
-                                 in_axes=(None, 0, 0, None, 0, None, None),
+                                 in_axes=(None, 0, 0, None, 0, None),
                                  out_axes=out_axes)
 
             @partial(jit, static_argnums=(3,))
-            def loss_fn(params, inputs, b, iters, z_stars, key, sigma):
+            def loss_fn(params, inputs, b, iters, z_stars, key):
                 if diff_required:
-                    losses = batch_predict(params, inputs, b, iters, z_stars, key, sigma)
+                    losses = batch_predict(params, inputs, b, iters, z_stars, key)
                     return losses.mean()
                 else:
                     predict_out = batch_predict(
-                        params, inputs, b, iters, z_stars, key, sigma)
+                        params, inputs, b, iters, z_stars, key)
                     losses = predict_out[0]
                     # loss_out = losses, iter_losses, angles, z_all
                     return losses.mean(), predict_out

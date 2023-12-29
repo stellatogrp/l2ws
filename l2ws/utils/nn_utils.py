@@ -61,10 +61,20 @@ def random_layer_params(m, n, key, scale=1e-2):
     return scale * random.normal(w_key, (n, m)), scale * random.normal(b_key, (n,))
 
 
+def random_variance_layer_params(m, n, key, init_val, scale=1e-2):
+    w_key, b_key = random.split(key)
+    return jnp.log(init_val) + scale * random.normal(w_key, (n, m)), jnp.log(init_val) + scale * random.normal(b_key, (n,))
+
+
 # Initialize all layers for a fully-connected neural network with sizes "sizes"
 def init_network_params(sizes, key):
     keys = random.split(key, len(sizes))
     return [random_layer_params(m, n, k) for m, n, k in zip(sizes[:-1], sizes[1:], keys)]
+
+
+def init_variance_network_params(sizes, init_val, key, stddev):
+    keys = random.split(key, len(sizes))
+    return [random_variance_layer_params(m, n, k, init_val, scale=stddev) for m, n, k in zip(sizes[:-1], sizes[1:], keys)]
 
 
 def init_matrix_params(t, n, key):
