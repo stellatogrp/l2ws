@@ -500,9 +500,9 @@ class L2WSmodel(object):
             z0 = input
         else:
             # stochastic
-            perturb = get_perturbed_weights(random.PRNGKey(key), self.layer_sizes, sigma)
+            perturb = get_perturbed_weights(random.PRNGKey(key), self.layer_sizes, jnp.sqrt(sigma))
             perturbed_weights = [(perturb[i][0] + params[i][0], 
-                                  perturb[i][1] + params[i][1]) for i in range(len(params))]
+                                  0*perturb[i][1] + params[i][1]) for i in range(len(params))]
             print('perturbed_weights', perturbed_weights)
 
             nn_output = predict_y(perturbed_weights, input)
