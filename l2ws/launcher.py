@@ -30,7 +30,7 @@ from l2ws.osqp_model import OSQPmodel
 from l2ws.scs_model import SCSmodel
 from l2ws.utils.generic_utils import count_files_in_directory, sample_plot, setup_permutation
 from l2ws.utils.mpc_utils import closed_loop_rollout
-from l2ws.utils.nn_utils import compute_KL_penalty
+from l2ws.utils.nn_utils import compute_KL_penalty, calculate_total_penalty, calculate_avg_posterior_var, compute_weight_norm_squared
 
 plt.rcParams.update({
     "text.usetex": True,
@@ -600,7 +600,12 @@ class Workspace:
             params.append(weight_bias_tuple)
 
         # store the weights as the l2ws_model params
-        self.l2ws_model.params = params
+        self.l2ws_model.params[0] = params
+
+        # load the variances proportional to the means
+        for i, params in enumerate(params):
+            weight_matrix, bias_vector = params
+            self.l2ws_model.params[1][i] = (jnp.log(jnp.abs(weight_matrix / 100000)), jnp.log(jnp.abs(bias_vector / 100000)))
 
     def normalize_inputs_fn(self, thetas, N_train, N_test):
         # normalize the inputs if the option is on
@@ -717,7 +722,7 @@ class Workspace:
             self.writer.writeheader()
 
         self.test_logf = open('train_test_results.csv', 'a')
-        fieldnames = ['iter', 'train_loss', 'test_loss', 'time_per_iter']
+        fieldnames = ['iter', 'train_loss', 'test_loss', 'penalty', 'avg_posterior_var', 'stddev_posterior_var', 'prior', 'mean_squared_w', 'time_per_iter']
         self.test_writer = csv.DictWriter(self.test_logf, fieldnames=fieldnames)
         if os.stat('train_results.csv').st_size == 0:
             self.test_writer.writeheader()
@@ -1769,14 +1774,27 @@ class Workspace:
 
     def test_eval_write(self):
         test_loss, time_per_iter = self.l2ws_model.short_test_eval()
-        # test_loss, time_per_iter = 1, 1
         last_epoch = np.array(self.l2ws_model.tr_losses_batch[-self.l2ws_model.num_batches:])
         moving_avg = last_epoch.mean()
+
+        # do penalty calculation
+        pen = calculate_total_penalty(self.l2ws_model.N_train, self.l2ws_model.params)
+
+        # calculate avg posterior var
+        avg_posterior_var, stddev_posterior_var = calculate_avg_posterior_var(self.l2ws_model.params)
+
+        mean_squared_w, dim = compute_weight_norm_squared(self.l2ws_model.params[0])
+        
         if self.test_writer is not None:
             self.test_writer.writerow({
                 'iter': self.l2ws_model.state.iter_num,
                 'train_loss': moving_avg,
                 'test_loss': test_loss,
+                'penalty': pen,
+                'avg_posterior_var': avg_posterior_var,
+                'stddev_posterior_var': stddev_posterior_var,
+                'prior': jnp.exp(self.l2ws_model.params[2]),
+                'mean_squared_w': mean_squared_w,
                 'time_per_iter': time_per_iter
             })
             self.test_logf.flush()

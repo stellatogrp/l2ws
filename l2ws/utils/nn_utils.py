@@ -6,6 +6,29 @@ from jax import jit, random, vmap
 from scipy.spatial import distance_matrix
 
 
+def calculate_avg_posterior_var(params):
+    sigma_params = params[1]
+    flattened_params = jnp.concatenate([jnp.ravel(weight_matrix) for weight_matrix, _ in sigma_params] + 
+                                       [jnp.ravel(bias_vector) for _, bias_vector in sigma_params])
+    variances = jnp.exp(flattened_params)
+    avg_posterior_var = variances.mean()
+    stddev_posterior_var = variances.std()
+    # posterior_variances = []
+    # for i, params in enumerate(sigma_params):
+    #     posterior_variances
+    return avg_posterior_var, stddev_posterior_var
+
+
+def calculate_total_penalty(N_train, params):
+    b = 100
+    c = 2.0
+    delta = 0.01
+    pi_pen = jnp.log(jnp.pi ** 2 * N_train / (6 * delta))
+    log_pen = 2 * jnp.log(b * jnp.log(c / jnp.exp(params[2])))
+    penalty_loss = compute_all_params_KL(params[0], params[1], params[2]) + pi_pen + log_pen
+    return jnp.sqrt(penalty_loss / (2 * N_train))
+
+
 def compute_weight_norm_squared(nn_params):
     weight_norms = np.zeros(len(nn_params))
     nn_weights = nn_params

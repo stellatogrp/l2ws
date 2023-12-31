@@ -16,6 +16,7 @@ from l2ws.utils.nn_utils import (
     init_network_params,
     init_variance_network_params,
     predict_y,
+    calculate_total_penalty
 )
 
 # from l2ws.scs_model import SCSmodel
@@ -176,10 +177,12 @@ class L2WSmodel(object):
 
             loss = self.final_loss(loss_method, z_final, iter_losses, supervised, z0, z_star)
 
-            pi_pen = jnp.log(jnp.pi ** 2 * self.N_train / (6 * 0.01))
-            log_pen = 2 * jnp.log(100 * jnp.log(0.1 / jnp.exp(params[2])))
-            penalty_loss = compute_all_params_KL(params[0], params[1], params[2]) + pi_pen
-            loss = loss + jnp.sqrt(penalty_loss / (2 * self.N_train))
+            # pi_pen = jnp.log(jnp.pi ** 2 * self.N_train / (6 * 0.01))
+            # log_pen = 2 * jnp.log(100 * jnp.log(0.1 / jnp.exp(params[2])))
+            # penalty_loss = compute_all_params_KL(params[0], params[1], params[2]) + pi_pen + log_pen
+
+            penalty_loss = calculate_total_penalty(self.N_train, params)
+            loss = loss + penalty_loss #+ jnp.sqrt(penalty_loss / (2 * self.N_train))
 
             if diff_required:
                 return loss
@@ -325,17 +328,25 @@ class L2WSmodel(object):
         self.mean_params = init_network_params(layer_sizes, random.PRNGKey(0))
 
         # initialize the stddev
-        init_var, init_stddev_var = 0.1, 0.001
+        init_var, init_stddev_var = 1e-3, 1e-8
         self.sigma_params = init_variance_network_params(layer_sizes, init_var, random.PRNGKey(1), 
                                                           init_stddev_var)
         self.prior_param = jnp.log(init_var)
         self.params = [self.mean_params, self.sigma_params, self.prior_param]
+        mask = [True, True, True]
+        masked_optimizer = optax.masked(optax.adam(self.lr), mask)
+        # self.params = (self.mean_params, self.sigma_params, self.prior_param)
+        # self.param_labels = ('mean', 'variance', 'prior')
+
+        # tx = optax.multi_transform(
+        #     {'mean': optax.adam(0.1), 'variance': optax.adam(self.lr)}, 'prior': optax.adam(self.lr), self.param_labels)
 
         # initializes the optimizer
         self.optimizer_method = nn_cfg.get('method', 'adam')
         if self.optimizer_method == 'adam':
-            self.optimizer = OptaxSolver(opt=optax.adam(
-                self.lr), fun=self.loss_fn_train, has_aux=False)
+            self.optimizer = OptaxSolver(opt=masked_optimizer, fun=self.loss_fn_train, has_aux=False)
+            # self.optimizer = OptaxSolver(opt=optax.adam(
+            #     self.lr), fun=self.loss_fn_train, has_aux=False)
         elif self.optimizer_method == 'sgd':
             self.optimizer = OptaxSolver(opt=optax.sgd(
                 self.lr), fun=self.loss_fn_train, has_aux=False)
@@ -500,8 +511,8 @@ class L2WSmodel(object):
             # new stochastic
             mean_params, sigma_params, prior_var = params[0], params[1], params[2]
             perturb = get_perturbed_weights(random.PRNGKey(key), self.layer_sizes, 1)
-            perturbed_weights = [(perturb[i][0] * jnp.exp(sigma_params[i][0]) + mean_params[i][0], 
-                                  perturb[i][1] * jnp.exp(sigma_params[i][1]) + mean_params[i][1]) for i in range(len(mean_params))]
+            perturbed_weights = [(perturb[i][0] * jnp.sqrt(jnp.exp(sigma_params[i][0])) + mean_params[i][0], 
+                                  perturb[i][1] * jnp.sqrt(jnp.exp(sigma_params[i][1])) + mean_params[i][1]) for i in range(len(mean_params))]
 
             nn_output = predict_y(perturbed_weights, input)
 
