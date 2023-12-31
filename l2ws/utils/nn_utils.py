@@ -1,9 +1,29 @@
 import functools
 
+import cvxpy as cp
 import jax.numpy as jnp
 import numpy as np
 from jax import jit, random, vmap
 from scipy.spatial import distance_matrix
+
+
+def invert_kl(q, c):
+    """
+    given scalars q and c returns
+    kl^{-1}(q ||c) = sup p s.t. 0 <= p <= 1, KL(q || p) <= c
+    """
+    p_bernoulli = cp.Variable(2)
+    q_bernoulli = np.array([q, 1-q])
+    constraints = [c >= cp.sum(cp.kl_div(q_bernoulli,p_bernoulli)), 
+                   0 <= p_bernoulli[0], p_bernoulli[0] <= 1, p_bernoulli[1] == 1.0 - p_bernoulli[0]]
+
+    prob = cp.Problem(cp.Maximize(p_bernoulli[0]), constraints)
+
+    # Solve problem
+    prob.solve(verbose=False, solver=cp.SCS) # solver=cvx.ECOS
+    
+    kl_inv = p_bernoulli.value[0] 
+    return kl_inv
 
 
 def calculate_avg_posterior_var(params):
@@ -19,10 +39,7 @@ def calculate_avg_posterior_var(params):
     return avg_posterior_var, stddev_posterior_var
 
 
-def calculate_total_penalty(N_train, params):
-    b = 100
-    c = 2.0
-    delta = 0.01
+def calculate_total_penalty(N_train, params, c, b, delta):
     pi_pen = jnp.log(jnp.pi ** 2 * N_train / (6 * delta))
     log_pen = 2 * jnp.log(b * jnp.log(c / jnp.exp(params[2])))
     penalty_loss = compute_all_params_KL(params[0], params[1], params[2]) + pi_pen + log_pen

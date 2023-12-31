@@ -30,7 +30,12 @@ from l2ws.osqp_model import OSQPmodel
 from l2ws.scs_model import SCSmodel
 from l2ws.utils.generic_utils import count_files_in_directory, sample_plot, setup_permutation
 from l2ws.utils.mpc_utils import closed_loop_rollout
-from l2ws.utils.nn_utils import compute_KL_penalty, calculate_total_penalty, calculate_avg_posterior_var, compute_weight_norm_squared
+from l2ws.utils.nn_utils import (
+    calculate_avg_posterior_var,
+    calculate_total_penalty,
+    compute_KL_penalty,
+    compute_weight_norm_squared,
+)
 
 plt.rcParams.update({
     "text.usetex": True,
@@ -79,6 +84,7 @@ class Workspace:
         self.key_count = 0
         self.save_weights_flag = cfg.get('save_weights_flag', False)
         self.load_weights_datetime = cfg.get('load_weights_datetime', None)
+        self.nn_load_type = cfg.get('nn_load_type', 'deterministic')
         self.shifted_sol_fn = shifted_sol_fn
         self.plot_iterates = cfg.plot_iterates
         self.normalize_inputs = cfg.get('normalize_inputs', True)
@@ -443,7 +449,40 @@ class Workspace:
 
     def save_weights(self):
         nn_weights = self.l2ws_model.params
+        if len(nn_weights) == 3 and not isinstance(nn_weights[2], tuple):
+            self.save_weights_stochastic()
+        else:
+            self.save_weights_deterministic()
 
+    def save_weights_stochastic(self):
+        nn_weights = self.l2ws_model.params
+        # create directory
+        if not os.path.exists('nn_weights'):
+            os.mkdir('nn_weights')
+            os.mkdir('nn_weights/mean')
+            os.mkdir('nn_weights/variance')
+            os.mkdir('nn_weights/prior')
+
+        # Save mean weights
+        mean_params = nn_weights[0]
+        for i, params in enumerate(mean_params):
+            weight_matrix, bias_vector = params
+            jnp.savez(f"nn_weights/mean/layer_{i}_params.npz", weight=weight_matrix, 
+                      bias=bias_vector)
+            
+        # Save variance weights
+        variance_params = nn_weights[1]
+        for i, params in enumerate(variance_params):
+            weight_matrix, bias_vector = params
+            jnp.savez(f"nn_weights/variance/layer_{i}_params.npz", weight=weight_matrix, 
+                      bias=bias_vector)
+            
+        # save prior
+        jnp.savez("nn_weights/prior/prior_val.npz", prior=nn_weights[2])
+
+
+    def save_weights_deterministic(self):
+        nn_weights = self.l2ws_model.params
         # create directory
         if not os.path.exists('nn_weights'):
             os.mkdir('nn_weights')
@@ -522,7 +561,7 @@ class Workspace:
                 eval_out = self.evaluate_only(fixed_ws=False, 
                                          num=100, train=False, col='pac_bayes', batch_size=100)
                 loss_train, out_train, train_time = eval_out
-                beta = out_train[-1]
+                out_train[-1]
                 print('first', out_train[1][0,:5])
                 print('first warm', out_train[2][:5,0,:5])
                 # print('beta', beta[0][0])
@@ -582,7 +621,51 @@ class Workspace:
         pdb.set_trace()
 
 
-    def load_weights(self, example, datetime):
+    def load_weights(self, example, datetime, nn_type):
+        if nn_type == 'deterministic':
+            self.load_weights_deterministic(example, datetime)
+        elif nn_type == 'stochastic':
+            self.load_weights_stochastic(example, datetime)
+
+
+    def load_weights_stochastic(self, example, datetime):
+        # get the appropriate folder
+        orig_cwd = hydra.utils.get_original_cwd()
+        folder = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/nn_weights"
+
+        # find the number of layers based on the number of files
+        num_layers = count_files_in_directory(folder + "/mean")
+
+        # load the mean
+        mean_params = []
+        for i in range(num_layers):
+            layer_file = f"{folder}/mean/layer_{i}_params.npz"
+            loaded_layer = jnp.load(layer_file)
+            weight_matrix, bias_vector = loaded_layer['weight'], loaded_layer['bias']
+            weight_bias_tuple = (weight_matrix, bias_vector)
+            mean_params.append(weight_bias_tuple)
+        
+        # load the variance
+        variance_params = []
+        for i in range(num_layers):
+            layer_file = f"{folder}/variance/layer_{i}_params.npz"
+            loaded_layer = jnp.load(layer_file)
+            weight_matrix, bias_vector = loaded_layer['weight'], loaded_layer['bias']
+            weight_bias_tuple = (weight_matrix, bias_vector)
+            variance_params.append(weight_bias_tuple)
+
+        # load the prior
+        loaded_prior = jnp.load(f"{folder}/prior/prior_val.npz")
+        prior = loaded_prior['prior']
+
+        import pdb
+        pdb.set_trace()
+
+        self.l2ws_model.params = [mean_params, variance_params, prior]
+
+
+
+    def load_weights_deterministic(self, example, datetime):
         # get the appropriate folder
         orig_cwd = hydra.utils.get_original_cwd()
         folder = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/nn_weights"
@@ -605,7 +688,8 @@ class Workspace:
         # load the variances proportional to the means
         for i, params in enumerate(params):
             weight_matrix, bias_vector = params
-            self.l2ws_model.params[1][i] = (jnp.log(jnp.abs(weight_matrix / 100000)), jnp.log(jnp.abs(bias_vector / 100000)))
+            self.l2ws_model.params[1][i] = (jnp.log(jnp.abs(weight_matrix / 10)), 
+                                            jnp.log(jnp.abs(bias_vector / 10)))
 
     def normalize_inputs_fn(self, thetas, N_train, N_test):
         # normalize the inputs if the option is on
@@ -1280,7 +1364,7 @@ class Workspace:
 
         # load the weights AFTER the cold-start
         if self.load_weights_datetime is not None:
-            self.load_weights(self.example, self.load_weights_datetime)
+            self.load_weights(self.example, self.load_weights_datetime, self.nn_load_type)
 
         # eval test data to start
         self.test_eval_write()
@@ -1778,7 +1862,12 @@ class Workspace:
         moving_avg = last_epoch.mean()
 
         # do penalty calculation
-        pen = calculate_total_penalty(self.l2ws_model.N_train, self.l2ws_model.params)
+        pen = calculate_total_penalty(self.l2ws_model.N_train, 
+                                      self.l2ws_model.params,
+                                      self.l2ws_model.b,
+                                      self.l2ws_model.c,
+                                      self.l2ws_model.delta
+                                      )
 
         # calculate avg posterior var
         avg_posterior_var, stddev_posterior_var = calculate_avg_posterior_var(self.l2ws_model.params)

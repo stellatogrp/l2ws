@@ -11,12 +11,11 @@ from jaxopt import OptaxSolver
 
 from l2ws.algo_steps import create_eval_fn, create_train_fn, lin_sys_solve
 from l2ws.utils.nn_utils import (
-    compute_all_params_KL,
+    calculate_total_penalty,
     get_perturbed_weights,
     init_network_params,
     init_variance_network_params,
     predict_y,
-    calculate_total_penalty
 )
 
 # from l2ws.scs_model import SCSmodel
@@ -33,6 +32,7 @@ class L2WSmodel(object):
                  test_inputs=None,
                  regression=False,
                  nn_cfg={},
+                 pac_bayes_cfg={},
                  plateau_decay={},
                  jit=True,
                  eval_unrolls=500,
@@ -47,6 +47,10 @@ class L2WSmodel(object):
         dict = algo_dict
         self.key = 0
         self.sigma = 0.01
+        self.b = pac_bayes_cfg.get('b', 100)
+        self.c = pac_bayes_cfg.get('c', 2.0)
+        self.delta = pac_bayes_cfg.get('delta', 0.01)
+        self.init_var = pac_bayes_cfg.get('init_var', 1e-3) # initializes all of s and the prior
 
         # essential pieces for the model
         self.initialize_essentials(jit, eval_unrolls, train_unrolls, train_inputs, test_inputs)
@@ -177,12 +181,8 @@ class L2WSmodel(object):
 
             loss = self.final_loss(loss_method, z_final, iter_losses, supervised, z0, z_star)
 
-            # pi_pen = jnp.log(jnp.pi ** 2 * self.N_train / (6 * 0.01))
-            # log_pen = 2 * jnp.log(100 * jnp.log(0.1 / jnp.exp(params[2])))
-            # penalty_loss = compute_all_params_KL(params[0], params[1], params[2]) + pi_pen + log_pen
-
-            penalty_loss = calculate_total_penalty(self.N_train, params)
-            loss = loss + penalty_loss #+ jnp.sqrt(penalty_loss / (2 * self.N_train))
+            penalty_loss = calculate_total_penalty(self.N_train, params, self.b, self.c, self.delta)
+            loss = loss + penalty_loss
 
             if diff_required:
                 return loss
@@ -328,7 +328,7 @@ class L2WSmodel(object):
         self.mean_params = init_network_params(layer_sizes, random.PRNGKey(0))
 
         # initialize the stddev
-        init_var, init_stddev_var = 1e-3, 1e-8
+        init_var, init_stddev_var = self.init_var, 1e-8
         self.sigma_params = init_variance_network_params(layer_sizes, init_var, random.PRNGKey(1), 
                                                           init_stddev_var)
         self.prior_param = jnp.log(init_var)
