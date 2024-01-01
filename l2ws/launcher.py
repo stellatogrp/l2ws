@@ -658,9 +658,6 @@ class Workspace:
         loaded_prior = jnp.load(f"{folder}/prior/prior_val.npz")
         prior = loaded_prior['prior']
 
-        import pdb
-        pdb.set_trace()
-
         self.l2ws_model.params = [mean_params, variance_params, prior]
 
 

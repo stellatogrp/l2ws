@@ -1,5 +1,5 @@
 nn_cfg:
-  lr: 1e-1
+  lr: 1e-5
   method: adam
   intermediate_layer_sizes: [10]
   batch_size: 100
@@ -25,14 +25,14 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 60
+train_unrolls: 15
 eval_unrolls: 1000
 eval_every_x_epochs: 100
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 2
-N_train: 100
+N_train: 100000
 N_test: 10
 num_samples: 10
 prediction_variable: w
@@ -45,9 +45,14 @@ num_clusters: 10
 pretrain_alpha: False
 normalize_inputs: True
 normalize_alpha: 'other'
+init_var: 1e-5
 
 accuracies: [.1, .01, .001, .0001]
 rho_x: 1
 scale: 1
 alpha_relax: 1
 skip_startup: False
+
+save_weights_flag: True
+load_weights_datetime: '2024-01-01/15-19-18'
+nn_load_type: stochastic
