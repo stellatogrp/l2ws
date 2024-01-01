@@ -51,6 +51,7 @@ class L2WSmodel(object):
         self.c = pac_bayes_cfg.get('c', 2.0)
         self.delta = pac_bayes_cfg.get('delta', 0.01)
         self.init_var = pac_bayes_cfg.get('init_var', 1e-1) # initializes all of s and the prior
+        self.penalty_coeff = pac_bayes_cfg.get('penalty_coeff', 1.0)
 
         # essential pieces for the model
         self.initialize_essentials(jit, eval_unrolls, train_unrolls, train_inputs, test_inputs)
@@ -182,7 +183,7 @@ class L2WSmodel(object):
             loss = self.final_loss(loss_method, z_final, iter_losses, supervised, z0, z_star)
 
             penalty_loss = calculate_total_penalty(self.N_train, params, self.b, self.c, self.delta)
-            loss = loss +  penalty_loss
+            loss = loss + self.penalty_coeff * penalty_loss
 
             if diff_required:
                 return loss

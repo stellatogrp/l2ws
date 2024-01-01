@@ -57,6 +57,7 @@ class Workspace:
         static_dict holds the data that doesn't change from problem to problem
         example is the string (e.g. 'robust_kalman')
         '''
+        self.frac_solved_accs = [0.1, 0.01, 0.001, 0.0001]
         self.sigma_nn_grid = np.array(cfg.get('sigma_nn', []))
         self.sigma_beta_grid = np.array(cfg.get('sigma_beta', []))
         self.pac_bayes_num_samples = cfg.get('pac_bayes_num_samples', 50)
@@ -172,6 +173,7 @@ class Workspace:
                                     test_inputs=self.test_inputs,
                                     regression=cfg.supervised,
                                     nn_cfg=cfg.nn_cfg,
+                                    pac_bayes_cfg=cfg.pac_bayes_cfg,
                                     z_stars_train=self.z_stars_train,
                                     z_stars_test=self.z_stars_test,
                                     algo_dict=input_dict)
@@ -193,6 +195,7 @@ class Workspace:
                                     test_inputs=self.test_inputs,
                                     regression=cfg.supervised,
                                     nn_cfg=cfg.nn_cfg,
+                                    pac_bayes_cfg=cfg.pac_bayes_cfg,
                                     z_stars_train=self.z_stars_train,
                                     z_stars_test=self.z_stars_test,
                                     algo_dict=input_dict)
@@ -322,6 +325,7 @@ class Workspace:
                                     test_inputs=self.test_inputs,
                                     regression=cfg.supervised,
                                     nn_cfg=cfg.nn_cfg,
+                                    pac_bayes_cfg=cfg.pac_bayes_cfg,
                                     z_stars_train=self.z_stars_train,
                                     z_stars_test=self.z_stars_test,
                                     algo_dict=input_dict)
@@ -405,6 +409,7 @@ class Workspace:
                                    y_stars_test=self.y_stars_test,
                                    regression=cfg.get('supervised', False),
                                    nn_cfg=cfg.nn_cfg,
+                                   pac_bayes_cfg=cfg.pac_bayes_cfg,
                                    algo_dict=algo_dict)
         # self.l2ws_model = SCSmodel(input_dict)
 
@@ -667,6 +672,10 @@ class Workspace:
         orig_cwd = hydra.utils.get_original_cwd()
         folder = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/nn_weights"
 
+        # len(nn_weights) == 3 and not isinstance(nn_weights[2], tuple)
+        if os.path.isdir(folder + "/mean"):
+            folder = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/nn_weights/mean"
+
         # find the number of layers based on the number of files
         num_layers = count_files_in_directory(folder)
 
@@ -832,10 +841,6 @@ class Workspace:
         self.plot_losses_over_examples(losses_over_examples, train, col)
 
         # update the eval csv files
-        # df_out = self.update_eval_csv(
-        #     iter_losses_mean, primal_residuals, dual_residuals, train, col)
-        # df_out = self.update_eval_csv(
-        #     iter_losses_mean, train, col)
         primal_residuals, dual_residuals, obj_vals_diff = None, None, None
         if len(out_train) == 6 or len(out_train) == 8:
             primal_residuals = out_train[4].mean(axis=0)
@@ -858,10 +863,35 @@ class Workspace:
         # plot the evaluation iterations
         self.plot_eval_iters(iters_df, primal_residuals_df,
                              dual_residuals_df, plot_pretrain, obj_vals_diff_df, train, col)
+        
+        # take care of frac_solved
+        frac_solved_list = []
+        frac_solved_df_list = self.frac_solved_df_list_train if train else self.frac_solved_df_list_test
+        for i in range(len(self.frac_solved_accs)):
+            # compute frac solved
+            fs = (out_train[1] < self.frac_solved_accs[i])
+            frac_solved = fs.mean(axis=0)
+            frac_solved_list.append(frac_solved)
 
-        # SRG-type plots
-        # r = out_train[2]
-        # self.plot_angles(angles, r, train, col)
+            penalty = calculate_total_penalty(self.l2ws_model.N_train, 
+                                    self.l2ws_model.params, 
+                                    self.l2ws_model.c,
+                                    self.l2ws_model.b,
+                                    self.l2ws_model.delta,
+                                    )
+
+            # update the df
+            frac_solved_df_list[i][col] = frac_solved
+            frac_solved_df_list[i][col + '_pac_bayes'] = jnp.clip(frac_solved - penalty, a_min=0)
+            ylabel = f"frac solved tol={self.frac_solved_accs[i]}"
+            filename = f"frac_solved/tol={self.frac_solved_accs[i]}"
+            curr_df = frac_solved_df_list[i]
+
+            # plot and update csv
+            self.plot_eval_iters_df(curr_df, train, col, ylabel, filename, yscale='standard', pac_bayes=True)
+            csv_filename = filename + '_train.csv' if train else filename + '_test.csv'
+            curr_df.to_csv(csv_filename)
+        
 
         # plot the warm-start predictions
         z_all = out_train[2]
@@ -1804,6 +1834,15 @@ class Workspace:
         self.agg_solve_iters_df_test['rel_tol'] = self.rel_tols
         self.agg_solve_iters_df_test['abs_tol'] = self.abs_tols
 
+        self.frac_solved_df_list_train = []
+        for i in range(len(self.frac_solved_accs)):
+            self.frac_solved_df_list_train.append(pd.DataFrame(columns=['iterations']))
+        self.frac_solved_df_list_test = []
+        for i in range(len(self.frac_solved_accs)):
+            self.frac_solved_df_list_test.append(pd.DataFrame(columns=['iterations']))
+        if not os.path.exists('frac_solved'):
+            os.mkdir('frac_solved')
+
     def train_full(self):
         print("Training full...")
         pretrain_on = True
@@ -1967,7 +2006,7 @@ class Workspace:
 
         return iters_df, primal_residuals_df, dual_residuals_df, obj_vals_diff_df
 
-    def plot_eval_iters_df(self, df, train, col, ylabel, filename):
+    def plot_eval_iters_df(self, df, train, col, ylabel, filename, yscale='log', pac_bayes=False):
         # plot the cold-start if applicable
         if 'no_train' in df.keys():
             plt.plot(df['no_train'], 'k-', label='no learning')
@@ -1985,7 +2024,10 @@ class Workspace:
         # plot the learned warm-start if applicable
         if col != 'no_train' and col != 'pretrain' and col != 'nearest_neighbor' and col != 'prev_sol':  # noqa
             plt.plot(df[col], label=f"train k={self.train_unrolls}")
-        plt.yscale('log')
+            if pac_bayes:
+                plt.plot(df[col + '_pac_bayes'], label="pac_bayes")
+        if yscale == 'log':
+            plt.yscale('log')
         plt.xlabel('evaluation iterations')
         plt.ylabel(f"test {ylabel}")
         plt.legend()

@@ -45,7 +45,7 @@ num_clusters: 10
 pretrain_alpha: False
 normalize_inputs: True
 normalize_alpha: 'other'
-init_var: 1e-5
+
 
 accuracies: [.1, .01, .001, .0001]
 rho_x: 1
@@ -55,4 +55,10 @@ skip_startup: False
 
 save_weights_flag: True
 load_weights_datetime: '2024-01-01/15-19-18'
-nn_load_type: stochastic
+nn_load_type: deterministic
+
+pac_bayes_cfg:
+  init_var: 1e-2
+  c: 10.0
+  b: 100
+  delta: 0.01
