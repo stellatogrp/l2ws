@@ -18,14 +18,11 @@ from l2ws.utils.nn_utils import (
     predict_y,
 )
 
-# from l2ws.scs_model import SCSmodel
-# from l2ws.scs_model import SCSmodel
 config.update("jax_enable_x64", True)
 # config.update('jax_disable_jit', True)
 
 
 class L2WSmodel(object):
-    # def __init__(self, dict):
     def __init__(self, 
                  train_unrolls=5,
                  train_inputs=None,
@@ -72,13 +69,8 @@ class L2WSmodel(object):
 
         # create_all_loss_fns
         self.create_all_loss_fns(loss_method, regression)
-        # to describe the final loss function (not the end-to-end loss fn)
-        # self.loss_method = dict.get('loss_method', 'fixed_k')
-        # self.supervised = dict.get('supervised', False)
-        # self.create_all_loss_fns(dict)
 
         # neural network setup
-        # self.initialize_neural_network(dict)
         self.initialize_neural_network(nn_cfg, plateau_decay)
 
         # init to track training
@@ -98,21 +90,18 @@ class L2WSmodel(object):
         self.factor_static = None
 
 
-    # def initialize_essentials(self, input_dict):
     def initialize_essentials(self, jit, eval_unrolls, train_unrolls, train_inputs, test_inputs):
         self.jit = jit
         self.eval_unrolls = eval_unrolls
         self.train_unrolls = train_unrolls + 1
         self.train_inputs, self.test_inputs = train_inputs, test_inputs
         self.N_train, self.N_test = self.train_inputs.shape[0], self.test_inputs.shape[0]
-        # self.share_all = input_dict.get('share_all', False)
         self.batch_angle = vmap(self.compute_angle, in_axes=(0, 0), out_axes=(0))
         self.static_flag = True
 
-    # def setup_optimal_solutions(self, dict):
+
     def setup_optimal_solutions(self, z_stars_train, z_stars_test, x_stars_train=None, 
                                 x_stars_test=None, y_stars_train=None, y_stars_test=None):
-        # if dict.get('z_stars_train', None) is not None:
         if z_stars_train is not None:
             self.z_stars_train = jnp.array(z_stars_train) # jnp.array(dict['z_stars_train'])
             self.z_stars_test = jnp.array(z_stars_test) # jnp.array(dict['z_stars_test'])
@@ -125,16 +114,10 @@ class L2WSmodel(object):
 
         def predict(params, input, q, iters, z_star, key, factor):
             if self.algo == 'scs':
-                # q = lin_sys_solve(self.factor, q)
                 q = lin_sys_solve(factor, q)
             else:
                 pass
-            # z0 = self.predict_warm_start(params, input, key, sigma, bypass_nn)
             z0 = self.predict_warm_start(params, input, key, bypass_nn)
-
-            # if self.out_axes_length == 8:
-            # if isinstance(self, SCSmodel):
-            #     q = lin_sys_solve(self.factor, q)
 
             if self.train_fn is not None:
                 train_fn = self.train_fn
@@ -175,9 +158,6 @@ class L2WSmodel(object):
                                        z_star=z_star)
                 z_final, iter_losses, z_all_plus_1 = eval_out[0], eval_out[1], eval_out[2]
 
-                # compute angle(z^{k+1} - z^k, z^k - z^{k-1})
-                # diffs = jnp.diff(z_all_plus_1, axis=0)
-                # angles = self.batch_angle(diffs[:-1], diffs[1:])
                 angles = None
 
             loss = self.final_loss(loss_method, z_final, iter_losses, supervised, z0, z_star)
@@ -190,7 +170,6 @@ class L2WSmodel(object):
             else:
                 return_out = (loss, iter_losses, z_all_plus_1, angles) + eval_out[3:]
                 return return_out
-        # loss_fn = predict_2_loss(predict, static_flag, diff_required, factor_static, M_static)
         loss_fn = self.predict_2_loss(predict, diff_required)
         return loss_fn
 
@@ -216,9 +195,6 @@ class L2WSmodel(object):
             #   1. factors needed, but are the same for all problems
             #   2. no factors are needed
             key = state.iter_num
-            # nn_params, sigma_params = params[0], params[1]
-            # import pdb
-            # pdb.set_trace()
 
             results = self.optimizer.update(params=params,
                                             state=state,
@@ -239,7 +215,6 @@ class L2WSmodel(object):
                                     fixed_ws=fixed_ws, light=light)
 
     def short_test_eval(self):
-        # z_stars_test = self.z_stars_test if self.supervised else None
         z_stars_test = self.z_stars_test
 
         if self.factors_required and not self.factor_static_bool:
@@ -288,11 +263,8 @@ class L2WSmodel(object):
 
         return loss, out, time_per_prob
 
-    # def initialize_neural_network(self, input_dict):
+
     def initialize_neural_network(self, nn_cfg, plateau_decay):
-        # nn_cfg = input_dict.get('nn_cfg', {})
-
-
         # neural network
         self.epochs, self.lr = nn_cfg.get('epochs', 10), nn_cfg.get('lr', 1e-3)
         self.decay_lr, self.min_lr = nn_cfg.get('decay_lr', False), nn_cfg.get('min_lr', 1e-7)
@@ -315,10 +287,7 @@ class L2WSmodel(object):
 
         # layer sizes
         input_size = self.train_inputs.shape[1]
-        # if self.share_all:
-        #     output_size = self.num_clusters
-        # else:
-        #     output_size = self.output_size
+
         output_size = self.output_size
         hidden_layer_sizes = nn_cfg.get('intermediate_layer_sizes', [])
 
@@ -336,11 +305,6 @@ class L2WSmodel(object):
         self.params = [self.mean_params, self.sigma_params, self.prior_param]
         mask = [True, True, True]
         masked_optimizer = optax.masked(optax.adam(self.lr), mask)
-        # self.params = (self.mean_params, self.sigma_params, self.prior_param)
-        # self.param_labels = ('mean', 'variance', 'prior')
-
-        # tx = optax.multi_transform(
-        #     {'mean': optax.adam(0.1), 'variance': optax.adam(self.lr)}, 'prior': optax.adam(self.lr), self.param_labels)
 
         # initializes the optimizer
         self.optimizer_method = nn_cfg.get('method', 'adam')
@@ -376,35 +340,7 @@ class L2WSmodel(object):
                                                    z_stars=z_stars_init,
                                                    key=self.key)
 
-    # def setup_share_all(self, dict):
-    #     if self.share_all:
-    #         self.num_clusters = dict.get('num_clusters', 10)
-    #         self.pretrain_alpha = dict.get('pretrain_alpha', False)
-    #         self.normalize_alpha = dict.get('normalize_alpha', 'none')
-    #         out = self.cluster_z()
-    #         self.Z_shared = out[0]
-    #         self.train_cluster_indices, self.test_cluster_indices = out[1], out[2]
-    #         self.X_list, self.Y_list = [], []
-    #         if self.pretrain_alpha:
-    #             self.pretrain_alphas(1000, None, share_all=True)
 
-    # def setup_optimal_solutions(self, dict):
-    #     if dict.get('z_stars_train', None) is not None:
-    #         self.y_stars_train, self.y_stars_test = dict['y_stars_train'], dict['y_stars_test']
-    #         self.x_stars_train, self.x_stars_test = dict['x_stars_train'], dict['x_stars_test']
-    #         self.z_stars_train = jnp.array(dict['z_stars_train'])
-    #         self.z_stars_test = jnp.array(dict['z_stars_test'])
-    #         self.u_stars_train = jnp.hstack([self.x_stars_train, self.y_stars_train])
-    #         self.u_stars_test = jnp.hstack([self.x_stars_test, self.y_stars_test])
-    #     else:
-    #         self.z_stars_train, self.z_stars_test = None, None
-    #     import pdb
-    #     pdb.set_trace()
-
-    # def create_end2end_loss_fn(self, bypass_nn, diff_required):
-    #     raise NotImplementedError("Subclass needs to define this.")
-
-    # def create_all_loss_fns(self, dict):
     def create_all_loss_fns(self, loss_method, supervised):
         # to describe the final loss function (not the end-to-end loss fn)
         self.loss_method = loss_method
@@ -431,8 +367,6 @@ class L2WSmodel(object):
         # end-to-end added fixed warm start eval - bypasses neural network
         self.loss_fn_fixed_ws = e2e_loss_fn(bypass_nn=True, diff_required=False)
 
-        # end-to-end loss fn for evaluation of fixed ws - meant for light mode
-        # self.loss_fn_fixed_ws_light = e2e_loss_fn(bypass_nn=True, diff_required=True)
 
     def init_train_tracking(self):
         self.epoch = 0

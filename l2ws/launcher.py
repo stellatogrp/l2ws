@@ -544,7 +544,6 @@ class Workspace:
         pac_bayes_bounds = np.zeros((num_sigmas, self.l2ws_model.eval_unrolls))
 
         nn_params = self.l2ws_model.params
-        # beta = 3
 
         self.weight_stats()
 
