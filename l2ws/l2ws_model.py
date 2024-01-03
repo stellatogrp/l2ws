@@ -294,24 +294,31 @@ class L2WSmodel(object):
         layer_sizes = [input_size] + hidden_layer_sizes + [output_size]
         self.layer_sizes = layer_sizes
 
-        # initialize weights of neural network
-        self.mean_params = init_network_params(layer_sizes, random.PRNGKey(0))
-
-        # initialize the stddev
         init_var, init_stddev_var = self.init_var, 1e-8
-        self.sigma_params = init_variance_network_params(layer_sizes, init_var, random.PRNGKey(1), 
+        if self.algo == 'alista':
+            self.mean_params = jnp.ones((self.train_unrolls, 2))
+            self.sigma_params = jnp.ones((self.train_unrolls, 2)) / 10
+        else:
+            # initialize weights of neural network
+            self.mean_params = init_network_params(layer_sizes, random.PRNGKey(0))
+
+            # initialize the stddev
+            self.sigma_params = init_variance_network_params(layer_sizes, init_var, random.PRNGKey(1), 
                                                           init_stddev_var)
+        
+        # initialize the prior
         self.prior_param = jnp.log(init_var)
+
         self.params = [self.mean_params, self.sigma_params, self.prior_param]
-        mask = [True, True, True]
-        masked_optimizer = optax.masked(optax.adam(self.lr), mask)
 
         # initializes the optimizer
         self.optimizer_method = nn_cfg.get('method', 'adam')
         if self.optimizer_method == 'adam':
-            self.optimizer = OptaxSolver(opt=masked_optimizer, fun=self.loss_fn_train, has_aux=False)
-            # self.optimizer = OptaxSolver(opt=optax.adam(
-            #     self.lr), fun=self.loss_fn_train, has_aux=False)
+            # mask = [True, True, True]
+            # masked_optimizer = optax.masked(optax.adam(self.lr), mask)
+            # self.optimizer = OptaxSolver(opt=masked_optimizer, fun=self.loss_fn_train, has_aux=False)
+            self.optimizer = OptaxSolver(opt=optax.adam(
+                self.lr), fun=self.loss_fn_train, has_aux=False)
         elif self.optimizer_method == 'sgd':
             self.optimizer = OptaxSolver(opt=optax.sgd(
                 self.lr), fun=self.loss_fn_train, has_aux=False)

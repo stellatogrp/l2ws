@@ -23,11 +23,14 @@ from l2ws.algo_steps import (
     unvec_symm,
     vec_symm,
 )
+
+from l2ws.alista_model import ALISTAmodel
 from l2ws.eg_model import EGmodel
 from l2ws.gd_model import GDmodel
 from l2ws.ista_model import ISTAmodel
 from l2ws.osqp_model import OSQPmodel
 from l2ws.scs_model import SCSmodel
+
 from l2ws.utils.generic_utils import count_files_in_directory, sample_plot, setup_permutation
 from l2ws.utils.mpc_utils import closed_loop_rollout
 from l2ws.utils.nn_utils import (
@@ -145,6 +148,11 @@ class Workspace:
             self.q_mat_train = thetas[:N_train, :]
             self.q_mat_test = thetas[N_train:N, :]
             self.create_gd_model(cfg, static_dict)
+        elif algo == 'alista':
+            self.q_mat_train = thetas[:N_train, :]
+            self.q_mat_test = thetas[N_train:N, :]
+            self.create_alista_model(cfg, static_dict)
+
 
     def create_ista_model(self, cfg, static_dict):
         # get A, lambd, ista_step
@@ -168,6 +176,36 @@ class Workspace:
                           )
         # self.l2ws_model = ISTAmodel(input_dict)
         self.l2ws_model = ISTAmodel(train_unrolls=self.train_unrolls,
+                                    eval_unrolls=self.eval_unrolls,
+                                    train_inputs=self.train_inputs,
+                                    test_inputs=self.test_inputs,
+                                    regression=cfg.supervised,
+                                    nn_cfg=cfg.nn_cfg,
+                                    pac_bayes_cfg=cfg.pac_bayes_cfg,
+                                    z_stars_train=self.z_stars_train,
+                                    z_stars_test=self.z_stars_test,
+                                    algo_dict=input_dict)
+        
+    def create_alista_model(self, cfg, static_dict):
+        # get A, lambd, ista_step
+        W, D = static_dict['W'], static_dict['D']
+        # ista_step = static_dict['ista_step']
+
+        input_dict = dict(algorithm='alista',
+                        #   supervised=cfg.supervised,
+                        #   train_unrolls=self.train_unrolls,
+                        #   jit=True,
+                        #   train_inputs=self.train_inputs,
+                        #   test_inputs=self.test_inputs,
+                          b_mat_train=self.q_mat_train,
+                          b_mat_test=self.q_mat_test,
+                          D=D,
+                          W=W
+                        #   nn_cfg=cfg.nn_cfg,
+                        #   z_stars_train=self.z_stars_train,
+                        #   z_stars_test=self.z_stars_test,
+                          )
+        self.l2ws_model = ALISTAmodel(train_unrolls=self.train_unrolls,
                                     eval_unrolls=self.eval_unrolls,
                                     train_inputs=self.train_inputs,
                                     test_inputs=self.test_inputs,
@@ -1908,6 +1946,8 @@ class Workspace:
         avg_posterior_var, stddev_posterior_var = calculate_avg_posterior_var(self.l2ws_model.params)
 
         mean_squared_w, dim = compute_weight_norm_squared(self.l2ws_model.params[0])
+        print('mean', self.l2ws_model.params[0])
+        
         
         if self.test_writer is not None:
             self.test_writer.writerow({

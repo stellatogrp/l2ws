@@ -14,6 +14,7 @@ import l2ws.examples.robust_kalman as robust_kalman
 import l2ws.examples.robust_ls as robust_ls
 import l2ws.examples.robust_pca as robust_pca
 import l2ws.examples.sparse_pca as sparse_pca
+import l2ws.examples.sparse_coding as sparse_coding
 import l2ws.examples.unconstrained_qp as unconstrained_qp
 import l2ws.examples.vehicle as vehicle
 from l2ws.utils.data_utils import copy_data_file, recover_last_datetime
@@ -201,6 +202,19 @@ def main_run_vehicle(cfg):
     vehicle.run(cfg)
 
 
+@hydra.main(config_path='configs/sparse_coding', config_name='sparse_coding_run.yaml')
+def main_run_sparse_coding(cfg):
+    orig_cwd = hydra.utils.get_original_cwd()
+    example = 'sparse_coding'
+    agg_datetime = cfg.data.datetime
+    if agg_datetime == '':
+        # get the most recent datetime and update datetimes
+        agg_datetime = recover_last_datetime(orig_cwd, example, 'data_setup')
+        cfg.data.datetime = agg_datetime
+    copy_data_file(example, agg_datetime)
+    sparse_coding.run(cfg)
+
+
 if __name__ == '__main__':
     if sys.argv[2] == 'cluster':
         base = 'hydra.run.dir=/scratch/gpfs/rajivs/learn2warmstart/outputs/'
@@ -265,3 +279,7 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'jamming/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_run_jamming()
+    elif sys.argv[1] == 'sparse_coding':
+        sys.argv[1] = base + 'sparse_coding/train_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_run_sparse_coding()

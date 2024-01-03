@@ -13,6 +13,7 @@ import l2ws.examples.quadcopter as quadcopter
 import l2ws.examples.robust_kalman as robust_kalman
 import l2ws.examples.robust_ls as robust_ls
 import l2ws.examples.robust_pca as robust_pca
+import l2ws.examples.sparse_coding as sparse_coding
 import l2ws.examples.sparse_pca as sparse_pca
 import l2ws.examples.unconstrained_qp as unconstrained_qp
 import l2ws.examples.vehicle as vehicle
@@ -88,6 +89,11 @@ def main_setup_unconstrained_qp(cfg):
     unconstrained_qp.setup_probs(cfg)
 
 
+@hydra.main(config_path='configs/sparse_coding', config_name='sparse_coding_setup.yaml')
+def main_setup_sparse_coding(cfg):
+    sparse_coding.setup_probs(cfg)
+
+
 if __name__ == '__main__':
     if sys.argv[2] == 'cluster':
         base = 'hydra.run.dir=/scratch/gpfs/rajivs/learn2warmstart/outputs/'
@@ -152,3 +158,7 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'jamming/data_setup_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         main_setup_jamming()
+    elif sys.argv[1] == 'sparse_coding':
+        sys.argv[1] = base + 'sparse_coding/data_setup_outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        main_setup_sparse_coding()
