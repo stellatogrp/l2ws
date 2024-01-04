@@ -35,10 +35,16 @@ def run(run_cfg):
     D = np.array(D)
 
     # form W
-    W = get_W(D)
+    W = D #get_W(D)
     W, D = jnp.array(W), jnp.array(D)
 
-    static_dict = dict(D=D, W=W)
+    # get the ista values
+    evals, evecs = jnp.linalg.eigh(D.T @ D)
+    step = 1 / evals.max()
+    lambd = 0.1
+    eta = lambd * step
+
+    static_dict = dict(D=D, W=W, step=step, eta=eta)
 
     # we directly save q now
     static_flag = True

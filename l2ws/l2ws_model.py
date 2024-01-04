@@ -40,6 +40,7 @@ class L2WSmodel(object):
                  y_stars_train=None,
                  y_stars_test=None,
                  loss_method='fixed_k',
+                 alista_cfg=None,
                  algo_dict={}):
         dict = algo_dict
         self.key = 0
@@ -72,7 +73,7 @@ class L2WSmodel(object):
         self.create_all_loss_fns(loss_method, regression)
 
         # neural network setup
-        self.initialize_neural_network(nn_cfg, plateau_decay)
+        self.initialize_neural_network(nn_cfg, plateau_decay, alista_cfg=alista_cfg)
 
         # init to track training
         self.init_train_tracking()
@@ -265,7 +266,7 @@ class L2WSmodel(object):
         return loss, out, time_per_prob
 
 
-    def initialize_neural_network(self, nn_cfg, plateau_decay):
+    def initialize_neural_network(self, nn_cfg, plateau_decay, alista_cfg=None):
         # neural network
         self.epochs, self.lr = nn_cfg.get('epochs', 10), nn_cfg.get('lr', 1e-3)
         self.decay_lr, self.min_lr = nn_cfg.get('decay_lr', False), nn_cfg.get('min_lr', 1e-7)
@@ -298,6 +299,13 @@ class L2WSmodel(object):
         init_var, init_stddev_var = self.init_var, 1e-8
         if self.algo == 'alista':
             self.mean_params = jnp.ones((self.train_unrolls, 2))
+
+            # initialize with ista values
+            alista_step = alista_cfg['step']
+            alista_eta = alista_cfg['eta']
+            self.mean_params = self.mean_params.at[:, 0].set(alista_step)
+            self.mean_params = self.mean_params.at[:, 0].set(alista_eta)
+            
             self.sigma_params = -jnp.ones((self.train_unrolls, 2)) #/ 10
         else:
             # initialize weights of neural network

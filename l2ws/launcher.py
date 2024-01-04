@@ -189,6 +189,7 @@ class Workspace:
     def create_alista_model(self, cfg, static_dict):
         # get A, lambd, ista_step
         W, D = static_dict['W'], static_dict['D']
+        alista_cfg = {'step': static_dict['step'], 'eta': static_dict['eta']}
         # ista_step = static_dict['ista_step']
 
         input_dict = dict(algorithm='alista',
@@ -214,6 +215,7 @@ class Workspace:
                                     pac_bayes_cfg=cfg.pac_bayes_cfg,
                                     z_stars_train=self.z_stars_train,
                                     z_stars_test=self.z_stars_test,
+                                    alista_cfg=alista_cfg,
                                     algo_dict=input_dict)
 
     def create_gd_model(self, cfg, static_dict):
