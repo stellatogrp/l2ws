@@ -52,7 +52,7 @@ class ALISTAmodel(L2WSmodel):
             w_key = random.PRNGKey(key)
             perturb = random.normal(w_key, (self.train_unrolls, 2))
             # return scale * random.normal(w_key, (n, m))
-            stochastic_params = params[0] #+ jnp.sqrt(params[1]) * perturb
+            stochastic_params = params[0] + jnp.sqrt(jnp.exp(params[1])) * perturb
 
             if diff_required:
                 z_final, iter_losses = train_fn(k=iters,
@@ -74,7 +74,7 @@ class ALISTAmodel(L2WSmodel):
             loss = self.final_loss(loss_method, z_final, iter_losses, supervised, z0, z_star)
 
             penalty_loss = calculate_total_penalty(self.N_train, params, self.b, self.c, self.delta)
-            loss = loss #+ self.penalty_coeff * penalty_loss
+            loss = loss + self.penalty_coeff * penalty_loss
 
             if diff_required:
                 return loss

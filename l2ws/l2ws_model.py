@@ -297,7 +297,7 @@ class L2WSmodel(object):
         init_var, init_stddev_var = self.init_var, 1e-8
         if self.algo == 'alista':
             self.mean_params = jnp.ones((self.train_unrolls, 2))
-            self.sigma_params = jnp.ones((self.train_unrolls, 2)) / 10
+            self.sigma_params = -jnp.ones((self.train_unrolls, 2)) #/ 10
         else:
             # initialize weights of neural network
             self.mean_params = init_network_params(layer_sizes, random.PRNGKey(0))

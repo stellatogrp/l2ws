@@ -1947,6 +1947,7 @@ class Workspace:
 
         mean_squared_w, dim = compute_weight_norm_squared(self.l2ws_model.params[0])
         print('mean', self.l2ws_model.params[0])
+        print('var', self.l2ws_model.params[1])
         
         
         if self.test_writer is not None:
