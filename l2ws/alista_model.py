@@ -52,7 +52,10 @@ class ALISTAmodel(L2WSmodel):
             w_key = random.PRNGKey(key)
             perturb = random.normal(w_key, (self.train_unrolls, 2))
             # return scale * random.normal(w_key, (n, m))
-            stochastic_params = params[0] + jnp.sqrt(jnp.exp(params[1])) * perturb
+            if self.deterministic:
+                stochastic_params = params[0]
+            else:
+                stochastic_params = params[0] + jnp.sqrt(jnp.exp(params[1])) * perturb
 
             if diff_required:
                 z_final, iter_losses = train_fn(k=iters,

@@ -49,6 +49,7 @@ class L2WSmodel(object):
         self.delta = pac_bayes_cfg.get('delta', 0.01)
         self.init_var = pac_bayes_cfg.get('init_var', 1e-1) # initializes all of s and the prior
         self.penalty_coeff = pac_bayes_cfg.get('penalty_coeff', 1.0)
+        self.deterministic = pac_bayes_cfg.get('deterministic', False)
 
         # essential pieces for the model
         self.initialize_essentials(jit, eval_unrolls, train_unrolls, train_inputs, test_inputs)

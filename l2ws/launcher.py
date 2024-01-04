@@ -493,9 +493,32 @@ class Workspace:
     def save_weights(self):
         nn_weights = self.l2ws_model.params
         if len(nn_weights) == 3 and not isinstance(nn_weights[2], tuple):
-            self.save_weights_stochastic()
+            if self.l2ws_model.algo == 'alista':
+                self.save_weights_stochastic_alista()
+            else:
+                self.save_weights_stochastic()
         else:
             self.save_weights_deterministic()
+
+    def save_weights_stochastic_alista(self):
+        nn_weights = self.l2ws_model.params
+        # create directory
+        if not os.path.exists('nn_weights'):
+            os.mkdir('nn_weights')
+            os.mkdir('nn_weights/mean')
+            os.mkdir('nn_weights/variance')
+            os.mkdir('nn_weights/prior')
+
+        # Save mean weights
+        mean_params = nn_weights[0]
+        jnp.savez("nn_weights/mean/mean_params.npz", mean_params=mean_params)
+
+        # Save variance weights
+        variance_params = nn_weights[1]
+        jnp.savez("nn_weights/variance/variance_params.npz", variance_params=variance_params)
+
+        # save prior
+        jnp.savez("nn_weights/prior/prior_val.npz", prior=nn_weights[2])
 
     def save_weights_stochastic(self):
         nn_weights = self.l2ws_model.params
@@ -665,9 +688,58 @@ class Workspace:
 
     def load_weights(self, example, datetime, nn_type):
         if nn_type == 'deterministic':
-            self.load_weights_deterministic(example, datetime)
+            if self.l2ws_model.algo == 'alista':
+                self.load_weights_deterministic_alista(example, datetime)
+            else:
+                self.load_weights_deterministic(example, datetime)
         elif nn_type == 'stochastic':
-            self.load_weights_stochastic(example, datetime)
+            if self.l2ws_model.algo == 'alista':
+                self.load_weights_stochastic_alista(example, datetime)
+            else:
+                self.load_weights_stochastic(example, datetime)
+
+
+    def load_weights_stochastic_alista(self, example, datetime):
+        # get the appropriate folder
+        orig_cwd = hydra.utils.get_original_cwd()
+        folder = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/nn_weights"
+
+        # load the mean
+        loaded_mean = jnp.load(f"{folder}/mean/mean_params.npz")
+        mean_params = loaded_mean['mean_params']
+        
+        # load the variance
+        loaded_variance = jnp.load(f"{folder}/variance/variance_params.npz")
+        variance_params = loaded_variance['variance_params']
+
+        # load the prior
+        loaded_prior = jnp.load(f"{folder}/prior/prior_val.npz")
+        prior = loaded_prior['prior']
+
+        self.l2ws_model.params = [mean_params, variance_params, prior]
+
+
+    def load_weights_deterministic_alista(self, example, datetime):
+        # get the appropriate folder
+        orig_cwd = hydra.utils.get_original_cwd()
+        folder = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/nn_weights"
+
+        # load the mean
+        loaded_mean = jnp.load(f"{folder}/mean/mean_params.npz")
+        mean_params = loaded_mean['mean_params']
+        self.l2ws_model.params[0] = mean_params
+        
+        # load the variance
+        # loaded_variance = jnp.load(f"{folder}/variance/variance_params.npz")
+        # variance_params = loaded_variance['variance_params']
+        variance_params = jnp.log(jnp.abs(mean_params / 100))
+        self.l2ws_model.params[1] = variance_params
+
+        # load the prior
+        # loaded_prior = jnp.load(f"{folder}/prior/prior_val.npz")
+        # prior = loaded_prior['prior']
+
+        # self.l2ws_model.params = [mean_params, variance_params, prior]
 
 
     def load_weights_stochastic(self, example, datetime):
