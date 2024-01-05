@@ -23,14 +23,12 @@ from l2ws.algo_steps import (
     unvec_symm,
     vec_symm,
 )
-
 from l2ws.alista_model import ALISTAmodel
 from l2ws.eg_model import EGmodel
 from l2ws.gd_model import GDmodel
 from l2ws.ista_model import ISTAmodel
 from l2ws.osqp_model import OSQPmodel
 from l2ws.scs_model import SCSmodel
-
 from l2ws.utils.generic_utils import count_files_in_directory, sample_plot, setup_permutation
 from l2ws.utils.mpc_utils import closed_loop_rollout
 from l2ws.utils.nn_utils import (
@@ -38,6 +36,7 @@ from l2ws.utils.nn_utils import (
     calculate_total_penalty,
     compute_KL_penalty,
     compute_weight_norm_squared,
+    invert_kl
 )
 
 plt.rcParams.update({
@@ -734,7 +733,7 @@ class Workspace:
         # load the variance
         # loaded_variance = jnp.load(f"{folder}/variance/variance_params.npz")
         # variance_params = loaded_variance['variance_params']
-        variance_params = jnp.log(jnp.abs(mean_params / 1000))
+        variance_params = jnp.log(jnp.abs(mean_params / 100))
         self.l2ws_model.params[1] = variance_params
 
         # load the prior
@@ -990,16 +989,26 @@ class Workspace:
                                     self.l2ws_model.b,
                                     self.l2ws_model.delta,
                                     )
+            final_pac_bayes_loss = jnp.zeros(frac_solved.size)
+            for j in range(frac_solved.size):
+                kl_inv = invert_kl(1 - frac_solved[j], penalty)
+                final_pac_bayes_loss = final_pac_bayes_loss.at[j].set(1 - kl_inv)
+
+
+            final_pac_bayes_frac_solved = jnp.clip(final_pac_bayes_loss, a_min=0)
+
 
             # update the df
             frac_solved_df_list[i][col] = frac_solved
-            frac_solved_df_list[i][col + '_pac_bayes'] = jnp.clip(frac_solved - penalty, a_min=0)
+            # frac_solved_df_list[i][col + '_pac_bayes'] = jnp.clip(frac_solved - penalty, a_min=0)
+            frac_solved_df_list[i][col + '_pac_bayes'] = final_pac_bayes_frac_solved #jnp.clip(frac_solved - penalty, a_min=0)
             ylabel = f"frac solved tol={self.frac_solved_accs[i]}"
             filename = f"frac_solved/tol={self.frac_solved_accs[i]}"
             curr_df = frac_solved_df_list[i]
 
             # plot and update csv
-            self.plot_eval_iters_df(curr_df, train, col, ylabel, filename, yscale='standard', pac_bayes=True)
+            self.plot_eval_iters_df(curr_df, train, col, ylabel, filename, yscale='standard', 
+                                    pac_bayes=True)
             csv_filename = filename + '_train.csv' if train else filename + '_test.csv'
             curr_df.to_csv(csv_filename)
         

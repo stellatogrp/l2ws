@@ -12,6 +12,7 @@ from jaxopt import OptaxSolver
 from l2ws.algo_steps import create_eval_fn, create_train_fn, lin_sys_solve
 from l2ws.utils.nn_utils import (
     calculate_total_penalty,
+    calculate_pinsker_penalty,
     get_perturbed_weights,
     init_network_params,
     init_variance_network_params,
@@ -164,7 +165,8 @@ class L2WSmodel(object):
 
             loss = self.final_loss(loss_method, z_final, iter_losses, supervised, z0, z_star)
 
-            penalty_loss = calculate_total_penalty(self.N_train, params, self.b, self.c, self.delta)
+            # penalty_loss = calculate_total_penalty(self.N_train, params, self.b, self.c, self.delta)
+            penalty_loss = calculate_pinsker_penalty(self.N_train, params, self.b, self.c, self.delta)
             loss = loss + self.penalty_coeff * penalty_loss
 
             if diff_required:
