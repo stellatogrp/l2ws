@@ -1000,7 +1000,7 @@ class Workspace:
 
             # update the df
             frac_solved_df_list[i][col] = frac_solved
-            # frac_solved_df_list[i][col + '_pac_bayes'] = jnp.clip(frac_solved - penalty, a_min=0)
+            frac_solved_df_list[i][col + '_pinsker'] = jnp.clip(frac_solved - jnp.sqrt(penalty / 2), a_min=0)
             frac_solved_df_list[i][col + '_pac_bayes'] = final_pac_bayes_frac_solved #jnp.clip(frac_solved - penalty, a_min=0)
             ylabel = f"frac solved tol={self.frac_solved_accs[i]}"
             filename = f"frac_solved/tol={self.frac_solved_accs[i]}"
