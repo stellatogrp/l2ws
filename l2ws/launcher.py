@@ -734,7 +734,7 @@ class Workspace:
         # load the variance
         # loaded_variance = jnp.load(f"{folder}/variance/variance_params.npz")
         # variance_params = loaded_variance['variance_params']
-        variance_params = jnp.log(jnp.abs(mean_params / 100))
+        variance_params = jnp.log(jnp.abs(mean_params / 1000))
         self.l2ws_model.params[1] = variance_params
 
         # load the prior
