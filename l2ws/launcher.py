@@ -36,7 +36,7 @@ from l2ws.utils.nn_utils import (
     calculate_total_penalty,
     compute_KL_penalty,
     compute_weight_norm_squared,
-    invert_kl
+    invert_kl,
 )
 
 plt.rcParams.update({
@@ -59,7 +59,8 @@ class Workspace:
         static_dict holds the data that doesn't change from problem to problem
         example is the string (e.g. 'robust_kalman')
         '''
-        self.frac_solved_accs = [0.1, 0.01, 0.001, 0.0001]
+        pac_bayes_cfg = cfg.get('pac_bayes_cfg', {})
+        self.frac_solved_accs = pac_bayes_cfg.get('frac_solved_accs', [0.1, 0.01, 0.001, 0.0001])
         self.sigma_nn_grid = np.array(cfg.get('sigma_nn', []))
         self.sigma_beta_grid = np.array(cfg.get('sigma_beta', []))
         self.pac_bayes_num_samples = cfg.get('pac_bayes_num_samples', 50)
@@ -1007,6 +1008,12 @@ class Workspace:
             curr_df = frac_solved_df_list[i]
 
             # plot and update csv
+            # if self.l2ws_model.algo == 'alista':
+            #     yscale = 'log'
+            # else:
+            #     yscale = 'standard'
+            # self.plot_eval_iters_df(curr_df, train, col, ylabel, filename, yscale=yscale, 
+            #                         pac_bayes=True)
             self.plot_eval_iters_df(curr_df, train, col, ylabel, filename, yscale='standard', 
                                     pac_bayes=True)
             csv_filename = filename + '_train.csv' if train else filename + '_test.csv'
@@ -2165,7 +2172,10 @@ class Workspace:
     def plot_eval_iters(self, iters_df, primal_residuals_df, dual_residuals_df, plot_pretrain,
                         obj_vals_diff_df,
                         train, col):
-        self.plot_eval_iters_df(iters_df, train, col, 'fixed point residual', 'eval_iters')
+        # self.plot_eval_iters_df(curr_df, train, col, ylabel, filename, yscale=yscale, 
+            #                         pac_bayes=True)
+        yscale = 'standard' if self.l2ws_model.algo == 'alista' else 'log'
+        self.plot_eval_iters_df(iters_df, train, col, 'fixed point residual', 'eval_iters', yscale=yscale)
         if primal_residuals_df is not None:
             self.plot_eval_iters_df(primal_residuals_df, train, col,
                                     'primal residual', 'primal_residuals')

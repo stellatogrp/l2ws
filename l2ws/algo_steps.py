@@ -89,7 +89,7 @@ def fp_eval_alista(i, val, supervised, z_star, params, W, D, b):
     gamma = params[i, 0]
     theta = params[i, 1]
     z_next = fixed_point_alista(z, W, D, b, gamma, theta)
-    diff = jnp.linalg.norm(z - z_star) ** 2 / jnp.linalg.norm(z_star) ** 2
+    diff = 10 * jnp.log10(jnp.linalg.norm(z - z_star) ** 2 / jnp.linalg.norm(z_star) ** 2)
     loss_vec = loss_vec.at[i].set(diff)
     obj = .5 * jnp.linalg.norm(D @ z_next - b) ** 2 # + lambd * jnp.linalg.norm(z_next, ord=1)
     opt_obj = .5 * jnp.linalg.norm(D @ z_star - b) ** 2 # + lambd * jnp.linalg.norm(z_star, ord=1)
