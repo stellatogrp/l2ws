@@ -129,6 +129,27 @@ def sparse_coding_plot_eval_iters(cfg):
     plt.savefig('nsme.pdf')
     plt.clf()
 
+    # get frac_solved data
+    #   for each acc
+    #       for each datetime provided, 
+    #           get the test frac solved
+    #           get the pac_bayes bound (train + penalty)
+    #           plot it
+    all_test_results, all_pac_bayes_results = get_frac_solved_data(example, cfg)
+    for i in range(len(cfg.accuracies)):
+        acc = cfg.accuracies[i]
+        curr_test_results = all_test_results[i]
+        curr_pac_bayes_results = all_pac_bayes_results[i]
+        for j in range(len(curr_test_results)):
+            plt.plot(curr_test_results[j])
+            plt.plot(curr_pac_bayes_results[j])
+        plt.tight_layout()
+        plt.xlabel('evaluation steps')
+        plt.ylabel(f"frac. that reach {acc}")
+        plt.savefig(f"acc_{acc}.pdf", bbox_inches='tight')
+        plt.clf()
+
+
 
 
 @hydra.main(config_path='configs/osc_mass', config_name='osc_mass_plot.yaml')
@@ -494,6 +515,29 @@ def determine_scs_or_osqp(example):
         return False
     return True
 
+def get_frac_solved_data(example, cfg):
+    # setup
+    orig_cwd = hydra.utils.get_original_cwd()
+
+    # get the datetimes
+    learn_datetimes = cfg.output_datetimes
+    if learn_datetimes == []:
+        dt = recover_last_datetime(orig_cwd, example, 'train')
+        learn_datetimes = [dt]
+
+    all_test_results = []
+    all_pac_bayes_results = []
+    for acc in cfg.accuracies:
+        curr_pac_bayes_results = []
+        curr_test_results = []
+        for datetime in learn_datetimes:
+            pac_bayes_curve = load_frac_solved(example, datetime, acc, train=True)
+            test_curve = load_frac_solved(example, datetime, acc, train=False)
+            curr_pac_bayes_results.append(pac_bayes_curve)
+            curr_test_results.append(test_curve)
+        all_pac_bayes_results.append(curr_pac_bayes_results)
+        all_test_results.append(curr_test_results)
+    return all_test_results, all_pac_bayes_results
 
 def get_all_data(example, cfg, train=False):
     # setup
@@ -608,6 +652,17 @@ def get_all_data(example, cfg, train=False):
 #             metrics[i]
 #     return metrics
 
+def load_frac_solved(example, datetime, acc, train):
+    orig_cwd = hydra.utils.get_original_cwd()
+    path = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/frac_solved"
+
+    fp_file = f"tol={acc}_train.csv" if train else f"tol={acc}_test.csv"
+    df = read_csv(f"{path}/{fp_file}")
+    if train:
+        results = df.iloc[:, -3]
+    else:
+        results = df.iloc[:, -1]
+    return results
 
 def load_data_per_title(example, title, datetime, train=False):
     scs_or_osqp = determine_scs_or_osqp(example)
