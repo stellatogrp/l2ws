@@ -82,13 +82,13 @@ def compute_KL_penalty(nn_params, post_sigma, prior_sigma):
 
 def compute_all_params_KL(mean_params, sigma_params, lambd):
     total_pen = 0
-    if isinstance(mean_params, tuple):
+
+    if isinstance(mean_params, list):
         for i, params in enumerate(mean_params):
             weight_matrix, bias_vector = params
             weight_sigma, bias_sigma = sigma_params[i][0], sigma_params[i][1]
             total_pen += compute_single_param_KL(weight_matrix, jnp.exp(weight_sigma), jnp.exp(lambd))
             total_pen += compute_single_param_KL(bias_vector, jnp.exp(bias_sigma), jnp.exp(lambd))
-        return 0
     else:
         total_pen += compute_single_param_KL(mean_params, jnp.exp(sigma_params), jnp.exp(lambd))
     return total_pen
