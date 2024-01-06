@@ -23,6 +23,7 @@ titles_2_colors = dict(cold_start='black',
                        reg_k0=colors[3],
                        reg_k5=colors[0],
                        reg_k10=colors[0],
+                       reg_k10_deterministic=colors[2],
                        reg_k15=colors[1],
                        reg_k30=colors[5],
                        reg_k60=colors[2],
@@ -39,6 +40,7 @@ titles_2_styles = dict(cold_start='-.',
                        reg_k0='-',
                        reg_k5='-',
                        reg_k10='-',
+                       reg_k10_deterministic='-',
                        reg_k15='-',
                        reg_k30='-',
                        reg_k60='-',
@@ -55,6 +57,7 @@ titles_2_markers = dict(cold_start='v',
                        reg_k0='>',
                        reg_k5='o',
                        reg_k10='o',
+                       reg_k10_deterministic='D',
                        reg_k15='s',
                        reg_k30='x',
                        reg_k60='D',
@@ -120,13 +123,22 @@ def sparse_coding_plot_eval_iters(cfg):
     # create_genL2O_results()
     metrics, timing_data, titles = get_all_data(example, cfg, train=False)
 
-
+    if len(titles) == 4:
+        titles[-2] = titles[-2] + '_deterministic'
     nmse = metrics[0]
     for i in range(len(nmse)):
-        if titles[i] != 'cold_start' and titles[i] != 'nearest_neighbor':
-            plt.plot(nmse[i])
+        # if titles[i] != 'cold_start' and titles[i] != 'nearest_neighbor':
+        #     plt.plot(nmse[i])
+        plt.plot(nmse[i][:cfg.eval_iters],
+                 linestyle=titles_2_styles[titles[i]], 
+                 color=titles_2_colors[titles[i]],
+                 marker=titles_2_markers[titles[i]],
+                #  markevery=(0, 2)
+                 )
     plt.tight_layout()
-    plt.savefig('nsme.pdf')
+    plt.xlabel('evaluation steps')
+    plt.ylabel("NMSE (dB)")
+    plt.savefig('nmse.pdf', bbox_inches='tight')
     plt.clf()
 
     # get frac_solved data
@@ -135,23 +147,48 @@ def sparse_coding_plot_eval_iters(cfg):
     #           get the test frac solved
     #           get the pac_bayes bound (train + penalty)
     #           plot it
-    all_test_results, all_pac_bayes_results = get_frac_solved_data(example, cfg)
+    out = get_frac_solved_data(example, cfg)
+    all_test_results, all_pac_bayes_results, cold_start_results, nearest_neighbor_results = out
     markers = ['o', 's']
     cmap = plt.cm.Set1
     colors = cmap.colors
     styles = ['-', '-']
     for i in range(len(cfg.accuracies)):
+        # plot ista and fista
+        mark_start = titles_2_marker_starts['cold_start']
+        plt.plot(cold_start_results[i][:cfg.eval_iters], 
+                 linestyle=titles_2_styles['cold_start'], 
+                 color=titles_2_colors['cold_start'],
+                 marker=titles_2_markers['cold_start'],
+                 markevery=(0, 2)
+                 )
+        mark_start = titles_2_marker_starts['nearest_neighbor']
+        plt.plot(nearest_neighbor_results[i][:cfg.eval_iters], 
+                 linestyle=titles_2_styles['nearest_neighbor'], 
+                 color=titles_2_colors['nearest_neighbor'],
+                 marker=titles_2_markers['nearest_neighbor'],
+                 markevery=(1, 2))
+
+        # plot the learned variants
         acc = cfg.accuracies[i]
         curr_test_results = all_test_results[i]
         curr_pac_bayes_results = all_pac_bayes_results[i]
         for j in range(len(curr_test_results)):
-            plt.plot(curr_test_results[j], linestyle=styles[0], color=colors[0], marker=markers[0])
-            plt.plot(curr_pac_bayes_results[j], linestyle=styles[1], color=colors[1], marker=markers[1])
+            plt.plot(curr_test_results[j], 
+                     linestyle='-', 
+                     color=colors[1], 
+                     marker=markers[1])
+            plt.plot(curr_pac_bayes_results[j], 
+                     linestyle='-', 
+                     color=colors[0], 
+                     marker=markers[0])
         plt.tight_layout()
         plt.xlabel('evaluation steps')
         plt.ylabel(f"frac. at {acc} NMSE (dB)")
         plt.savefig(f"acc_{acc}.pdf", bbox_inches='tight')
         plt.clf()
+    import pdb
+    pdb.set_trace()
 
 
 
@@ -523,6 +560,12 @@ def get_frac_solved_data(example, cfg):
     # setup
     orig_cwd = hydra.utils.get_original_cwd()
 
+    cold_start_datetime = cfg.cold_start_datetime
+    
+
+    nn_datetime = cfg.nearest_neighbor_datetime
+    
+
     # get the datetimes
     learn_datetimes = cfg.output_datetimes
     if learn_datetimes == []:
@@ -531,7 +574,17 @@ def get_frac_solved_data(example, cfg):
 
     all_test_results = []
     all_pac_bayes_results = []
+    cold_start_results = []
+    nearest_neighbor_results = []
     for acc in cfg.accuracies:
+        if cold_start_datetime != '':
+            # cold_start_datetime = recover_last_datetime(orig_cwd, example, 'train')
+            curr_cold_start_results = load_frac_solved(example, cold_start_datetime, acc, train=False)
+            cold_start_results.append(curr_cold_start_results)
+        if nn_datetime != '':
+            # nn_datetime = recover_last_datetime(orig_cwd, example, 'train')
+            curr_nearest_neighbor_results = load_frac_solved(example, nn_datetime, acc, train=False)
+            nearest_neighbor_results.append(curr_nearest_neighbor_results)
         curr_pac_bayes_results = []
         curr_test_results = []
         for datetime in learn_datetimes:
@@ -541,7 +594,7 @@ def get_frac_solved_data(example, cfg):
             curr_test_results.append(test_curve)
         all_pac_bayes_results.append(curr_pac_bayes_results)
         all_test_results.append(curr_test_results)
-    return all_test_results, all_pac_bayes_results
+    return all_test_results, all_pac_bayes_results, cold_start_results, nearest_neighbor_results
 
 def get_all_data(example, cfg, train=False):
     # setup
