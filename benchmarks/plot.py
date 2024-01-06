@@ -136,16 +136,20 @@ def sparse_coding_plot_eval_iters(cfg):
     #           get the pac_bayes bound (train + penalty)
     #           plot it
     all_test_results, all_pac_bayes_results = get_frac_solved_data(example, cfg)
+    markers = ['o', 's']
+    cmap = plt.cm.Set1
+    colors = cmap.colors
+    styles = ['-', '-']
     for i in range(len(cfg.accuracies)):
         acc = cfg.accuracies[i]
         curr_test_results = all_test_results[i]
         curr_pac_bayes_results = all_pac_bayes_results[i]
         for j in range(len(curr_test_results)):
-            plt.plot(curr_test_results[j])
-            plt.plot(curr_pac_bayes_results[j])
+            plt.plot(curr_test_results[j], linestyle=styles[0], color=colors[0], marker=markers[0])
+            plt.plot(curr_pac_bayes_results[j], linestyle=styles[1], color=colors[1], marker=markers[1])
         plt.tight_layout()
         plt.xlabel('evaluation steps')
-        plt.ylabel(f"frac. that reach {acc}")
+        plt.ylabel(f"frac. at {acc} NMSE (dB)")
         plt.savefig(f"acc_{acc}.pdf", bbox_inches='tight')
         plt.clf()
 
