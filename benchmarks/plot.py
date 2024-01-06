@@ -22,6 +22,7 @@ titles_2_colors = dict(cold_start='black',
                        prev_sol=colors[4],
                        reg_k0=colors[3],
                        reg_k5=colors[0],
+                       reg_k10=colors[0],
                        reg_k15=colors[1],
                        reg_k30=colors[5],
                        reg_k60=colors[2],
@@ -37,6 +38,7 @@ titles_2_styles = dict(cold_start='-.',
                        prev_sol='-.',
                        reg_k0='-',
                        reg_k5='-',
+                       reg_k10='-',
                        reg_k15='-',
                        reg_k30='-',
                        reg_k60='-',
@@ -52,6 +54,7 @@ titles_2_markers = dict(cold_start='v',
                        prev_sol='^',
                        reg_k0='>',
                        reg_k5='o',
+                       reg_k10='o',
                        reg_k15='s',
                        reg_k30='x',
                        reg_k60='D',
@@ -66,6 +69,7 @@ titles_2_marker_starts = dict(cold_start=0,
                        prev_sol=23,
                        reg_k0=8,
                        reg_k5=4,
+                       reg_k10=4,
                        reg_k15=12,
                        reg_k30=0,
                        reg_k60=20,
@@ -106,6 +110,24 @@ titles_2_marker_starts = dict(cold_start=0,
 #                        obj_k30='-',
 #                        obj_k60='-',
 #                        obj_k120='-')
+
+
+@hydra.main(config_path='configs/sparse_coding', config_name='sparse_coding_plot.yaml')
+def sparse_coding_plot_eval_iters(cfg):
+    example = 'sparse_coding'
+    # overlay_training_losses(example, cfg)
+    # create_journal_results(example, cfg, train=False)
+    # create_genL2O_results()
+    metrics, timing_data, titles = get_all_data(example, cfg, train=False)
+
+
+    nmse = metrics[0]
+    for i in range(len(nmse)):
+        if titles[i] != 'cold_start' and titles[i] != 'nearest_neighbor':
+            plt.plot(nmse[i])
+    plt.tight_layout()
+    plt.savefig('nsme.pdf')
+    plt.clf()
 
 
 
@@ -216,6 +238,126 @@ def quadcopter_plot_eval_iters(cfg):
     overlay_training_losses(example, cfg)
     # plot_eval_iters(example, cfg, train=False)
     create_journal_results(example, cfg, train=False)
+
+
+
+def plot_sparse_coding(metrics, titles, eval_iters, vert_lines=False):
+    """
+    metrics is a list of lists
+
+    e.g.
+    metrics = [metric_fp, metric_pr, metric_dr]
+    metric_fp = [cs, nn-ws, ps-ws, k=5, k=10, ..., k=120]
+        where cs is a numpy array
+    same for metric_pr and metric_dr
+
+    each metric has a title
+
+    each line within each metric has a style
+
+    note that we do not explicitly care about the k values
+        we will manually create the legend in latex later
+    """
+    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(20, 12), sharey='row')
+    # fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(30, 13), sharey='row')
+    # fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(18, 12), sharey='row')
+
+    # for i in range(2):
+
+    # yscale
+    axes[0, 0].set_yscale('log')
+    axes[0, 1].set_yscale('log')
+
+    # x-label
+    # axes[0, 0].set_xlabel('evaluation iterations')
+    # axes[0, 1].set_xlabel('evaluation iterations')
+    fontsize = 40
+    title_fontsize = 40
+    axes[1, 0].set_xlabel('evaluation iterations', fontsize=fontsize)
+    axes[1, 1].set_xlabel('evaluation iterations', fontsize=fontsize)
+
+    # y-label
+    axes[0, 0].set_ylabel('test fixed-point residual', fontsize=fontsize)
+    axes[1, 0].set_ylabel('test gain to cold start', fontsize=fontsize)
+
+    axes[0, 0].set_title('training with fixed-point residual losses', fontsize=title_fontsize)
+    axes[0, 1].set_title('training with regression losses', fontsize=title_fontsize)
+
+
+    axes[0, 0].set_xticklabels([])
+    axes[0, 1].set_xticklabels([])
+
+
+    if len(metrics) == 3:
+        start = 1
+    else:
+        start = 0
+
+    # plot the fixed-point residual
+    for i in range(1):
+        curr_metric = metrics[i]
+        for j in range(len(curr_metric)):
+            title = titles[j]
+            color = titles_2_colors[title]
+            style = titles_2_styles[title]
+            marker = titles_2_markers[title]
+            mark_start = titles_2_marker_starts[title]
+            if title[:3] != 'reg':
+                axes[0, 0].plot(np.array(curr_metric[j])[start:eval_iters + start], 
+                                linestyle=style, marker=marker, color=color, 
+                                markevery=(2 * mark_start, 2 * 25))
+                # if vert_lines:
+                #     if title[0] == 'k':
+                #         k = int(title[1:])
+                #         axes[i].axvline(k, color=color)
+            if title[:3] != 'obj':
+                axes[0, 1].plot(np.array(curr_metric[j])[start:eval_iters + start], 
+                                linestyle=style, marker=marker, color=color, 
+                                markevery=(2 * mark_start, 2 * 25))
+                # if vert_lines:
+                #     if title[0] == 'k':
+                #         k = int(title[1:])
+                #         axes[i].axvline(k, color=color)
+
+    # plot the gain
+    for i in range(1):
+        curr_metric = metrics[i]
+        for j in range(len(curr_metric)):
+            title = titles[j]
+            color = titles_2_colors[title]
+            style = titles_2_styles[title]
+            marker = titles_2_markers[title]
+            mark_start = titles_2_marker_starts[title]
+            # if j > 0:
+            #     gain = cs / np.array(curr_metric[j])[start:eval_iters + start]
+            # else:
+            #     cs = np.array(curr_metric[j])[start:eval_iters + start]
+            if j == 0:
+                cs = np.array(curr_metric[j])[start:eval_iters + start]
+            else:
+                gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], 
+                               a_min=0, a_max=1500)
+                if title[:3] != 'reg':
+                    axes[1, 0].plot(gain, linestyle=style, marker=marker, color=color, 
+                                    markevery=(2 * mark_start, 2 * 25))
+                if title[:3] != 'obj':
+                    axes[1, 1].plot(gain, linestyle=style, marker=marker, color=color, 
+                                    markevery=(2 * mark_start, 2 * 25))
+
+            # if vert_lines:
+            #     if title[0] == 'k':
+            #         k = int(title[1:])
+            #         plt.axvline(k, color=color)
+    # plt.subplots_adjust(left=0.15, right=0.85, top=0.85, bottom=0.15)
+    
+    fig.tight_layout()
+    if vert_lines:
+        plt.savefig('all_metric_plots_vert.pdf', bbox_inches='tight')
+    else:
+        plt.savefig('all_metric_plots.pdf', bbox_inches='tight')
+    
+    plt.clf()
+
 
 
 @hydra.main(config_path='configs/all', config_name='plot.yaml')
@@ -348,7 +490,7 @@ def create_journal_results(example, cfg, train=False):
 
 
 def determine_scs_or_osqp(example):
-    if example == 'unconstrained_qp' or example == 'lasso' or example == 'jamming':
+    if example == 'unconstrained_qp' or example == 'lasso' or example == 'jamming' or example == 'sparse_coding':
         return False
     return True
 
@@ -379,8 +521,15 @@ def get_all_data(example, cfg, train=False):
     # prev_sol_bool = cfg.prev_sol_datetime
     prev_sol_bool = 'prev_sol_datetime' in cfg.keys()
 
-    benchmarks = ['cold_start', 'nearest_neighbor']
-    benchmark_dts = [cold_start_datetime, nn_datetime]
+    # benchmarks = ['cold_start', 'nearest_neighbor']
+    # benchmark_dts = [cold_start_datetime, nn_datetime]
+    benchmarks, benchmark_dts = [], []
+    if 'cold_start_datetime' in cfg.keys():
+        benchmarks.append('cold_start')
+        benchmark_dts.append(cold_start_datetime)
+    if 'nearest_neighbor_datetime' in cfg.keys():
+        benchmarks.append('nearest_neighbor')
+        benchmark_dts.append(nn_datetime)
     if prev_sol_bool:
         benchmarks.append('prev_sol')
         benchmark_dts.append(cfg.prev_sol_datetime)
@@ -770,21 +919,12 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             mark_start = titles_2_marker_starts[title]
             if title[:3] != 'reg' and i == 0:
                 # either obj or baselines
-<<<<<<< HEAD:plot_script.py
                 axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
             if title[:3] != 'obj' and  i == 1:
                 # either reg or baselines
                 axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style,   marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
 
                 
-=======
-                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], 
-                             linestyle=style, color=color)
-            if title[:3] != 'obj' and  i == 1:
-                # either reg or baselines
-                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], 
-                             linestyle=style, color=color)
->>>>>>> 6f924435fe0ade8b36992678252aecd2f1901259:benchmarks/plot.py
 
         for j in range(len(curr_metric)):
             title = titles[j]
@@ -1280,6 +1420,10 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'quadcopter/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         quadcopter_plot_eval_iters()
+    elif sys.argv[1] == 'sparse_coding':
+        sys.argv[1] = base + 'sparse_coding/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        sparse_coding_plot_eval_iters()
     elif sys.argv[1] == 'jamming':
         sys.argv[1] = base + 'jamming/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
