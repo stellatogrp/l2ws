@@ -303,10 +303,10 @@ class L2WSmodel(object):
             self.mean_params = jnp.ones((self.train_unrolls, 2))
 
             # initialize with ista values
-            # alista_step = alista_cfg['step']
-            # alista_eta = alista_cfg['eta']
-            # self.mean_params = self.mean_params.at[:, 0].set(alista_step)
-            # self.mean_params = self.mean_params.at[:, 0].set(alista_eta)
+            alista_step = alista_cfg['step']
+            alista_eta = alista_cfg['eta']
+            self.mean_params = self.mean_params.at[:, 0].set(alista_step)
+            self.mean_params = self.mean_params.at[:, 1].set(alista_eta)
             
             self.sigma_params = -jnp.ones((self.train_unrolls, 2)) #/ 10
         else:

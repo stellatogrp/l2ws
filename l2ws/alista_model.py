@@ -6,6 +6,7 @@ from jax import random
 from l2ws.algo_steps import (
     k_steps_eval_alista,
     k_steps_train_alista,
+    k_steps_eval_fista
 )
 from l2ws.l2ws_model import L2WSmodel
 from l2ws.utils.nn_utils import calculate_total_penalty
@@ -23,8 +24,14 @@ class ALISTAmodel(L2WSmodel):
         D, W = input_dict['D'], input_dict['W']
         # lambd = input_dict['lambd']
         # ista_step = input_dict['ista_step']
+        self.D, self.W = D, W
         self.m, self.n = D.shape
         self.output_size = self.n
+
+        evals, evecs = jnp.linalg.eigh(D.T @ D)
+        # step = 1 / evals.max()
+        lambd = 0.1 
+        self.ista_step = lambd / evals.max()
 
         self.k_steps_train_fn = partial(k_steps_train_alista, D=D, W=W,
                                         jit=self.jit)
@@ -57,22 +64,35 @@ class ALISTAmodel(L2WSmodel):
             else:
                 stochastic_params = params[0] + jnp.sqrt(jnp.exp(params[1])) * perturb
 
-            if diff_required:
-                z_final, iter_losses = train_fn(k=iters,
-                                                    z0=z0,
-                                                    q=q,
-                                                    params=stochastic_params,
-                                                    supervised=supervised,
-                                                    z_star=z_star)
-            else:
-                eval_out = eval_fn(k=iters,
-                                    z0=z0,
-                                    q=q,
-                                    params=stochastic_params,
-                                    supervised=supervised,
-                                    z_star=z_star)
+            if bypass_nn:
+                eval_out = k_steps_eval_fista(k=iters,
+                                   z0=z0, 
+                                   q=q, 
+                                   lambd=0.1, 
+                                   A=self.D, 
+                                   ista_step=self.ista_step, 
+                                   supervised=True, 
+                                   z_star=z_star, 
+                                   jit=True)
                 z_final, iter_losses, z_all_plus_1 = eval_out[0], eval_out[1], eval_out[2]
                 angles = None
+            else:
+                if diff_required:
+                    z_final, iter_losses = train_fn(k=iters,
+                                                        z0=z0,
+                                                        q=q,
+                                                        params=stochastic_params,
+                                                        supervised=supervised,
+                                                        z_star=z_star)
+                else:
+                    eval_out = eval_fn(k=iters,
+                                        z0=z0,
+                                        q=q,
+                                        params=stochastic_params,
+                                        supervised=supervised,
+                                        z_star=z_star)
+                    z_final, iter_losses, z_all_plus_1 = eval_out[0], eval_out[1], eval_out[2]
+                    angles = None
 
             loss = self.final_loss(loss_method, z_final, iter_losses, supervised, z0, z_star)
 

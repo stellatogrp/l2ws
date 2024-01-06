@@ -514,10 +514,10 @@ def fp_eval_fista(i, val, supervised, z_star, A, b, lambd, ista_step):
     z, y, t, loss_vec, z_all = val
     z_next, y_next, t_next = fixed_point_fista(z, y, t, A, b, lambd, ista_step)
     if supervised:
-        diff = jnp.linalg.norm(z - z_star)
+        diff = 10 * jnp.log10(jnp.linalg.norm(z - z_star) ** 2 / jnp.linalg.norm(z_star) ** 2)
+        # diff = jnp.linalg.norm(z - z_star)
     else:
         diff = jnp.linalg.norm(z_next - z)
-    # diff = eval_ista_obj(z_next, A, b, lambd)
     loss_vec = loss_vec.at[i].set(diff)
     z_all = z_all.at[i, :].set(z_next)
     return z_next, y_next, t_next, loss_vec, z_all
@@ -668,7 +668,7 @@ def k_steps_eval_fista(k, z0, q, lambd, A, ista_step, supervised, z_star, jit):
         out = python_fori_loop(start_iter, k, fp_eval_partial, val)
     z_final, y_final, t_final, iter_losses, z_all = out
     z_all_plus_1 = z_all_plus_1.at[1:, :].set(z_all)
-    return z_final, iter_losses, z_all_plus_1
+    return z_final, iter_losses, z_all_plus_1, iter_losses
 
 
 def k_steps_eval_ista(k, z0, q, lambd, A, ista_step, supervised, z_star, jit):

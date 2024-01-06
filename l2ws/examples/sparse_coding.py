@@ -34,15 +34,17 @@ def run(run_cfg):
     D = D / np.linalg.norm(D, axis=0)
     D = np.array(D)
 
-    # form W
-    W = get_W(D)
-    W, D = jnp.array(W), jnp.array(D)
+    
 
     # get the ista values
     evals, evecs = jnp.linalg.eigh(D.T @ D)
     step = 1 / evals.max()
-    lambd = 0.1
+    lambd = .1
     eta = lambd * step
+
+    # form W
+    W = D #get_W(D)
+    W, D = jnp.array(W), jnp.array(D)
 
     static_dict = dict(D=D, W=W, step=step, eta=eta)
 
