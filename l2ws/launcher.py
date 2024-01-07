@@ -34,6 +34,7 @@ from l2ws.utils.mpc_utils import closed_loop_rollout
 from l2ws.utils.nn_utils import (
     calculate_avg_posterior_var,
     calculate_total_penalty,
+    calculate_pinsker_penalty,
     compute_KL_penalty,
     compute_weight_norm_squared,
     invert_kl,
@@ -61,6 +62,7 @@ class Workspace:
         '''
         pac_bayes_cfg = cfg.get('pac_bayes_cfg', {})
         self.frac_solved_accs = pac_bayes_cfg.get('frac_solved_accs', [0.1, 0.01, 0.001, 0.0001])
+        self.rep = pac_bayes_cfg.get('rep', True)
         self.sigma_nn_grid = np.array(cfg.get('sigma_nn', []))
         self.sigma_beta_grid = np.array(cfg.get('sigma_beta', []))
         self.pac_bayes_num_samples = cfg.get('pac_bayes_num_samples', 50)
@@ -805,8 +807,8 @@ class Workspace:
         # load the variances proportional to the means
         for i, params in enumerate(params):
             weight_matrix, bias_vector = params
-            self.l2ws_model.params[1][i] = (jnp.log(jnp.abs(weight_matrix / 10)), 
-                                            jnp.log(jnp.abs(bias_vector / 10)))
+            self.l2ws_model.params[1][i] = (jnp.log(jnp.abs(weight_matrix / 100)), 
+                                            jnp.log(jnp.abs(bias_vector / 100)))
 
     def normalize_inputs_fn(self, thetas, N_train, N_test):
         # normalize the inputs if the option is on
@@ -992,8 +994,12 @@ class Workspace:
                                     )
             final_pac_bayes_loss = jnp.zeros(frac_solved.size)
             for j in range(frac_solved.size):
-                kl_inv = invert_kl(1 - frac_solved[j], penalty)
-                final_pac_bayes_loss = final_pac_bayes_loss.at[j].set(1 - kl_inv)
+                if self.rep:
+                    kl_inv = invert_kl(1 - frac_solved[j], penalty)
+                    final_pac_bayes_loss = final_pac_bayes_loss.at[j].set(1 - kl_inv)
+                else:
+                    kl_inv = jnp.clip(frac_solved[j] - jnp.sqrt(penalty / 2), a_min=0)
+                    final_pac_bayes_loss = final_pac_bayes_loss.at[j].set(kl_inv)
 
 
             final_pac_bayes_frac_solved = jnp.clip(final_pac_bayes_loss, a_min=0)
@@ -2025,7 +2031,7 @@ class Workspace:
         moving_avg = last_epoch.mean()
 
         # do penalty calculation
-        pen = calculate_total_penalty(self.l2ws_model.N_train, 
+        pen = calculate_pinsker_penalty(self.l2ws_model.N_train, 
                                       self.l2ws_model.params,
                                       self.l2ws_model.b,
                                       self.l2ws_model.c,

@@ -1,5 +1,5 @@
 nn_cfg:
-  lr: 1e-4
+  lr: 1e-3
   method: adam
   intermediate_layer_sizes: [500, 500]
   batch_size: 100
@@ -25,16 +25,16 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 1
+train_unrolls: 5
 eval_unrolls: 200
 eval_every_x_epochs: 20
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 2
-N_train: 10000
-N_test: 1000
-num_samples: 1000
+N_train: 1000
+N_test: 100
+num_samples: 100
 prediction_variable: w
 angle_anchors: [0]
 supervised: True
@@ -50,9 +50,22 @@ accuracies: [.1, .01, .001, .0001]
 rho_x: 1
 scale: 1
 alpha_relax: 1
-skip_startup: True
+skip_startup: False
 
 sigma_nn: [0.0, 1e-6, 1e-5, 0.0001, 0.001, 0.01, .1, 1, 10]
 pac_bayes_num_samples: 5
-pac_bayes_flag: True
-load_weights_datetime: '2023-08-27/15-27-56'
+pac_bayes_flag: False
+
+
+save_weights_flag: True
+load_weights_datetime: '2024-01-06/18-51-46'
+nn_load_type: deterministic
+
+pac_bayes_cfg:
+  init_var: 1e-4
+  c: 10.0
+  b: 100
+  delta: 0.01
+  rep: False
+  penalty_coeff: 1.0
+  deterministic: False

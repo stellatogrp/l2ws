@@ -62,3 +62,4 @@ pac_bayes_cfg:
   c: 10.0
   b: 100
   delta: 0.01
+  rep: False

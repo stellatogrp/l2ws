@@ -40,11 +40,12 @@ def calculate_avg_posterior_var(params):
 
 
 def calculate_pinsker_penalty(N_train, params, c, b, delta):
-    pi_pen = jnp.log(jnp.pi ** 2 * N_train / (6 * delta))
-    log_pen = 2 * jnp.log(b * jnp.log(c / jnp.exp(params[2])))
-    penalty_loss = compute_all_params_KL(params[0], params[1], params[2]) + pi_pen + log_pen
-    return jnp.sqrt(penalty_loss / (2 * N_train))
-
+    # pi_pen = jnp.log(jnp.pi ** 2 * N_train / (6 * delta))
+    # log_pen = 2 * jnp.log(b * jnp.log(c / jnp.exp(params[2])))
+    # penalty_loss = compute_all_params_KL(params[0], params[1], params[2]) + pi_pen + log_pen
+    # return jnp.sqrt(penalty_loss / (2 * N_train))
+    penalty_loss = calculate_total_penalty(N_train, params, c, b, delta)
+    return jnp.sqrt(penalty_loss / 2)
 
 
 def calculate_total_penalty(N_train, params, c, b, delta):

@@ -463,11 +463,14 @@ class L2WSmodel(object):
 
             # new stochastic
             mean_params, sigma_params, prior_var = params[0], params[1], params[2]
-            perturb = get_perturbed_weights(random.PRNGKey(key), self.layer_sizes, 1)
-            perturbed_weights = [(perturb[i][0] * jnp.sqrt(jnp.exp(sigma_params[i][0])) + mean_params[i][0], 
-                                  perturb[i][1] * jnp.sqrt(jnp.exp(sigma_params[i][1])) + mean_params[i][1]) for i in range(len(mean_params))]
+            if self.deterministic:
+                nn_output = predict_y(mean_params, input)
+            else:
+                perturb = get_perturbed_weights(random.PRNGKey(key), self.layer_sizes, 1)
+                perturbed_weights = [(perturb[i][0] * jnp.sqrt(jnp.exp(sigma_params[i][0])) + mean_params[i][0], 
+                                    perturb[i][1] * jnp.sqrt(jnp.exp(sigma_params[i][1])) + mean_params[i][1]) for i in range(len(mean_params))]
 
-            nn_output = predict_y(perturbed_weights, input)
+                nn_output = predict_y(perturbed_weights, input)
 
             # deterministic
             # nn_output = predict_y(params, input)
