@@ -25,12 +25,14 @@ titles_2_colors = dict(cold_start='black',
                        reg_k10=colors[0],
                        reg_k10_deterministic=colors[2],
                        reg_k15=colors[1],
+                       reg_k15_deterministic=colors[2],
                        reg_k30=colors[5],
                        reg_k60=colors[2],
                     #    reg_k120=colors[0],
                        obj_k0=colors[3],
                        obj_k5=colors[0],
-                       obj_k15=colors[1],
+                       obj_k15=colors[0],
+                       obj_k15_deterministic=colors[2],
                        obj_k30=colors[5],
                        obj_k60=colors[2])
                     #    obj_k120='gray')
@@ -42,12 +44,14 @@ titles_2_styles = dict(cold_start='-.',
                        reg_k10='-',
                        reg_k10_deterministic='-',
                        reg_k15='-',
+                       reg_k15_deterministic='-',
                        reg_k30='-',
                        reg_k60='-',
                        reg_k120='-',
                        obj_k0='-',
                        obj_k5='-',
                        obj_k15='-',
+                       obj_k15_deterministic='-',
                        obj_k30='-',
                        obj_k60='-')
                     #    obj_k120='-')
@@ -59,12 +63,14 @@ titles_2_markers = dict(cold_start='v',
                        reg_k10='o',
                        reg_k10_deterministic='D',
                        reg_k15='s',
+                       reg_k15_deterministic='D',
                        reg_k30='x',
                        reg_k60='D',
                     #    reg_k120='-',
                        obj_k0='>',
                        obj_k5='o',
-                       obj_k15='s',
+                       obj_k15='o',
+                       obj_k15_deterministic='D',
                        obj_k30='x',
                        obj_k60='D')
 titles_2_marker_starts = dict(cold_start=0, 
@@ -191,6 +197,82 @@ def sparse_coding_plot_eval_iters(cfg):
     pdb.set_trace()
 
 
+def create_gen_l2o_results(example, cfg):
+    # example = 'sparse_coding'
+    # overlay_training_losses(example, cfg)
+    # create_journal_results(example, cfg, train=False)
+    # create_genL2O_results()
+    metrics, timing_data, titles = get_all_data(example, cfg, train=False)
+
+    if len(titles) == 4:
+        titles[-2] = titles[-2] + '_deterministic'
+    nmse = metrics[0]
+    for i in range(len(nmse)):
+        # if titles[i] != 'cold_start' and titles[i] != 'nearest_neighbor':
+        #     plt.plot(nmse[i])
+        plt.plot(nmse[i][:cfg.eval_iters],
+                 linestyle=titles_2_styles[titles[i]], 
+                 color=titles_2_colors[titles[i]],
+                 marker=titles_2_markers[titles[i]],
+                 markevery=(0, 100)
+                 )
+    plt.tight_layout()
+    plt.xlabel('evaluation steps')
+    plt.ylabel("fixed-point residual")
+    plt.yscale('log')
+    plt.savefig('fp_res.pdf', bbox_inches='tight')
+    plt.clf()
+
+
+
+    out = get_frac_solved_data(example, cfg)
+    all_test_results, all_pac_bayes_results, cold_start_results, nearest_neighbor_results = out
+    markers = ['o', 's']
+    cmap = plt.cm.Set1
+    colors = cmap.colors
+    styles = ['-', '-']
+    for i in range(len(cfg.accuracies)):
+        # plot ista and fista
+        mark_start = titles_2_marker_starts['cold_start']
+        plt.plot(cold_start_results[i][:cfg.eval_iters], 
+                 linestyle=titles_2_styles['cold_start'], 
+                 color=titles_2_colors['cold_start'],
+                 marker=titles_2_markers['cold_start'],
+                 markevery=(30, 100)
+                 )
+        mark_start = titles_2_marker_starts['nearest_neighbor']
+        plt.plot(nearest_neighbor_results[i][:cfg.eval_iters], 
+                 linestyle=titles_2_styles['nearest_neighbor'], 
+                 color=titles_2_colors['nearest_neighbor'],
+                 marker=titles_2_markers['nearest_neighbor'],
+                 markevery=(60, 100)
+                 )
+
+        # plot the learned variants
+        acc = cfg.accuracies[i]
+        curr_test_results = all_test_results[i]
+        curr_pac_bayes_results = all_pac_bayes_results[i]
+        for j in range(len(curr_test_results)):
+            plt.plot(curr_test_results[j], 
+                     linestyle='-', 
+                     color=colors[1], 
+                     marker=markers[1],
+                     markevery=(80, 100)
+                     )
+            plt.plot(curr_pac_bayes_results[j], 
+                     linestyle='-', 
+                     color=colors[0], 
+                     markevery=(0, 100),
+                     marker=markers[0])
+        plt.tight_layout()
+        plt.xlabel('evaluation steps')
+        plt.ylabel(f"frac. at {acc} fp res")
+        plt.savefig(f"acc_{acc}.pdf", bbox_inches='tight')
+        plt.clf()
+    import pdb
+    pdb.set_trace()
+
+
 
 
 @hydra.main(config_path='configs/osc_mass', config_name='osc_mass_plot.yaml')
@@ -227,9 +309,10 @@ def robust_kalman_plot_eval_iters(cfg):
 @hydra.main(config_path='configs/robust_ls', config_name='robust_ls_plot.yaml')
 def robust_ls_plot_eval_iters(cfg):
     example = 'robust_ls'
-    overlay_training_losses(example, cfg)
-    # plot_eval_iters(example, cfg, train=False)
-    create_journal_results(example, cfg, train=False)
+    # overlay_training_losses(example, cfg)
+    # # plot_eval_iters(example, cfg, train=False)
+    # create_journal_results(example, cfg, train=False)
+    create_gen_l2o_results(example, cfg)
 
 
 @hydra.main(config_path='configs/sparse_pca', config_name='sparse_pca_plot.yaml')
@@ -243,9 +326,10 @@ def sparse_pca_plot_eval_iters(cfg):
 @hydra.main(config_path='configs/lasso', config_name='lasso_plot.yaml')
 def lasso_plot_eval_iters(cfg):
     example = 'lasso'
-    overlay_training_losses(example, cfg)
-    # plot_eval_iters(example, cfg, train=False)
-    create_journal_results(example, cfg, train=False)
+    # overlay_training_losses(example, cfg)
+    # # plot_eval_iters(example, cfg, train=False)
+    # create_journal_results(example, cfg, train=False)
+    create_gen_l2o_results(example, cfg)
 
 
 @hydra.main(config_path='configs/unconstrained_qp', config_name='unconstrained_qp_plot.yaml')
@@ -253,8 +337,9 @@ def unconstrained_qp_plot_eval_iters(cfg):
     example = 'unconstrained_qp'
     
     # plot_eval_iters(example, cfg, train=False)
-    create_journal_results(example, cfg, train=False)
-    overlay_training_losses(example, cfg)
+    # create_journal_results(example, cfg, train=False)
+    # overlay_training_losses(example, cfg)
+    create_gen_l2o_results(example, cfg)
 
 
 @hydra.main(config_path='configs/mpc', config_name='mpc_plot.yaml')
@@ -579,11 +664,11 @@ def get_frac_solved_data(example, cfg):
     for acc in cfg.accuracies:
         if cold_start_datetime != '':
             # cold_start_datetime = recover_last_datetime(orig_cwd, example, 'train')
-            curr_cold_start_results = load_frac_solved(example, cold_start_datetime, acc, train=False)
+            curr_cold_start_results = load_frac_solved(example, cold_start_datetime, acc, train=False, title='no_train')
             cold_start_results.append(curr_cold_start_results)
         if nn_datetime != '':
             # nn_datetime = recover_last_datetime(orig_cwd, example, 'train')
-            curr_nearest_neighbor_results = load_frac_solved(example, nn_datetime, acc, train=False)
+            curr_nearest_neighbor_results = load_frac_solved(example, nn_datetime, acc, train=False, title='nearest_neighbor')
             nearest_neighbor_results.append(curr_nearest_neighbor_results)
         curr_pac_bayes_results = []
         curr_test_results = []
@@ -709,16 +794,19 @@ def get_all_data(example, cfg, train=False):
 #             metrics[i]
 #     return metrics
 
-def load_frac_solved(example, datetime, acc, train):
+def load_frac_solved(example, datetime, acc, train, title=None):
     orig_cwd = hydra.utils.get_original_cwd()
     path = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/frac_solved"
 
     fp_file = f"tol={acc}_train.csv" if train else f"tol={acc}_test.csv"
     df = read_csv(f"{path}/{fp_file}")
-    if train:
-        results = df.iloc[:, -3]
+    if title is None:
+        if train:
+            results = df.iloc[:, -3]
+        else:
+            results = df.iloc[:, -1]
     else:
-        results = df.iloc[:, -1]
+        results = df[title]
     return results
 
 def load_data_per_title(example, title, datetime, train=False):

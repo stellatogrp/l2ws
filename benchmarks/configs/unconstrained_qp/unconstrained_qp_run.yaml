@@ -54,8 +54,8 @@ alpha_relax: 1
 skip_startup: False
 
 save_weights_flag: True
-load_weights_datetime: '2024-01-01/15-19-18'
-nn_load_type: deterministic
+# load_weights_datetime: '2024-01-01/15-19-18'
+# nn_load_type: deterministic
 
 pac_bayes_cfg:
   init_var: 1e-2
@@ -63,3 +63,5 @@ pac_bayes_cfg:
   b: 100
   delta: 0.01
   rep: False
+  deterministic: True
+  penalty_coeff: 0.0
