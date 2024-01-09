@@ -60,7 +60,7 @@ train_unrolls: 5 # this is the k that tells you how many FOM iterations
 supervised: True
 
 
-load_weights_datetime: '2023-01-08/00-53-53'
+load_weights_datetime: '2024-01-08/00-53-53'
 nn_load_type: stochastic
 
 pac_bayes_cfg:
