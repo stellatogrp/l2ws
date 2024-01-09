@@ -1,8 +1,8 @@
 nn_cfg:
-  lr: 1e-2
+  lr: 1e-3
   method: adam
   intermediate_layer_sizes: []
-  batch_size: 10
+  batch_size: 1000
   epochs: 1e6
   decay_lr: .1
   min_lr: 1e-7
@@ -93,7 +93,7 @@ pac_bayes_cfg:
   b: 100
   delta: 0.01
   rep: True
-  penalty_coeff: 1.0
+  penalty_coeff: 0.6
   deterministic: False
 
 # output_datetimes: 

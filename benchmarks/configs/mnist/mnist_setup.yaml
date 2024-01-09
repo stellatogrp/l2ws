@@ -1,16 +1,33 @@
-solve_acc_abs: 1e-3
-solve_acc_rel: 0
-lambd: .001
-lambd2: 0.4
-N_train: 100
+# solve_acc_abs: 1e-3
+# solve_acc_rel: 0
+# lambd: .001
+# lambd2: 0.4
+# N_train: 100
+# N_test: 100
+# seed: 42
+# solve: True
+# noise_std_dev: .001
+# blur_size: 8
+# dataset: emnist
+# obj_const: 10
+# A_scale: 1
+# deblur_or_denoise: 'deblur'
+# mri_size: 70
+# salt_and_pepper_noise_prob: 0.2
+
+A_scale: 1
 N_test: 100
-seed: 42
-solve: True
-noise_std_dev: .001
+N_train: 50000
 blur_size: 8
 dataset: emnist
-obj_const: 10
-A_scale: 1
-deblur_or_denoise: 'deblur'
+deblur_or_denoise: deblur
+lambd: 0.0001
+lambd2: 0.4
 mri_size: 70
-# salt_and_pepper_noise_prob: 0.2
+noise_std_dev: 0.001
+obj_const: 1
+seed: 42
+solve: true
+solve_acc_abs: 0.001
+solve_acc_rel: 0
+
