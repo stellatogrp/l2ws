@@ -1,9 +1,9 @@
-m_orig: 500
-n_orig: 500
+m_orig: 100 #500
+n_orig: 100 #500
 lambd: 10
 solve_acc_abs: 1e-10
 solve_acc_rel: 0
-N_train: 10000
+N_train: 100000
 N_test: 1000
 seed: 42
 solve: True

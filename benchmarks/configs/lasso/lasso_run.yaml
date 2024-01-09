@@ -1,7 +1,7 @@
 nn_cfg:
   lr: 1e-3
   method: adam
-  intermediate_layer_sizes: [500, 500]
+  intermediate_layer_sizes: [100]
   batch_size: 100
   epochs: 1e6
   decay_lr: .1
@@ -25,14 +25,14 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 5
-eval_unrolls: 200
+train_unrolls: 15
+eval_unrolls: 1000
 eval_every_x_epochs: 20
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 2
-N_train: 10000
+N_train: 100000
 N_test: 100
 num_samples: 100
 prediction_variable: w
@@ -62,7 +62,7 @@ save_weights_flag: True
 # nn_load_type: deterministic
 
 pac_bayes_cfg:
-  init_var: 1e-4
+  init_var: 1e-3
   c: 10.0
   b: 100
   delta: 0.01
