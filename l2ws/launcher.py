@@ -69,7 +69,8 @@ class Workspace:
         self.pac_bayes_hyperparameter_opt_flag = cfg.get('pac_bayes_flag', False)
         self.delta = 0.01
 
-        self.conv_rates = .81 + np.arange(20) / 100
+        self.conv_rates = np.array([.8, .85, .9, .91, .92, .93, .94, .95, .96, .97, 
+                                    .98, .985, .99, .995, 1.0])
 
         # self.pretrain_cfg = cfg.pretrain
         self.key_count = 0
