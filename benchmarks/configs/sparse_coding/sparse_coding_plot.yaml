@@ -1,14 +1,15 @@
 output_datetimes:
 # - 2024-01-05/20-04-44
 # - 2024-01-04/22-39-56
-- 2024-01-05/20-59-17
-- 2024-01-05/21-03-45
+# - 2024-01-05/20-59-17
+# - 2024-01-05/21-03-45
+- 2024-01-10/15-20-07
 
 
 loss_overlay_titles: []
-nearest_neighbor_datetime: 2024-01-06/13-04-27
+nearest_neighbor_datetime: 2024-01-10/15-20-07 #2024-01-06/13-04-27
 pretrain_datetime: ''
-cold_start_datetime: 2024-01-06/13-04-27
+cold_start_datetime:  2024-01-10/15-20-07 #2024-01-06/13-04-27
 eval_iters: 10
 accuracies:
 - -10

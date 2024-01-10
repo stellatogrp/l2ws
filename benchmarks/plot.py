@@ -185,17 +185,77 @@ def sparse_coding_plot_eval_iters(cfg):
         for j in range(len(curr_test_results)):
             plt.plot(curr_test_results[j], 
                      linestyle='-', 
-                     color=colors[1], 
-                     marker=markers[1])
-            plt.plot(curr_pac_bayes_results[j], 
-                     linestyle='-', 
                      color=colors[0], 
                      marker=markers[0])
+            plt.plot(curr_pac_bayes_results[j], 
+                     linestyle='-', 
+                     color=colors[1], 
+                     marker=markers[1])
         plt.tight_layout()
         plt.xlabel('evaluation steps')
         plt.ylabel(f"frac. at {acc} NMSE (dB)")
         plt.savefig(f"acc_{acc}.pdf", bbox_inches='tight')
         plt.clf()
+    # import pdb
+    # pdb.set_trace()
+
+    plot_conv_rates(example, cfg)
+
+
+def plot_conv_rates(example, cfg):
+    # getting curve data
+
+    # plot the pac_bayes curve and the test curve
+    out = get_conv_rates_data(example, cfg)
+    conv_rates, all_test_results, all_pac_bayes_results, cold_start_results, nearest_neighbor_results = out
+    markers = ['o', 's']
+    cmap = plt.cm.Set1
+    colors = cmap.colors
+    styles = ['-', '-']
+    # for i in range(len(cfg.accuracies)):
+    # plot ista and fista
+    mark_start = titles_2_marker_starts['cold_start']
+
+    
+
+    plt.plot(conv_rates,
+        cold_start_results, 
+                linestyle=titles_2_styles['cold_start'], 
+                color=titles_2_colors['cold_start'],
+                marker=titles_2_markers['cold_start'],
+                # markevery=(30, 100)
+                )
+    mark_start = titles_2_marker_starts['nearest_neighbor']
+    plt.plot(conv_rates,
+        nearest_neighbor_results, 
+                linestyle=titles_2_styles['nearest_neighbor'], 
+                color=titles_2_colors['nearest_neighbor'],
+                marker=titles_2_markers['nearest_neighbor'],
+                # markevery=(60, 100)
+                )
+
+    # plot the learned variants
+    # acc = cfg.accuracies[i]
+    curr_test_results = all_test_results
+    curr_pac_bayes_results = all_pac_bayes_results
+    for j in range(len(curr_test_results)):
+        plt.plot(conv_rates, curr_test_results[j], 
+                    linestyle='-', 
+                    color=colors[0], 
+                    marker=markers[0],
+                    # markevery=(80, 100)
+                    )
+        plt.plot(conv_rates, curr_pac_bayes_results[j], 
+                    linestyle='-', 
+                    color=colors[1], 
+                    # markevery=(0, 100),
+                    marker=markers[1])
+    plt.tight_layout()
+    plt.xlabel('convergence rates')
+    plt.ylabel("frac. of steps satisfied")
+    plt.savefig("conv_rates.pdf", bbox_inches='tight')
+    plt.clf()
+
     import pdb
     pdb.set_trace()
 
@@ -644,6 +704,47 @@ def determine_scs_or_osqp(example):
         return False
     return True
 
+def get_conv_rates_data(example, cfg):
+    orig_cwd = hydra.utils.get_original_cwd()
+
+    cold_start_datetime = cfg.cold_start_datetime
+    
+
+    nn_datetime = cfg.nearest_neighbor_datetime
+    
+
+    # get the datetimes
+    learn_datetimes = cfg.output_datetimes
+    if learn_datetimes == []:
+        dt = recover_last_datetime(orig_cwd, example, 'train')
+        learn_datetimes = [dt]
+
+    # all_test_results = []
+    # all_pac_bayes_results = []
+    # cold_start_results = []
+    # nearest_neighbor_results = []
+
+    # for acc in cfg.accuracies:
+    if cold_start_datetime != '':
+        curr_cold_start_results, conv_rates = load_conv_rates(example, cold_start_datetime, 
+                                                              train=False, title='no_train')
+        # cold_start_results.append(curr_cold_start_results)
+    if nn_datetime != '':
+        curr_nearest_neighbor_results, _ = load_conv_rates(example, nn_datetime, 
+                                                           train=False, title='nearest_neighbor')
+        # nearest_neighbor_results.append(curr_nearest_neighbor_results)
+    curr_pac_bayes_results = []
+    curr_test_results = []
+    for datetime in learn_datetimes:
+        pac_bayes_curve, _ = load_conv_rates(example, datetime, train=True)
+        test_curve, _ = load_conv_rates(example, datetime, train=False)
+        curr_pac_bayes_results.append(pac_bayes_curve)
+        curr_test_results.append(test_curve)
+    # all_pac_bayes_results.append(curr_pac_bayes_results)
+    # all_test_results.append(curr_test_results)
+    return conv_rates, curr_test_results, curr_pac_bayes_results, curr_cold_start_results, curr_nearest_neighbor_results
+
+
 def get_frac_solved_data(example, cfg):
     # setup
     orig_cwd = hydra.utils.get_original_cwd()
@@ -797,6 +898,24 @@ def get_all_data(example, cfg, train=False):
 #             metrics[i]
 #     return metrics
 
+def load_conv_rates(example, datetime, train, title=None):
+    orig_cwd = hydra.utils.get_original_cwd()
+    path = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}"
+
+    fp_file = "conv_rates_train.csv" if train else "conv_rates_test.csv"
+    df = read_csv(f"{path}/{fp_file}")
+    if title is None:
+        if train:
+            results = df.iloc[:, -1]
+        else:
+            results = df.iloc[:, -2]
+    else:
+        results = df[title]
+    conv_rates = df.iloc[:, 1]
+
+    return results, conv_rates
+
+
 def load_frac_solved(example, datetime, acc, train, title=None):
     orig_cwd = hydra.utils.get_original_cwd()
     path = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/frac_solved"
@@ -805,9 +924,9 @@ def load_frac_solved(example, datetime, acc, train, title=None):
     df = read_csv(f"{path}/{fp_file}")
     if title is None:
         if train:
-            results = df.iloc[:, -3]
-        else:
             results = df.iloc[:, -1]
+        else:
+            results = df.iloc[:, -3]
     else:
         results = df[title]
     return results

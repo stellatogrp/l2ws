@@ -55,8 +55,8 @@ skip_startup: False
 sigma_nn: [0.0, 1e-6, 1e-5, 0.0001, 0.001, 0.01, .1, 1, 10]
 pac_bayes_num_samples: 5
 pac_bayes_flag: False
-# load_weights_datetime: '2024-01-05/20-59-17'
-# nn_load_type: deterministic
+load_weights_datetime: '2024-01-10/15-11-09'
+nn_load_type: deterministic
 
 pac_bayes_cfg:
   init_var: 1e-4
