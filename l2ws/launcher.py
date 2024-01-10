@@ -33,8 +33,8 @@ from l2ws.utils.generic_utils import count_files_in_directory, sample_plot, setu
 from l2ws.utils.mpc_utils import closed_loop_rollout
 from l2ws.utils.nn_utils import (
     calculate_avg_posterior_var,
-    calculate_total_penalty,
     calculate_pinsker_penalty,
+    calculate_total_penalty,
     compute_KL_penalty,
     compute_weight_norm_squared,
     invert_kl,
@@ -68,6 +68,8 @@ class Workspace:
         self.pac_bayes_num_samples = cfg.get('pac_bayes_num_samples', 50)
         self.pac_bayes_hyperparameter_opt_flag = cfg.get('pac_bayes_flag', False)
         self.delta = 0.01
+
+        self.conv_rates = .81 + np.arange(20) / 100
 
         # self.pretrain_cfg = cfg.pretrain
         self.key_count = 0
@@ -1014,20 +1016,22 @@ class Workspace:
             curr_df = frac_solved_df_list[i]
 
             # plot and update csv
-            # if self.l2ws_model.algo == 'alista':
-            #     yscale = 'log'
-            # else:
-            #     yscale = 'standard'
-            # self.plot_eval_iters_df(curr_df, train, col, ylabel, filename, yscale=yscale, 
-            #                         pac_bayes=True)
             self.plot_eval_iters_df(curr_df, train, col, ylabel, filename, yscale='standard', 
                                     pac_bayes=True)
             csv_filename = filename + '_train.csv' if train else filename + '_test.csv'
             curr_df.to_csv(csv_filename)
-        
 
         # plot the warm-start predictions
         z_all = out_train[2]
+
+        # update the lin_conv csv files
+        conv_rates, conv_rates_pac_bayes = self.calc_conv_rates(z_all, penalty)
+        self.conv_rates_df[col] = conv_rates
+        self.conv_rates_df[col + '_pac_bayes'] = conv_rates_pac_bayes
+        filename = "conv_rates"
+        csv_filename = filename + '_train.csv' if train else filename + '_test.csv'
+        self.conv_rates_df.to_csv(csv_filename)
+        
 
         if isinstance(self.l2ws_model, SCSmodel):
             out_train[6]
@@ -1040,6 +1044,8 @@ class Workspace:
         # import pdb
         # pdb.set_trace()
         self.plot_warm_starts(None, z_plot, train, col)
+
+        
 
         # plot the alpha coefficients
         # alpha = out_train[0][2]
@@ -1077,6 +1083,27 @@ class Workspace:
         gc.collect()
 
         return out_train
+    
+
+    def calc_conv_rates(self, z_all, penalty):
+        # fixed-point rates
+        ratios = (jnp.linalg.norm(z_all[:, 2:, :] - z_all[:, 1:-1, :], axis=2)) / (jnp.linalg.norm(z_all[:, 1:-1, :] - z_all[:, :-2, :], axis=2))
+
+        conv_rates = np.zeros(self.conv_rates.size)
+        conv_rates_pac_bayes = np.zeros(self.conv_rates.size)
+        for i in range(self.conv_rates.size):
+            # determine fraction of problems 
+            loss = ratios < self.conv_rates[i]
+            final_scalar = loss.mean()
+            conv_rates[i] = final_scalar
+
+            # calculate pac_bayes
+            pac_bayes_bound = 1 - invert_kl(1 - final_scalar, penalty)
+            conv_rates_pac_bayes[i] = pac_bayes_bound
+
+        return conv_rates, conv_rates_pac_bayes
+            
+
 
     def solve_c_helper(self, z0_mat, train, col):
         """
@@ -1975,6 +2002,10 @@ class Workspace:
             self.frac_solved_df_list_test.append(pd.DataFrame(columns=['iterations']))
         if not os.path.exists('frac_solved'):
             os.mkdir('frac_solved')
+
+        
+        self.conv_rates_df = pd.DataFrame()
+        self.conv_rates_df['conv_rate'] = self.conv_rates
 
     def train_full(self):
         print("Training full...")
