@@ -308,7 +308,7 @@ class L2WSmodel(object):
             # self.mean_params = self.mean_params.at[:, 0].set(alista_step)
             # self.mean_params = self.mean_params.at[:, 1].set(alista_eta)
             
-            self.sigma_params = -jnp.ones((self.train_unrolls, 2)) #/ 10
+            self.sigma_params = -jnp.ones((self.train_unrolls, 2)) * 10
         else:
             # initialize weights of neural network
             self.mean_params = init_network_params(layer_sizes, random.PRNGKey(0))

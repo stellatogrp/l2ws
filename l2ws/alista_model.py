@@ -9,7 +9,7 @@ from l2ws.algo_steps import (
     k_steps_eval_fista
 )
 from l2ws.l2ws_model import L2WSmodel
-from l2ws.utils.nn_utils import calculate_total_penalty
+from l2ws.utils.nn_utils import calculate_pinsker_penalty
 
 
 class ALISTAmodel(L2WSmodel):
@@ -96,7 +96,7 @@ class ALISTAmodel(L2WSmodel):
 
             loss = self.final_loss(loss_method, z_final, iter_losses, supervised, z0, z_star)
 
-            penalty_loss = calculate_total_penalty(self.N_train, params, self.b, self.c, self.delta)
+            penalty_loss = calculate_pinsker_penalty(self.N_train, params, self.b, self.c, self.delta)
             loss = loss + self.penalty_coeff * penalty_loss
 
             if diff_required:

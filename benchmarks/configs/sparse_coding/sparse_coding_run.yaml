@@ -64,6 +64,6 @@ pac_bayes_cfg:
   b: 100
   delta: 0.01
   penalty_coeff: 1.0
-  deterministic: True
+  deterministic: False
   frac_solved_accs: [-10, -20, -30]
 save_weights_flag: True

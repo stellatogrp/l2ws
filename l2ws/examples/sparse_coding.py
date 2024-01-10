@@ -43,7 +43,7 @@ def run(run_cfg):
     eta = lambd * step
 
     # form W
-    W = D #get_W(D)
+    W = get_W(D)
     W, D = jnp.array(W), jnp.array(D)
 
     static_dict = dict(D=D, W=W, step=step, eta=eta)
