@@ -954,7 +954,9 @@ class Workspace:
         # plot losses over examples
         # losses_over_examples = out_train[2].T
         losses_over_examples = out_train[1].T
-        self.plot_losses_over_examples(losses_over_examples, train, col)
+        
+        yscalelog = False if self.l2ws_model.algo == 'alista' else True
+        self.plot_losses_over_examples(losses_over_examples, train, col, yscalelog=yscalelog)
 
         # update the eval csv files
         primal_residuals, dual_residuals, obj_vals_diff = None, None, None
@@ -1026,13 +1028,31 @@ class Workspace:
         z_all = out_train[2]
 
         # update the lin_conv csv files
-        conv_rates, conv_rates_pac_bayes = self.calc_conv_rates(z_all, penalty)
+        fp = False if self.l2ws_model.algo == 'alista' else True
+
+        z_stars = self.z_stars_train if train else self.z_stars_test
+        conv_rates, conv_rates_pac_bayes = self.calc_conv_rates(z_all, penalty, z_stars, fp=fp)
         self.conv_rates_df[col] = conv_rates
         self.conv_rates_df[col + '_pac_bayes'] = conv_rates_pac_bayes
         filename = "conv_rates"
         csv_filename = filename + '_train.csv' if train else filename + '_test.csv'
         self.conv_rates_df.to_csv(csv_filename)
-        
+
+        # plot the results
+        # plt.ylabel('fraction of steps satisfied')
+        # plt.xlabel('convergence rates')
+        # plt.plot(self.conv_rates, conv_rates)
+        # plt.plot(self.conv_rates, conv_rates_pac_bayes)
+        # plt.tight_layout()
+        # plt.savefig('conv_rates.pdf')
+        ylabel = 'fraction of steps satisfied'
+        xlabel = 'convergence rates'
+        filename = 'conv_rates'
+        self.plot_eval_iters_df(self.conv_rates_df, train, col, ylabel, filename, 
+                                xlabel=xlabel, 
+                                xvals=self.conv_rates, 
+                                yscale='standard',
+                                pac_bayes=True)
 
         if isinstance(self.l2ws_model, SCSmodel):
             out_train[6]
@@ -1086,9 +1106,15 @@ class Workspace:
         return out_train
     
 
-    def calc_conv_rates(self, z_all, penalty):
+    def calc_conv_rates(self, z_all, penalty, z_stars, fp=False):
         # fixed-point rates
-        ratios = (jnp.linalg.norm(z_all[:, 2:, :] - z_all[:, 1:-1, :], axis=2)) / (jnp.linalg.norm(z_all[:, 1:-1, :] - z_all[:, :-2, :], axis=2))
+        if fp:
+            ratios = (jnp.linalg.norm(z_all[:, 2:, :] - z_all[:, 1:-1, :], axis=2)) / (jnp.linalg.norm(z_all[:, 1:-1, :] - z_all[:, :-2, :], axis=2))
+        else:
+            # import pdb
+            # pdb.set_trace()
+            num = z_all.shape[0]
+            ratios = (jnp.linalg.norm(z_all[:, 1:, :] - z_stars[:num, None, :], axis=2)) / (jnp.linalg.norm(z_all[:, :-1, :] - z_stars[:num, None, :], axis=2))
 
         conv_rates = np.zeros(self.conv_rates.size)
         conv_rates_pac_bayes = np.zeros(self.conv_rates.size)
@@ -1101,6 +1127,7 @@ class Workspace:
             # calculate pac_bayes
             pac_bayes_bound = 1 - invert_kl(1 - final_scalar, penalty)
             conv_rates_pac_bayes[i] = pac_bayes_bound
+
 
         return conv_rates, conv_rates_pac_bayes
             
@@ -2174,29 +2201,34 @@ class Workspace:
 
         return iters_df, primal_residuals_df, dual_residuals_df, obj_vals_diff_df
 
-    def plot_eval_iters_df(self, df, train, col, ylabel, filename, yscale='log', pac_bayes=False):
+    def plot_eval_iters_df(self, df, train, col, ylabel, filename, 
+                           xlabel='evaluation iterations', 
+                           xvals=None,
+                           yscale='log', pac_bayes=False):
+        if xvals is None:
+            xvals = np.arange(self.eval_unrolls)
         # plot the cold-start if applicable
         if 'no_train' in df.keys():
-            plt.plot(df['no_train'], 'k-', label='no learning')
+            
+            plt.plot(xvals, df['no_train'], 'k-', label='no learning')
 
         # plot the nearest_neighbor if applicable
         if col != 'no_train' and 'nearest_neighbor' in df.keys():
-            plt.plot(df['nearest_neighbor'], 'm-', label='nearest neighbor')
+            plt.plot(xvals, df['nearest_neighbor'], 'm-', label='nearest neighbor')
 
         # plot the prev_sol if applicable
         if col != 'no_train' and col != 'nearest_neighbor' and 'prev_sol' in df.keys():
-            plt.plot(df['prev_sol'], 'c-', label='prev solution')
-        # if plot_pretrain:
-        #     plt.plot(iters_df['pretrain'], 'r-', label='pretraining')
+            plt.plot(xvals, df['prev_sol'], 'c-', label='prev solution')
 
         # plot the learned warm-start if applicable
         if col != 'no_train' and col != 'pretrain' and col != 'nearest_neighbor' and col != 'prev_sol':  # noqa
-            plt.plot(df[col], label=f"train k={self.train_unrolls}")
+            plt.plot(xvals, df[col], label=f"train k={self.train_unrolls}")
             if pac_bayes:
-                plt.plot(df[col + '_pac_bayes'], label="pac_bayes")
+                plt.plot(xvals, df[col + '_pac_bayes'], label="pac_bayes")
         if yscale == 'log':
             plt.yscale('log')
-        plt.xlabel('evaluation iterations')
+        # plt.xlabel('evaluation iterations')
+        plt.xlabel(xlabel)
         plt.ylabel(f"test {ylabel}")
         plt.legend()
         if train:
@@ -2336,7 +2368,7 @@ class Workspace:
             plt.savefig(f"{alpha_path}/{col}.pdf")
             plt.clf()
 
-    def plot_losses_over_examples(self, losses_over_examples, train, col):
+    def plot_losses_over_examples(self, losses_over_examples, train, col, yscalelog=True):
         """
         plots the fixed point residuals over eval steps for each individual problem
         """
@@ -2348,7 +2380,9 @@ class Workspace:
             os.mkdir(loe_folder)
 
         plt.plot(losses_over_examples)
-        plt.yscale('log')
+        
+        if yscalelog:
+            plt.yscale('log')
         plt.savefig(f"{loe_folder}/losses_{col}_plot.pdf", bbox_inches='tight')
         plt.clf()
 

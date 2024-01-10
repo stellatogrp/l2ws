@@ -25,8 +25,8 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 100
-eval_unrolls: 100
+train_unrolls: 10
+eval_unrolls: 10
 eval_every_x_epochs: 100
 save_every_x_epochs: 1
 test_every_x_epochs: 1
@@ -39,7 +39,7 @@ prediction_variable: w
 angle_anchors: [0]
 supervised: True
 plot_iterates: [0, 5, 9]
-loss_method: 'constant_sum' #'fixed_k' #'constant_sum'
+loss_method: 'fixed_k' #'fixed_k' #'constant_sum'
 share_all: False
 num_clusters: 10
 pretrain_alpha: False
