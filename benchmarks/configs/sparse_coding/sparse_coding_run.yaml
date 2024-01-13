@@ -27,19 +27,21 @@ data:
 
 train_unrolls: 10
 eval_unrolls: 10
-eval_every_x_epochs: 100
+eval_every_x_epochs: 10
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 2
-N_train: 1000
-N_test: 100
-num_samples: 100
+N_train: 50000
+N_test: 1000
+# num_samples: 1000
+num_samples_train: 10000
+num_samples_test: 1000
 prediction_variable: w
 angle_anchors: [0]
 supervised: True
 plot_iterates: [0, 5, 9]
-loss_method: 'constant_sum' #'fixed_k' #'constant_sum'
+loss_method: 'fixed_k' #'fixed_k' #'constant_sum'
 share_all: False
 num_clusters: 10
 pretrain_alpha: False
@@ -55,11 +57,11 @@ skip_startup: False
 sigma_nn: [0.0, 1e-6, 1e-5, 0.0001, 0.001, 0.01, .1, 1, 10]
 pac_bayes_num_samples: 5
 pac_bayes_flag: False
-load_weights_datetime: '2024-01-10/15-11-09'
-nn_load_type: deterministic
+# load_weights_datetime: '2024-01-11/21-36-06'
+# nn_load_type: stochastic
 
 pac_bayes_cfg:
-  init_var: 1e-4
+  init_var: 1e-2
   c: 100.0
   b: 100
   delta: 0.01
@@ -67,3 +69,4 @@ pac_bayes_cfg:
   deterministic: False
   frac_solved_accs: [-10, -20, -30]
 save_weights_flag: True
+algo: alista

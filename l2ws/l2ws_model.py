@@ -52,6 +52,7 @@ class L2WSmodel(object):
         self.init_var = pac_bayes_cfg.get('init_var', 1e-1) # initializes all of s and the prior
         self.penalty_coeff = pac_bayes_cfg.get('penalty_coeff', 1.0)
         self.deterministic = pac_bayes_cfg.get('deterministic', False)
+        self.prior = 0
 
         # essential pieces for the model
         self.initialize_essentials(jit, eval_unrolls, train_unrolls, train_inputs, test_inputs)
@@ -95,7 +96,7 @@ class L2WSmodel(object):
 
     def initialize_essentials(self, jit, eval_unrolls, train_unrolls, train_inputs, test_inputs):
         self.jit = jit
-        self.eval_unrolls = eval_unrolls
+        self.eval_unrolls = eval_unrolls + 1
         self.train_unrolls = train_unrolls + 1
         self.train_inputs, self.test_inputs = train_inputs, test_inputs
         self.N_train, self.N_test = self.train_inputs.shape[0], self.test_inputs.shape[0]
@@ -309,6 +310,13 @@ class L2WSmodel(object):
             # self.mean_params = self.mean_params.at[:, 1].set(alista_eta)
             
             self.sigma_params = -jnp.ones((self.train_unrolls, 2)) * 10
+        elif self.algo == 'tilista':
+            # self.mean_params = (jnp.ones((self.train_unrolls, 2)), 
+            #                     jnp.ones((self.m, self.n)))
+            self.mean_params = (jnp.ones((self.train_unrolls, 2)), 
+                                self.W + .001)
+            self.sigma_params = (-jnp.ones((self.train_unrolls, 2)) * 10, 
+                                 -jnp.ones((self.m, self.n)) * 10)
         else:
             # initialize weights of neural network
             self.mean_params = init_network_params(layer_sizes, random.PRNGKey(0))

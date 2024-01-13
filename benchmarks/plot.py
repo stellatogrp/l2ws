@@ -12,7 +12,7 @@ from l2ws.utils.data_utils import recover_last_datetime
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
-    "font.size": 26,
+    "font.size": 25,
     # "font.size": 16,
 })
 cmap = plt.cm.Set1
@@ -158,7 +158,7 @@ def sparse_coding_plot_eval_iters(cfg):
     #           plot it
     out = get_frac_solved_data(example, cfg)
     all_test_results, all_pac_bayes_results, cold_start_results, nearest_neighbor_results = out
-    markers = ['o', 's']
+    markers = ['o', 's', '<', '^']
     cmap = plt.cm.Set1
     colors = cmap.colors
     styles = ['-', '-']
@@ -185,12 +185,12 @@ def sparse_coding_plot_eval_iters(cfg):
         for j in range(len(curr_test_results)):
             plt.plot(curr_test_results[j], 
                      linestyle='-', 
-                     color=colors[0], 
-                     marker=markers[0])
+                     color=colors[0 + 2 * j], 
+                     marker=markers[0 + 2 * j])
             plt.plot(curr_pac_bayes_results[j], 
                      linestyle='-', 
-                     color=colors[1], 
-                     marker=markers[1])
+                     color=colors[1 + 2* j], 
+                     marker=markers[1 + 2 * j])
         plt.tight_layout()
         plt.xlabel('evaluation steps')
         plt.ylabel(f"frac. at {acc} NMSE (dB)")
@@ -208,7 +208,7 @@ def plot_conv_rates(example, cfg):
     # plot the pac_bayes curve and the test curve
     out = get_conv_rates_data(example, cfg)
     conv_rates, all_test_results, all_pac_bayes_results, cold_start_results, nearest_neighbor_results = out
-    markers = ['o', 's']
+    markers = ['o', 's', '<', '^']
     cmap = plt.cm.Set1
     colors = cmap.colors
     styles = ['-', '-']
@@ -241,13 +241,13 @@ def plot_conv_rates(example, cfg):
     for j in range(len(curr_test_results)):
         plt.plot(conv_rates, curr_test_results[j], 
                     linestyle='-', 
-                    color=colors[0], 
-                    marker=markers[0],
+                    color=colors[0 + 2 * j], 
+                    marker=markers[0 + 2 * j],
                     # markevery=(80, 100)
                     )
         plt.plot(conv_rates, curr_pac_bayes_results[j], 
                     linestyle='-', 
-                    color=colors[1], 
+                    color=colors[1 + 2 * j], 
                     # markevery=(0, 100),
                     marker=markers[1])
     plt.tight_layout()

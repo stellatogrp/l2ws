@@ -50,7 +50,8 @@ def run(run_cfg):
 
     # we directly save q now
     static_flag = True
-    algo = 'alista'
+    # algo = 'alista'
+    algo = run_cfg.get('algo', 'alista')
     workspace = Workspace(algo, run_cfg, static_flag, static_dict, example)
 
     # run the workspace

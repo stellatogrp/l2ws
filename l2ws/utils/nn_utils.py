@@ -20,51 +20,63 @@ def invert_kl(q, c):
     prob = cp.Problem(cp.Maximize(p_bernoulli[0]), constraints)
 
     # Solve problem
-    prob.solve(verbose=False, solver=cp.SCS) # solver=cvx.ECOS
+    prob.solve(verbose=True, solver=cp.SCS) # solver=cvx.ECOS
     
     kl_inv = p_bernoulli.value[0] 
+    import pdb
+    pdb.set_trace()
+
     return kl_inv
 
 
 def calculate_avg_posterior_var(params):
     sigma_params = params[1]
-    flattened_params = jnp.concatenate([jnp.ravel(weight_matrix) for weight_matrix, _ in sigma_params] + 
-                                       [jnp.ravel(bias_vector) for _, bias_vector in sigma_params])
-    variances = jnp.exp(flattened_params)
+    if isinstance(sigma_params, tuple):
+        flattened_params = jnp.concatenate([jnp.ravel(sigma_params[0]), jnp.ravel(sigma_params[1])])
+        variances = jnp.exp(flattened_params)
+    else:
+        flattened_params = jnp.concatenate([jnp.ravel(weight_matrix) for weight_matrix, _ in sigma_params] + 
+                                        [jnp.ravel(bias_vector) for _, bias_vector in sigma_params])
+        variances = jnp.exp(flattened_params)
     avg_posterior_var = variances.mean()
     stddev_posterior_var = variances.std()
-    # posterior_variances = []
-    # for i, params in enumerate(sigma_params):
-    #     posterior_variances
+        # posterior_variances = []
+        # for i, params in enumerate(sigma_params):
+        #     posterior_variances
     return avg_posterior_var, stddev_posterior_var
 
 
-def calculate_pinsker_penalty(N_train, params, c, b, delta):
-    # pi_pen = jnp.log(jnp.pi ** 2 * N_train / (6 * delta))
-    # log_pen = 2 * jnp.log(b * jnp.log(c / jnp.exp(params[2])))
-    # penalty_loss = compute_all_params_KL(params[0], params[1], params[2]) + pi_pen + log_pen
-    # return jnp.sqrt(penalty_loss / (2 * N_train))
-    penalty_loss = calculate_total_penalty(N_train, params, c, b, delta)
+def calculate_pinsker_penalty(N_train, params, c, b, delta, prior=0):
+    penalty_loss = calculate_total_penalty(N_train, params, c, b, delta, prior=prior)
     return jnp.sqrt(penalty_loss / 2)
 
 
-def calculate_total_penalty(N_train, params, c, b, delta):
+def calculate_total_penalty(N_train, params, c, b, delta, prior=0):
     pi_pen = jnp.log(jnp.pi ** 2 * N_train / (6 * delta))
     log_pen = 2 * jnp.log(b * jnp.log(c / jnp.exp(params[2])))
-    penalty_loss = compute_all_params_KL(params[0], params[1], params[2]) + pi_pen + log_pen
-    # return jnp.sqrt(penalty_loss / (2 * N_train))
+    penalty_loss = compute_all_params_KL(params[0], params[1], 
+                                         params[2], prior=prior) + pi_pen + log_pen
     return penalty_loss /  N_train
 
 
 def compute_weight_norm_squared(nn_params):
-    weight_norms = np.zeros(len(nn_params))
-    nn_weights = nn_params
-    num_weights = 0
-    for i, params in enumerate(nn_weights):
-        weight_matrix, bias_vector = params
-        weight_norms[i] = jnp.linalg.norm(weight_matrix) ** 2 + jnp.linalg.norm(bias_vector) ** 2
-        num_weights += weight_matrix.size + bias_vector.size
-    return weight_norms.sum(), num_weights
+    if isinstance(nn_params, tuple):
+        weight_norms = np.zeros(len(nn_params))
+        weight_norms[0] = jnp.linalg.norm(nn_params[0]) ** 2
+        weight_norms[1] = jnp.linalg.norm(nn_params[1]) ** 2
+        num_weights = weight_norms[0].size + weight_norms[1].size
+        return weight_norms.sum(), num_weights
+    elif isinstance(nn_params, list):
+        weight_norms = np.zeros(len(nn_params))
+        nn_weights = nn_params
+        num_weights = 0
+        for i, params in enumerate(nn_weights):
+            weight_matrix, bias_vector = params
+            weight_norms[i] = jnp.linalg.norm(weight_matrix) ** 2 + jnp.linalg.norm(bias_vector) ** 2
+            num_weights += weight_matrix.size + bias_vector.size
+        return weight_norms.sum(), num_weights
+    else:
+        return jnp.linalg.norm(nn_params) ** 2, nn_params.size
 
 def compute_KL_penalty(nn_params, post_sigma, prior_sigma):
                     #    post_sigma_nn, post_sigma_beta, 
@@ -81,22 +93,35 @@ def compute_KL_penalty(nn_params, post_sigma, prior_sigma):
 
 
 
-def compute_all_params_KL(mean_params, sigma_params, lambd):
+def compute_all_params_KL(mean_params, sigma_params, lambd, prior=None):
     total_pen = 0
 
     if isinstance(mean_params, list):
         for i, params in enumerate(mean_params):
             weight_matrix, bias_vector = params
             weight_sigma, bias_sigma = sigma_params[i][0], sigma_params[i][1]
-            total_pen += compute_single_param_KL(weight_matrix, jnp.exp(weight_sigma), jnp.exp(lambd))
-            total_pen += compute_single_param_KL(bias_vector, jnp.exp(bias_sigma), jnp.exp(lambd))
+            total_pen += compute_single_param_KL(weight_matrix, 
+                                                 jnp.exp(weight_sigma), jnp.exp(lambd))
+            total_pen += compute_single_param_KL(bias_vector, 
+                                                 jnp.exp(bias_sigma), jnp.exp(lambd))
+    elif isinstance(mean_params, tuple):
+        # tilista
+        total_pen += compute_single_param_KL(mean_params[0], 
+                                             jnp.exp(sigma_params[0]), jnp.exp(lambd))
+        total_pen += compute_single_param_KL(mean_params[1], 
+                                             jnp.exp(sigma_params[1]), 
+                                             jnp.exp(lambd),
+                                             prior=prior
+                                             )
     else:
-        total_pen += compute_single_param_KL(mean_params, jnp.exp(sigma_params), jnp.exp(lambd))
+        # alista
+        total_pen += compute_single_param_KL(mean_params, 
+                                             jnp.exp(sigma_params), jnp.exp(lambd))
     return total_pen
 
 
-def compute_single_param_KL(mean_params, sigma_params, lambd):
-    weight_norm_squared, d = jnp.linalg.norm(mean_params) ** 2, mean_params.size
+def compute_single_param_KL(mean_params, sigma_params, lambd, prior=0):
+    weight_norm_squared, d = jnp.linalg.norm(mean_params - prior) ** 2, mean_params.size
     pen = weight_norm_squared / lambd - d + jnp.sum(sigma_params) / lambd + \
                                              d * jnp.log(lambd) - jnp.sum(jnp.log(sigma_params))
     return .5 * pen

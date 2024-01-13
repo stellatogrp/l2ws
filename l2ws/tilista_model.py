@@ -4,22 +4,21 @@ import jax.numpy as jnp
 from jax import random
 
 from l2ws.algo_steps import (
-    k_steps_eval_alista,
-    k_steps_train_alista,
-    k_steps_eval_fista,
-    k_steps_eval_ista,
+    k_steps_eval_tilista,
+    k_steps_train_tilista,
+    k_steps_eval_fista
 )
 from l2ws.l2ws_model import L2WSmodel
 from l2ws.utils.nn_utils import calculate_pinsker_penalty
 
 
-class ALISTAmodel(L2WSmodel):
+class TILISTAmodel(L2WSmodel):
     def __init__(self, **kwargs):
-        super(ALISTAmodel, self).__init__(**kwargs)
+        super(TILISTAmodel, self).__init__(**kwargs)
 
     def initialize_algo(self, input_dict):
         self.factor_static = None
-        self.algo = 'alista'
+        self.algo = 'tilista'
         self.factors_required = False
         self.q_mat_train, self.q_mat_test = input_dict['b_mat_train'], input_dict['b_mat_test']
         D, W = input_dict['D'], input_dict['W']
@@ -34,11 +33,13 @@ class ALISTAmodel(L2WSmodel):
         lambd = 0.1 
         self.ista_step = lambd / evals.max()
 
-        self.k_steps_train_fn = partial(k_steps_train_alista, D=D, W=W,
+        self.k_steps_train_fn = partial(k_steps_train_tilista, D=D,
                                         jit=self.jit)
-        self.k_steps_eval_fn = partial(k_steps_eval_alista, D=D, W=W,
+        self.k_steps_eval_fn = partial(k_steps_eval_tilista, D=D,
                                        jit=self.jit)
         self.out_axes_length = 5
+
+        self.prior = self.W
 
     def create_end2end_loss_fn(self, bypass_nn, diff_required):
         supervised = self.supervised and diff_required
@@ -58,15 +59,17 @@ class ALISTAmodel(L2WSmodel):
 
             # w_key = random.split(key)
             w_key = random.PRNGKey(key)
-            perturb = random.normal(w_key, (self.train_unrolls, 2))
+            perturb1 = random.normal(w_key, (self.train_unrolls, 2))
+            perturb2 = random.normal(w_key, (self.m, self.n))
             # return scale * random.normal(w_key, (n, m))
             if self.deterministic:
                 stochastic_params = params[0]
             else:
-                stochastic_params = params[0] + jnp.sqrt(jnp.exp(params[1])) * perturb
+                stochastic_params = (params[0][0] + jnp.sqrt(jnp.exp(params[1][0])) * perturb1, 
+                                     params[0][1] + jnp.sqrt(jnp.exp(params[1][1])) * perturb2)
 
             if bypass_nn:
-                eval_out = k_steps_eval_ista(k=iters,
+                eval_out = k_steps_eval_fista(k=iters,
                                    z0=z0, 
                                    q=q, 
                                    lambd=0.1, 
@@ -97,7 +100,9 @@ class ALISTAmodel(L2WSmodel):
 
             loss = self.final_loss(loss_method, z_final, iter_losses, supervised, z0, z_star)
 
-            penalty_loss = calculate_pinsker_penalty(self.N_train, params, self.b, self.c, self.delta)
+            penalty_loss = calculate_pinsker_penalty(self.N_train, params, self.b, self.c, 
+                                                     self.delta,
+                                                     prior=self.W)
             loss = loss + self.penalty_coeff * penalty_loss
 
             if diff_required:

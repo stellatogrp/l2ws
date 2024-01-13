@@ -29,6 +29,7 @@ from l2ws.gd_model import GDmodel
 from l2ws.ista_model import ISTAmodel
 from l2ws.osqp_model import OSQPmodel
 from l2ws.scs_model import SCSmodel
+from l2ws.tilista_model import TILISTAmodel
 from l2ws.utils.generic_utils import count_files_in_directory, sample_plot, setup_permutation
 from l2ws.utils.mpc_utils import closed_loop_rollout
 from l2ws.utils.nn_utils import (
@@ -78,7 +79,7 @@ class Workspace:
         self.algo = algo
         self.static_flag = static_flag
         self.example = example
-        self.eval_unrolls = cfg.eval_unrolls
+        self.eval_unrolls = cfg.eval_unrolls + 1
         self.eval_every_x_epochs = cfg.eval_every_x_epochs
         self.save_every_x_epochs = cfg.save_every_x_epochs
         self.num_samples = cfg.get('num_samples', 10)
@@ -157,6 +158,10 @@ class Workspace:
             self.q_mat_train = thetas[:N_train, :]
             self.q_mat_test = thetas[N_train:N, :]
             self.create_alista_model(cfg, static_dict)
+        elif algo == 'tilista':
+            self.q_mat_train = thetas[:N_train, :]
+            self.q_mat_test = thetas[N_train:N, :]
+            self.create_tilista_model(cfg, static_dict)
 
 
     def create_ista_model(self, cfg, static_dict):
@@ -212,6 +217,38 @@ class Workspace:
                         #   z_stars_test=self.z_stars_test,
                           )
         self.l2ws_model = ALISTAmodel(train_unrolls=self.train_unrolls,
+                                    eval_unrolls=self.eval_unrolls,
+                                    train_inputs=self.train_inputs,
+                                    test_inputs=self.test_inputs,
+                                    regression=cfg.supervised,
+                                    nn_cfg=cfg.nn_cfg,
+                                    pac_bayes_cfg=cfg.pac_bayes_cfg,
+                                    z_stars_train=self.z_stars_train,
+                                    z_stars_test=self.z_stars_test,
+                                    alista_cfg=alista_cfg,
+                                    algo_dict=input_dict)
+        
+    def create_tilista_model(self, cfg, static_dict):
+        # get A, lambd, ista_step
+        W, D = static_dict['W'], static_dict['D']
+        alista_cfg = {'step': static_dict['step'], 'eta': static_dict['eta']}
+        # ista_step = static_dict['ista_step']
+
+        input_dict = dict(algorithm='alista',
+                        #   supervised=cfg.supervised,
+                        #   train_unrolls=self.train_unrolls,
+                        #   jit=True,
+                        #   train_inputs=self.train_inputs,
+                        #   test_inputs=self.test_inputs,
+                          b_mat_train=self.q_mat_train,
+                          b_mat_test=self.q_mat_test,
+                          D=D,
+                          W=W
+                        #   nn_cfg=cfg.nn_cfg,
+                        #   z_stars_train=self.z_stars_train,
+                        #   z_stars_test=self.z_stars_test,
+                          )
+        self.l2ws_model = TILISTAmodel(train_unrolls=self.train_unrolls,
                                     eval_unrolls=self.eval_unrolls,
                                     train_inputs=self.train_inputs,
                                     test_inputs=self.test_inputs,
@@ -507,6 +544,31 @@ class Workspace:
         else:
             self.save_weights_deterministic()
 
+    def save_weights_stochastic_tilista(self):
+        nn_weights = self.l2ws_model.params
+        # create directory
+        if not os.path.exists('nn_weights'):
+            os.mkdir('nn_weights')
+            os.mkdir('nn_weights/mean')
+            os.mkdir('nn_weights/variance')
+            os.mkdir('nn_weights/prior')
+
+        # Save mean weights
+        mean_params = nn_weights[0]
+        scalar_params, matrix_params = mean_params[0], mean_params[1]
+        jnp.savez("nn_weights/mean/mean_params.npz", 
+                  scalar_params=scalar_params,
+                  matrix_params=matrix_params)
+
+        # Save variance weights
+        variance_params = nn_weights[1]
+        jnp.savez("nn_weights/variance/variance_params.npz", 
+                  scalar_params=variance_params[0],
+                  matrix_params=variance_params[1])
+
+        # save prior
+        jnp.savez("nn_weights/prior/prior_val.npz", prior=nn_weights[2])
+
     def save_weights_stochastic_alista(self):
         nn_weights = self.l2ws_model.params
         # create directory
@@ -560,10 +622,16 @@ class Workspace:
         if not os.path.exists('nn_weights'):
             os.mkdir('nn_weights')
 
-        # Save each weight matrix and bias vector separately using jnp.savez
-        for i, params in enumerate(nn_weights):
-            weight_matrix, bias_vector = params
-            jnp.savez(f"nn_weights/layer_{i}_params.npz", weight=weight_matrix, bias=bias_vector)
+        if self.l2ws_model.algo == 'tilista':
+            jnp.savez("nn_weights/params.npz", 
+                      scalar_params=nn_weights[0], 
+                      matrix=nn_weights[1])
+        else:
+            # Save each weight matrix and bias vector separately using jnp.savez
+            for i, params in enumerate(nn_weights):
+                weight_matrix, bias_vector = params
+                jnp.savez(f"nn_weights/layer_{i}_params.npz", weight=weight_matrix, 
+                          bias=bias_vector)
 
     def weight_stats(self):
         # record statistics about the weights
@@ -955,7 +1023,7 @@ class Workspace:
         # losses_over_examples = out_train[2].T
         losses_over_examples = out_train[1].T
         
-        yscalelog = False if self.l2ws_model.algo == 'alista' else True
+        yscalelog = False if self.l2ws_model.algo in ['alista', 'tilista'] else True
         self.plot_losses_over_examples(losses_over_examples, train, col, yscalelog=yscalelog)
 
         # update the eval csv files
@@ -996,6 +1064,7 @@ class Workspace:
                                     self.l2ws_model.c,
                                     self.l2ws_model.b,
                                     self.l2ws_model.delta,
+                                    prior=self.l2ws_model.prior
                                     )
             final_pac_bayes_loss = jnp.zeros(frac_solved.size)
             for j in range(frac_solved.size):
@@ -1028,7 +1097,7 @@ class Workspace:
         z_all = out_train[2]
 
         # update the lin_conv csv files
-        fp = False if self.l2ws_model.algo == 'alista' else True
+        fp = False if self.l2ws_model.algo in ['alista', 'tilista'] else True
 
         z_stars = self.z_stars_train if train else self.z_stars_test
         conv_rates, conv_rates_pac_bayes = self.calc_conv_rates(z_all, penalty, z_stars, fp=fp)
@@ -2094,13 +2163,20 @@ class Workspace:
                                       self.l2ws_model.params,
                                       self.l2ws_model.b,
                                       self.l2ws_model.c,
-                                      self.l2ws_model.delta
+                                      self.l2ws_model.delta,
+                                      prior=self.l2ws_model.prior
                                       )
 
         # calculate avg posterior var
         avg_posterior_var, stddev_posterior_var = calculate_avg_posterior_var(self.l2ws_model.params)
 
-        mean_squared_w, dim = compute_weight_norm_squared(self.l2ws_model.params[0])
+        if self.l2ws_model.algo == 'tilista':
+            subtract_prior = (self.l2ws_model.params[0][0], self.l2ws_model.params[0][1] - self.l2ws_model.prior)
+            mean_squared_w, dim = compute_weight_norm_squared(subtract_prior)
+        else:
+            # import pdb
+            # pdb.set_trace()
+            mean_squared_w, dim = compute_weight_norm_squared(self.l2ws_model.params[0])
         print('mean', self.l2ws_model.params[0])
         print('var', self.l2ws_model.params[1])
         
@@ -2244,7 +2320,7 @@ class Workspace:
                         train, col):
         # self.plot_eval_iters_df(curr_df, train, col, ylabel, filename, yscale=yscale, 
             #                         pac_bayes=True)
-        yscale = 'standard' if self.l2ws_model.algo == 'alista' else 'log'
+        yscale = 'standard' if self.l2ws_model.algo in ['alista', 'tilista'] else 'log'
         self.plot_eval_iters_df(iters_df, train, col, 'fixed point residual', 'eval_iters', yscale=yscale)
         if primal_residuals_df is not None:
             self.plot_eval_iters_df(primal_residuals_df, train, col,
