@@ -32,8 +32,8 @@ save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 2
-N_train: 50000
-N_test: 1000
+N_train: 100 #50000
+N_test: 100 #1000
 # num_samples: 1000
 num_samples_train: 10000
 num_samples_test: 1000
@@ -65,7 +65,7 @@ pac_bayes_cfg:
   c: 100.0
   b: 100
   delta: 0.01
-  penalty_coeff: 1.0
+  penalty_coeff: 100.0
   deterministic: False
   frac_solved_accs: [-10, -20, -30]
 save_weights_flag: True

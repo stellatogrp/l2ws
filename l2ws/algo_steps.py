@@ -3,6 +3,8 @@ from functools import partial
 import jax.numpy as jnp
 import jax.scipy as jsp
 from jax import grad, jit, lax, vmap
+import cvxpy as cp
+from cvxpylayers.jax import CvxpyLayer
 
 from l2ws.utils.generic_utils import python_fori_loop, unvec_symm, vec_symm
 
@@ -21,6 +23,27 @@ TAU_FACTOR = 10
 #     x2 = x0 - eg_step * (2 * Q @ x1 + A.T @ y1 + c)
 #     y2 = y0 + eg_step * (-2 * R @ y1 + A @ x1 - b)
 #     return jnp.concatenate([x2, y2])
+
+def create_kl_inv_layer():
+    """
+    create the cvxpylayer
+    """
+    p = cp.Variable(2)
+    q_param = cp.Parameter(2)
+    c_param = cp.Parameter(1)
+
+    constraints = [c_param >= cp.sum(cp.kl_div(q_param, p)), 
+                   0 <= p[0], p[0] <= 1, p[1] == 1.0 - p[0]]
+    objective = cp.Maximize(p[0])
+    problem = cp.Problem(objective, constraints)
+    assert problem.is_dpp()
+
+    layer = CvxpyLayer(
+        problem, parameters=[q_param, c_param], variables=[p]
+    )
+
+    return layer
+
 
 def k_steps_train_tilista(k, z0, q, params, D, supervised, z_star, jit):
     iter_losses = jnp.zeros(k)

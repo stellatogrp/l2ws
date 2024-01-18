@@ -9,9 +9,8 @@ from jax import jit, random, vmap
 from jax.config import config
 from jaxopt import OptaxSolver
 
-from l2ws.algo_steps import create_eval_fn, create_train_fn, lin_sys_solve
+from l2ws.algo_steps import create_eval_fn, create_train_fn, lin_sys_solve, create_kl_inv_layer
 from l2ws.utils.nn_utils import (
-    calculate_total_penalty,
     calculate_pinsker_penalty,
     get_perturbed_weights,
     init_network_params,
@@ -19,8 +18,10 @@ from l2ws.utils.nn_utils import (
     predict_y,
 )
 
+from l2ws.utils.generic_utils import manual_vmap
+
 config.update("jax_enable_x64", True)
-# config.update('jax_disable_jit', True)
+config.update('jax_disable_jit', True)
 
 
 class L2WSmodel(object):
@@ -53,6 +54,8 @@ class L2WSmodel(object):
         self.penalty_coeff = pac_bayes_cfg.get('penalty_coeff', 1.0)
         self.deterministic = pac_bayes_cfg.get('deterministic', False)
         self.prior = 0
+
+        self.kl_inv_layer = create_kl_inv_layer()
 
         # essential pieces for the model
         self.initialize_essentials(jit, eval_unrolls, train_unrolls, train_inputs, test_inputs)
@@ -571,9 +574,18 @@ class L2WSmodel(object):
             #   1. no factors are needed (pass in None as a static argument)
             #   2. factor is constant for all problems (pass in the same factor as static argument)
             predict_partial = partial(predict, factor=self.factor_static)
-            batch_predict = vmap(predict_partial,
-                                 in_axes=(None, 0, 0, None, 0, None),
-                                 out_axes=out_axes)
+            if diff_required:
+                in_axes=(None, 0, 0, None, 0, None)
+                def batch_predict(*args):
+                    return manual_vmap(predict_partial,
+                                    in_axes,
+                                    out_axes,
+                                    *args)
+            else:
+                batch_predict = vmap(predict_partial,
+                                    in_axes=(None, 0, 0, None, 0, None),
+                                    out_axes=out_axes)
+            
 
             @partial(jit, static_argnums=(3,))
             def loss_fn(params, inputs, b, iters, z_stars, key):

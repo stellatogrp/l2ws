@@ -9,7 +9,7 @@ from l2ws.algo_steps import (
     k_steps_eval_fista
 )
 from l2ws.l2ws_model import L2WSmodel
-from l2ws.utils.nn_utils import calculate_pinsker_penalty
+from l2ws.utils.nn_utils import calculate_pinsker_penalty, calculate_total_penalty
 
 
 class TILISTAmodel(L2WSmodel):
@@ -100,11 +100,20 @@ class TILISTAmodel(L2WSmodel):
 
             loss = self.final_loss(loss_method, z_final, iter_losses, supervised, z0, z_star)
 
-            penalty_loss = calculate_pinsker_penalty(self.N_train, params, self.b, self.c, 
+            if diff_required:
+                penalty = calculate_total_penalty(self.N_train, params, self.b, self.c, 
+                                                        self.delta,
+                                                        prior=self.W)
+                q = jnp.array([loss / self.penalty_coeff, 1 - loss / self.penalty_coeff])
+                c = jnp.reshape(penalty, (1,))
+                loss = self.kl_inv_layer(q, c)
+            else:
+                penalty_loss = calculate_pinsker_penalty(self.N_train, params, self.b, self.c, 
                                                      self.delta,
                                                      prior=self.W)
-            loss = loss + self.penalty_coeff * penalty_loss
+                loss = loss + self.penalty_coeff * penalty_loss
 
+            
             if diff_required:
                 return loss
             else:

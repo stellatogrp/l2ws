@@ -7,6 +7,7 @@ from jax import jit, random, vmap
 from scipy.spatial import distance_matrix
 
 
+
 def invert_kl(q, c):
     """
     given scalars q and c returns
@@ -23,8 +24,6 @@ def invert_kl(q, c):
     prob.solve(verbose=True, solver=cp.SCS) # solver=cvx.ECOS
     
     kl_inv = p_bernoulli.value[0] 
-    import pdb
-    pdb.set_trace()
 
     return kl_inv
 
