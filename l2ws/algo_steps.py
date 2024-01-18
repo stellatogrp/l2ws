@@ -1,10 +1,10 @@
 from functools import partial
 
+import cvxpy as cp
 import jax.numpy as jnp
 import jax.scipy as jsp
-from jax import grad, jit, lax, vmap
-import cvxpy as cp
 from cvxpylayers.jax import CvxpyLayer
+from jax import grad, jit, lax, vmap
 
 from l2ws.utils.generic_utils import python_fori_loop, unvec_symm, vec_symm
 
@@ -23,6 +23,21 @@ TAU_FACTOR = 10
 #     x2 = x0 - eg_step * (2 * Q @ x1 + A.T @ y1 + c)
 #     y2 = y0 + eg_step * (-2 * R @ y1 + A @ x1 - b)
 #     return jnp.concatenate([x2, y2])
+
+def true_fun(_):
+    return 0
+
+def false_fun(_):
+    return 1
+
+
+def kl_inv_fn(r, q, c):
+    p = (1 - q) * r + q
+    return q * jnp.log(q / p) + (1 - q) * jnp.log((1 - q) / (1 - p)) - c
+# def kl_inv_fn(p, q, c):
+#     pen = lax.cond(p >= q, None, true_fun, None, false_fun)
+#     return pen + q * jnp.log(q / p) + (1 - q) * jnp.log((1 - q) / (1 - p)) - c
+
 
 def create_kl_inv_layer():
     """

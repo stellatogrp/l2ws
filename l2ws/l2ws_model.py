@@ -9,19 +9,20 @@ from jax import jit, random, vmap
 from jax.config import config
 from jaxopt import OptaxSolver
 
-from l2ws.algo_steps import create_eval_fn, create_train_fn, lin_sys_solve, create_kl_inv_layer
+from l2ws.algo_steps import create_eval_fn, create_train_fn, lin_sys_solve, create_kl_inv_layer, kl_inv_fn
 from l2ws.utils.nn_utils import (
     calculate_pinsker_penalty,
+    calculate_total_penalty,
     get_perturbed_weights,
     init_network_params,
     init_variance_network_params,
     predict_y,
 )
-
+from jaxopt import Bisection
 from l2ws.utils.generic_utils import manual_vmap
 
 config.update("jax_enable_x64", True)
-config.update('jax_disable_jit', True)
+# config.update('jax_disable_jit', True)
 
 
 class L2WSmodel(object):
@@ -574,15 +575,18 @@ class L2WSmodel(object):
             #   1. no factors are needed (pass in None as a static argument)
             #   2. factor is constant for all problems (pass in the same factor as static argument)
             predict_partial = partial(predict, factor=self.factor_static)
-            if diff_required:
-                in_axes=(None, 0, 0, None, 0, None)
-                def batch_predict(*args):
-                    return manual_vmap(predict_partial,
-                                    in_axes,
-                                    out_axes,
-                                    *args)
-            else:
-                batch_predict = vmap(predict_partial,
+            # if diff_required:
+            #     in_axes=(None, 0, 0, None, 0, None)
+            #     def batch_predict(*args):
+            #         return manual_vmap(predict_partial,
+            #                         in_axes,
+            #                         out_axes,
+            #                         *args)
+            # else:
+            #     batch_predict = vmap(predict_partial,
+            #                         in_axes=(None, 0, 0, None, 0, None),
+            #                         out_axes=out_axes)
+            batch_predict = vmap(predict_partial,
                                     in_axes=(None, 0, 0, None, 0, None),
                                     out_axes=out_axes)
             
@@ -591,7 +595,21 @@ class L2WSmodel(object):
             def loss_fn(params, inputs, b, iters, z_stars, key):
                 if diff_required:
                     losses = batch_predict(params, inputs, b, iters, z_stars, key)
-                    return losses.mean()
+                    # return losses.mean()
+                    q = losses.mean() / self.penalty_coeff
+                    penalty_loss = calculate_total_penalty(self.N_train, params, self.b, self.c, 
+                                                     self.delta,
+                                                     prior=self.W)
+                    # import pdb
+                    # pdb.set_trace()
+                    # qq = jnp.copy(q)
+                    bisec = Bisection(optimality_fun=kl_inv_fn, lower=0.0, upper=0.99999999999, 
+                                      check_bracket=False,
+                                      jit=True)
+                    out = bisec.run(q=q, c=penalty_loss)
+                    r = out.params
+                    p = (1 - q) * r + q
+                    return p
                 else:
                     predict_out = batch_predict(
                         params, inputs, b, iters, z_stars, key)

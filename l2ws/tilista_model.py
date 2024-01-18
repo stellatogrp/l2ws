@@ -2,11 +2,13 @@ from functools import partial
 
 import jax.numpy as jnp
 from jax import random
+from jaxopt import Bisection
 
 from l2ws.algo_steps import (
+    k_steps_eval_fista,
     k_steps_eval_tilista,
     k_steps_train_tilista,
-    k_steps_eval_fista
+    kl_inv_fn,
 )
 from l2ws.l2ws_model import L2WSmodel
 from l2ws.utils.nn_utils import calculate_pinsker_penalty, calculate_total_penalty
@@ -104,9 +106,15 @@ class TILISTAmodel(L2WSmodel):
                 penalty = calculate_total_penalty(self.N_train, params, self.b, self.c, 
                                                         self.delta,
                                                         prior=self.W)
-                q = jnp.array([loss / self.penalty_coeff, 1 - loss / self.penalty_coeff])
-                c = jnp.reshape(penalty, (1,))
-                loss = self.kl_inv_layer(q, c)
+                # q = jnp.array([loss / self.penalty_coeff, 1 - loss / self.penalty_coeff])
+                # c = jnp.reshape(penalty, (1,))
+                # loss = self.kl_inv_layer(q, c)
+                q = loss / self.penalty_coeff
+                c = penalty
+                # import pdb
+                # pdb.set_trace()
+                # bisec = Bisection(optimality_fun=kl_inv_fn, lower=0.0, upper=0.99999999999)
+                # loss = bisec.run(q=q, c=c)
             else:
                 penalty_loss = calculate_pinsker_penalty(self.N_train, params, self.b, self.c, 
                                                      self.delta,
