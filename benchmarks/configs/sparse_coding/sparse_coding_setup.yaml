@@ -1,5 +1,5 @@
-m_orig: 64
-n_orig: 128
+m_orig: 128 #64
+n_orig: 256 #128
 lambd: 10
 solve_acc_abs: 1e-10
 solve_acc_rel: 0

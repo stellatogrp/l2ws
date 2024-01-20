@@ -51,6 +51,7 @@ class L2WSmodel(object):
         self.b = pac_bayes_cfg.get('b', 100)
         self.c = pac_bayes_cfg.get('c', 2.0)
         self.delta = pac_bayes_cfg.get('delta', 0.01)
+        self.target_pen = pac_bayes_cfg['target_pen']
         self.init_var = pac_bayes_cfg.get('init_var', 1e-1) # initializes all of s and the prior
         self.penalty_coeff = pac_bayes_cfg.get('penalty_coeff', 1.0)
         self.deterministic = pac_bayes_cfg.get('deterministic', False)
@@ -172,7 +173,7 @@ class L2WSmodel(object):
 
             # penalty_loss = calculate_total_penalty(self.N_train, params, self.b, self.c, self.delta)
             penalty_loss = calculate_pinsker_penalty(self.N_train, params, self.b, self.c, self.delta)
-            loss = loss + self.penalty_coeff * penalty_loss
+            loss = loss #+ self.penalty_coeff * penalty_loss
 
             if diff_required:
                 return loss
@@ -610,15 +611,18 @@ class L2WSmodel(object):
                     bisec = Bisection(optimality_fun=kl_inv_fn, lower=0.0, upper=0.99999999999, 
                                       check_bracket=False,
                                       jit=True)
-                    q_expit = 1 / (1 + jnp.exp(-.1 * (q - 10)))
+
+                    q_expit = 1 / (1 + jnp.exp(-.1 * (q - 0)))
                     # q_expit = 1 / (1 + jnp.exp(-1 * (q - 0)))
                     out = bisec.run(q=q_expit, c=penalty_loss)
                     r = out.params
-                    p = (1 - q) * r + q
+                    p = (1 - q_expit) * r + q_expit
                     # import pdb
                     # pdb.set_trace()
-                    return p
-                    return q + jnp.sqrt(penalty_loss / 2)
+                    if self.deterministic:
+                        return q_expit
+                    return p + 100 * (penalty_loss - self.target_pen) ** 2
+                    # return q + jnp.sqrt(penalty_loss / 2)
                 else:
                     predict_out = batch_predict(
                         params, inputs, b, iters, z_stars, key)
