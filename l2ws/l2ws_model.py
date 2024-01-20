@@ -597,19 +597,28 @@ class L2WSmodel(object):
                     losses = batch_predict(params, inputs, b, iters, z_stars, key)
                     # return losses.mean()
                     q = losses.mean() / self.penalty_coeff
-                    penalty_loss = calculate_total_penalty(self.N_train, params, self.b, self.c, 
-                                                     self.delta,
-                                                     prior=self.W)
+                    if self.algo == 'tilista':
+                        penalty_loss = calculate_total_penalty(self.N_train, params, self.b, self.c, 
+                                                        self.delta,
+                                                        prior=self.W)
+                    else:
+                        penalty_loss = calculate_total_penalty(self.N_train, params, self.b, self.c, 
+                                                        self.delta)
                     # import pdb
                     # pdb.set_trace()
                     # qq = jnp.copy(q)
                     bisec = Bisection(optimality_fun=kl_inv_fn, lower=0.0, upper=0.99999999999, 
                                       check_bracket=False,
                                       jit=True)
-                    out = bisec.run(q=q, c=penalty_loss)
+                    q_expit = 1 / (1 + jnp.exp(-.1 * (q - 10)))
+                    # q_expit = 1 / (1 + jnp.exp(-1 * (q - 0)))
+                    out = bisec.run(q=q_expit, c=penalty_loss)
                     r = out.params
                     p = (1 - q) * r + q
+                    # import pdb
+                    # pdb.set_trace()
                     return p
+                    return q + jnp.sqrt(penalty_loss / 2)
                 else:
                     predict_out = batch_predict(
                         params, inputs, b, iters, z_stars, key)

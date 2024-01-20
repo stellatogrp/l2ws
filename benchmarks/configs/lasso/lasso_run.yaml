@@ -67,5 +67,5 @@ pac_bayes_cfg:
   b: 100
   delta: 0.01
   rep: False
-  penalty_coeff: 1.0
+  penalty_coeff: 100.0
   deterministic: False

@@ -65,8 +65,8 @@ pac_bayes_cfg:
   c: 100.0
   b: 100
   delta: 0.01
-  penalty_coeff: 100.0
+  penalty_coeff: 1.0
   deterministic: False
   frac_solved_accs: [-10, -20, -30]
 save_weights_flag: False
-algo: tilista
+algo: alista

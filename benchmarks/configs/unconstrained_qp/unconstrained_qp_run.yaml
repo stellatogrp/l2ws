@@ -1,5 +1,5 @@
 nn_cfg:
-  lr: 1e-5
+  lr: 1e-4
   method: adam
   intermediate_layer_sizes: [10]
   batch_size: 100
@@ -54,14 +54,14 @@ alpha_relax: 1
 skip_startup: False
 
 save_weights_flag: True
-# load_weights_datetime: '2024-01-01/15-19-18'
-# nn_load_type: deterministic
+load_weights_datetime: '2024-01-01/15-19-18'
+nn_load_type: deterministic
 
 pac_bayes_cfg:
-  init_var: 1e-2
+  init_var: 1e-2 #1e-2
   c: 10.0
   b: 100
   delta: 0.01
   rep: False
-  deterministic: True
-  penalty_coeff: 0.0
+  deterministic: False
+  penalty_coeff: 1.0
