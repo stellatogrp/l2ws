@@ -35,7 +35,7 @@ from l2ws.utils.mpc_utils import closed_loop_rollout
 from l2ws.utils.nn_utils import (
     calculate_avg_posterior_var,
     calculate_pinsker_penalty,
-    calculate_total_penalty,
+    # calculate_total_penalty,
     compute_KL_penalty,
     compute_weight_norm_squared,
     invert_kl,
@@ -1059,12 +1059,18 @@ class Workspace:
             frac_solved = fs.mean(axis=0)
             frac_solved_list.append(frac_solved)
 
-            penalty = calculate_total_penalty(self.l2ws_model.N_train, 
+            # penalty = calculate_total_penalty(self.l2ws_model.N_train, 
+            #                         self.l2ws_model.params, 
+            #                         self.l2ws_model.c,
+            #                         self.l2ws_model.b,
+            #                         self.l2ws_model.delta,
+            #                         prior=self.l2ws_model.prior
+            #                         )
+            penalty = self.l2ws_model.calculate_total_penalty(self.l2ws_model.N_train, 
                                     self.l2ws_model.params, 
                                     self.l2ws_model.c,
                                     self.l2ws_model.b,
-                                    self.l2ws_model.delta,
-                                    prior=self.l2ws_model.prior
+                                    self.l2ws_model.delta
                                     )
             final_pac_bayes_loss = jnp.zeros(frac_solved.size)
             for j in range(frac_solved.size):
@@ -2159,24 +2165,32 @@ class Workspace:
         moving_avg = last_epoch.mean()
 
         # do penalty calculation
-        pen = calculate_pinsker_penalty(self.l2ws_model.N_train, 
-                                      self.l2ws_model.params,
-                                      self.l2ws_model.b,
-                                      self.l2ws_model.c,
-                                      self.l2ws_model.delta,
-                                      prior=self.l2ws_model.prior
-                                      )
+        # pen = calculate_pinsker_penalty(self.l2ws_model.N_train, 
+        #                               self.l2ws_model.params,
+        #                               self.l2ws_model.b,
+        #                               self.l2ws_model.c,
+        #                               self.l2ws_model.delta,
+        #                               prior=self.l2ws_model.prior
+        #                               )
+        total_pen = self.l2ws_model.calculate_total_penalty(self.l2ws_model.N_train, 
+                                    self.l2ws_model.params, 
+                                    self.l2ws_model.c,
+                                    self.l2ws_model.b,
+                                    self.l2ws_model.delta
+                                    )
+        pen = jnp.sqrt(total_pen / 2)
 
         # calculate avg posterior var
-        avg_posterior_var, stddev_posterior_var = calculate_avg_posterior_var(self.l2ws_model.params)
+        # avg_posterior_var, stddev_posterior_var = calculate_avg_posterior_var(self.l2ws_model.params)
+        avg_posterior_var, stddev_posterior_var = self.l2ws_model.calculate_avg_posterior_var(self.l2ws_model.params)
 
-        if self.l2ws_model.algo == 'tilista':
-            subtract_prior = (self.l2ws_model.params[0][0], self.l2ws_model.params[0][1] - self.l2ws_model.prior)
-            mean_squared_w, dim = compute_weight_norm_squared(subtract_prior)
-        else:
-            # import pdb
-            # pdb.set_trace()
-            mean_squared_w, dim = compute_weight_norm_squared(self.l2ws_model.params[0])
+        # if self.l2ws_model.algo == 'tilista':
+        #     subtract_prior = (self.l2ws_model.params[0][0], self.l2ws_model.params[0][1] - self.l2ws_model.prior)
+        #     mean_squared_w, dim = compute_weight_norm_squared(subtract_prior)
+        # else:
+        #     mean_squared_w, dim = compute_weight_norm_squared(self.l2ws_model.params[0])
+        mean_squared_w, dim = self.l2ws_model.compute_weight_norm_squared(self.l2ws_model.params[0])
+
         print('mean', self.l2ws_model.params[0])
         print('var', self.l2ws_model.params[1])
         

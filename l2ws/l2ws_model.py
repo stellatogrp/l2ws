@@ -305,35 +305,38 @@ class L2WSmodel(object):
         self.layer_sizes = layer_sizes
 
         init_var, init_stddev_var = self.init_var, 1e-8
-        if self.algo == 'alista':
-            self.mean_params = jnp.ones((self.train_unrolls, 2))
+        self.init_params()
+        # if self.algo == 'alista':
+        #     # self.mean_params = jnp.ones((self.train_unrolls, 2))
 
-            # initialize with ista values
-            # alista_step = alista_cfg['step']
-            # alista_eta = alista_cfg['eta']
-            # self.mean_params = self.mean_params.at[:, 0].set(alista_step)
-            # self.mean_params = self.mean_params.at[:, 1].set(alista_eta)
+        #     # # initialize with ista values
+        #     # # alista_step = alista_cfg['step']
+        #     # # alista_eta = alista_cfg['eta']
+        #     # # self.mean_params = self.mean_params.at[:, 0].set(alista_step)
+        #     # # self.mean_params = self.mean_params.at[:, 1].set(alista_eta)
             
-            self.sigma_params = -jnp.ones((self.train_unrolls, 2)) * 10
-        elif self.algo == 'tilista':
-            # self.mean_params = (jnp.ones((self.train_unrolls, 2)), 
-            #                     jnp.ones((self.m, self.n)))
-            self.mean_params = (jnp.ones((self.train_unrolls, 2)), 
-                                self.W + .001)
-            self.sigma_params = (-jnp.ones((self.train_unrolls, 2)) * 10, 
-                                 -jnp.ones((self.m, self.n)) * 10)
-        else:
-            # initialize weights of neural network
-            self.mean_params = init_network_params(layer_sizes, random.PRNGKey(0))
+        #     # self.sigma_params = -jnp.ones((self.train_unrolls, 2)) * 10
+        #     self.init_params()
+        # elif self.algo == 'tilista':
+        #     # self.mean_params = (jnp.ones((self.train_unrolls, 2)), 
+        #     #                     jnp.ones((self.m, self.n)))
+        #     # self.mean_params = (jnp.ones((self.train_unrolls, 2)), 
+        #     #                     self.W + .001)
+        #     # self.sigma_params = (-jnp.ones((self.train_unrolls, 2)) * 10, 
+        #     #                      -jnp.ones((self.m, self.n)) * 10)
+        #     self.init_params()
+        # else:
+        #     # initialize weights of neural network
+        #     self.mean_params = init_network_params(layer_sizes, random.PRNGKey(0))
 
-            # initialize the stddev
-            self.sigma_params = init_variance_network_params(layer_sizes, init_var, random.PRNGKey(1), 
-                                                          init_stddev_var)
+        #     # initialize the stddev
+        #     self.sigma_params = init_variance_network_params(layer_sizes, init_var, random.PRNGKey(1), 
+        #                                                   init_stddev_var)
         
-        # initialize the prior
-        self.prior_param = jnp.log(init_var)
+        # # initialize the prior
+        # self.prior_param = jnp.log(init_var)
 
-        self.params = [self.mean_params, self.sigma_params, self.prior_param]
+        # self.params = [self.mean_params, self.sigma_params, self.prior_param]
 
         # initializes the optimizer
         self.optimizer_method = nn_cfg.get('method', 'adam')
@@ -370,6 +373,21 @@ class L2WSmodel(object):
                                                    iters=self.train_unrolls,
                                                    z_stars=z_stars_init,
                                                    key=self.key)
+            
+    def init_params(self):
+        # initialize weights of neural network
+        self.mean_params = init_network_params(self.layer_sizes, random.PRNGKey(0))
+
+        # initialize the stddev
+        init_stddev_var = 1e-6
+        self.sigma_params = init_variance_network_params(self.layer_sizes, self.init_var, 
+                                                         random.PRNGKey(1), 
+                                                        init_stddev_var)
+        
+        # initialize the prior
+        self.prior_param = jnp.log(self.init_var)
+
+        self.params = [self.mean_params, self.sigma_params, self.prior_param]
 
 
     def create_all_loss_fns(self, loss_method, supervised):
@@ -598,27 +616,29 @@ class L2WSmodel(object):
                     losses = batch_predict(params, inputs, b, iters, z_stars, key)
                     # return losses.mean()
                     q = losses.mean() / self.penalty_coeff
-                    if self.algo == 'tilista':
-                        penalty_loss = calculate_total_penalty(self.N_train, params, self.b, self.c, 
-                                                        self.delta,
-                                                        prior=self.W)
-                    else:
-                        penalty_loss = calculate_total_penalty(self.N_train, params, self.b, self.c, 
-                                                        self.delta)
-                    # import pdb
-                    # pdb.set_trace()
-                    # qq = jnp.copy(q)
+                    # if self.algo == 'tilista':
+                    #     penalty_loss = calculate_total_penalty(self.N_train, params, self.b, self.c, 
+                    #                                     self.delta,
+                    #                                     prior=self.W)
+                    # else:
+                    #     penalty_loss = calculate_total_penalty(self.N_train, params, self.b, self.c, 
+                    #                                     self.delta)
+                    penalty_loss = self.calculate_total_penalty(self.N_train, params, self.b, 
+                                                                self.c, 
+                                                                self.delta)
+
                     bisec = Bisection(optimality_fun=kl_inv_fn, lower=0.0, upper=0.99999999999, 
                                       check_bracket=False,
                                       jit=True)
 
                     q_expit = 1 / (1 + jnp.exp(-.1 * (q - 0)))
                     # q_expit = 1 / (1 + jnp.exp(-1 * (q - 0)))
+                    # import pdb
+                    # pdb.set_trace()
                     out = bisec.run(q=q_expit, c=penalty_loss)
                     r = out.params
                     p = (1 - q_expit) * r + q_expit
-                    # import pdb
-                    # pdb.set_trace()
+
                     if self.deterministic:
                         return q_expit
                     return p + 100 * (penalty_loss - self.target_pen) ** 2

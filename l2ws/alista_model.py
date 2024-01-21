@@ -10,7 +10,7 @@ from l2ws.algo_steps import (
     k_steps_eval_ista,
 )
 from l2ws.l2ws_model import L2WSmodel
-from l2ws.utils.nn_utils import calculate_pinsker_penalty
+from l2ws.utils.nn_utils import calculate_pinsker_penalty, compute_single_param_KL
 
 
 class ALISTAmodel(L2WSmodel):
@@ -39,6 +39,24 @@ class ALISTAmodel(L2WSmodel):
         self.k_steps_eval_fn = partial(k_steps_eval_alista, D=D, W=W,
                                        jit=self.jit)
         self.out_axes_length = 5
+
+
+    def init_params(self):
+        self.mean_params = jnp.ones((self.train_unrolls, 2))
+
+        # # initialize with ista values
+        # # alista_step = alista_cfg['step']
+        # # alista_eta = alista_cfg['eta']
+        # # self.mean_params = self.mean_params.at[:, 0].set(alista_step)
+        # # self.mean_params = self.mean_params.at[:, 1].set(alista_eta)
+        
+        self.sigma_params = -jnp.ones((self.train_unrolls, 2)) * 10
+
+        # initialize the prior
+        self.prior_param = jnp.log(self.init_var) * jnp.ones(2)
+
+        self.params = [self.mean_params, self.sigma_params, self.prior_param]
+
 
     def create_end2end_loss_fn(self, bypass_nn, diff_required):
         supervised = self.supervised and diff_required
@@ -107,3 +125,37 @@ class ALISTAmodel(L2WSmodel):
                 return return_out
         loss_fn = self.predict_2_loss(predict, diff_required)
         return loss_fn
+    
+
+    def calculate_total_penalty(self, N_train, params, c, b, delta):
+        pi_pen = jnp.log(jnp.pi ** 2 * N_train / (6 * delta))
+        # log_pen = 2 * jnp.log(b * jnp.log(c / jnp.exp(params[2])))
+        log_pen = 2 * jnp.log(b * jnp.log(c / jnp.exp(params[2][0])))
+        # import pdb
+        # pdb.set_trace()
+        penalty_loss = self.compute_all_params_KL(params[0], params[1], 
+                                            params[2]) + pi_pen + log_pen
+        return penalty_loss /  N_train
+
+
+    def compute_all_params_KL(self, mean_params, sigma_params, lambd):
+        # step size
+        total_pen = compute_single_param_KL(mean_params[:, 0], jnp.exp(sigma_params[:, 0]), jnp.exp(lambd[0]))
+
+        # threshold
+        total_pen += compute_single_param_KL(mean_params[:, 1], jnp.exp(sigma_params[:, 1]), jnp.exp(lambd[1]))
+        return total_pen
+
+
+    def compute_weight_norm_squared(self, nn_params):
+        return jnp.linalg.norm(nn_params) ** 2, nn_params.size
+
+    
+    def calculate_avg_posterior_var(self, params):
+        sigma_params = params[1]
+        flattened_params = jnp.concatenate([jnp.ravel(weight_matrix) for weight_matrix, _ in sigma_params] + 
+                                        [jnp.ravel(bias_vector) for _, bias_vector in sigma_params])
+        variances = jnp.exp(flattened_params)
+        avg_posterior_var = variances.mean()
+        stddev_posterior_var = variances.std()
+        return avg_posterior_var, stddev_posterior_var
