@@ -33,8 +33,8 @@ test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 2
 N_train: 100000
-N_test: 10
-num_samples: 10
+N_test: 1000
+num_samples: 1000
 prediction_variable: w
 angle_anchors: [0]
 supervised: False
@@ -54,8 +54,8 @@ alpha_relax: 1
 skip_startup: False
 
 save_weights_flag: True
-load_weights_datetime: '2024-01-01/15-19-18'
-nn_load_type: deterministic
+# load_weights_datetime: '2024-01-01/15-19-18'
+# nn_load_type: deterministic
 
 pac_bayes_cfg:
   init_var: 1e-2 #1e-2
@@ -65,3 +65,4 @@ pac_bayes_cfg:
   rep: False
   deterministic: False
   penalty_coeff: 1.0
+  target_pen: 0.05

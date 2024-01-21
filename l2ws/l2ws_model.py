@@ -12,11 +12,12 @@ from jaxopt import OptaxSolver
 from l2ws.algo_steps import create_eval_fn, create_train_fn, lin_sys_solve, create_kl_inv_layer, kl_inv_fn
 from l2ws.utils.nn_utils import (
     calculate_pinsker_penalty,
-    calculate_total_penalty,
+    # calculate_total_penalty,
     get_perturbed_weights,
     init_network_params,
     init_variance_network_params,
     predict_y,
+    compute_single_param_KL
 )
 from jaxopt import Bisection
 from l2ws.utils.generic_utils import manual_vmap
@@ -385,7 +386,7 @@ class L2WSmodel(object):
                                                         init_stddev_var)
         
         # initialize the prior
-        self.prior_param = jnp.log(self.init_var)
+        self.prior_param = jnp.log(self.init_var) * jnp.ones(2 * len(self.layer_sizes))
 
         self.params = [self.mean_params, self.sigma_params, self.prior_param]
 
@@ -641,7 +642,7 @@ class L2WSmodel(object):
 
                     if self.deterministic:
                         return q_expit
-                    return p + 100 * (penalty_loss - self.target_pen) ** 2
+                    return p + 1000 * (penalty_loss - self.target_pen) ** 2
                     # return q + jnp.sqrt(penalty_loss / 2)
                 else:
                     predict_out = batch_predict(
@@ -651,3 +652,57 @@ class L2WSmodel(object):
                     return losses.mean(), predict_out
 
         return loss_fn
+
+
+    # def calculate_total_penalty(self, N_train, params, c, b, delta):
+    #     pi_pen = jnp.log(jnp.pi ** 2 * N_train / (6 * delta))
+    #     # log_pen = 2 * jnp.log(b * jnp.log(c / jnp.exp(params[2])))
+    #     log_pen = 2 * jnp.log(b * jnp.log(c / jnp.exp(params[2][0])))
+    #     # import pdb
+    #     # pdb.set_trace()
+    #     penalty_loss = self.compute_all_params_KL(params[0], params[1], 
+    #                                         params[2]) + pi_pen + log_pen
+    #     return penalty_loss /  N_train
+    
+    def calculate_total_penalty(self, N_train, params, c, b, delta, prior=0):
+        pi_pen = jnp.log(jnp.pi ** 2 * N_train / (6 * delta))
+        log_pen = 2 * jnp.log(b * jnp.log(c / jnp.exp(params[2][0])))
+        penalty_loss = self.compute_all_params_KL(params[0], params[1], 
+                                            params[2]) + pi_pen + log_pen
+        return penalty_loss /  N_train
+
+
+    def compute_all_params_KL(self, mean_params, sigma_params, lambd):
+        total_pen = 0
+        for i, params in enumerate(mean_params):
+            weight_matrix, bias_vector = params
+            weight_sigma, bias_sigma = sigma_params[i][0], sigma_params[i][1]
+            total_pen += compute_single_param_KL(weight_matrix, 
+                                                 jnp.exp(weight_sigma), jnp.exp(lambd[2*i]))
+            total_pen += compute_single_param_KL(bias_vector, 
+                                                 jnp.exp(bias_sigma), jnp.exp(lambd[2*i+1]))
+        return total_pen
+
+
+    def compute_weight_norm_squared(self, nn_params):
+        weight_norms = np.zeros(len(nn_params))
+        nn_weights = nn_params
+        num_weights = 0
+        for i, params in enumerate(nn_weights):
+            weight_matrix, bias_vector = params
+            weight_norms[i] = jnp.linalg.norm(weight_matrix) ** 2 + jnp.linalg.norm(bias_vector) ** 2
+            num_weights += weight_matrix.size + bias_vector.size
+        return weight_norms.sum(), num_weights
+
+    
+    def calculate_avg_posterior_var(self, params):
+        sigma_params = params[1]
+        flattened_params = jnp.concatenate([jnp.ravel(weight_matrix) for weight_matrix, _ in sigma_params] + 
+                                        [jnp.ravel(bias_vector) for _, bias_vector in sigma_params])
+        variances = jnp.exp(flattened_params)
+        # flattened_params = jnp.concatenate([jnp.ravel(weight_matrix) for weight_matrix, _ in sigma_params] + 
+        #                                 [jnp.ravel(bias_vector) for _, bias_vector in sigma_params])
+        # variances = jnp.exp(flattened_params)
+        avg_posterior_var = variances.mean()
+        stddev_posterior_var = variances.std()
+        return avg_posterior_var, stddev_posterior_var
