@@ -163,7 +163,7 @@ class TILISTAmodel(L2WSmodel):
         total_pen += compute_single_param_KL(mean_params[1], 
                                             jnp.exp(sigma_params[1]), 
                                             jnp.exp(lambd[2]),
-                                            prior=0*prior
+                                            prior=prior
                                             )
         return total_pen
     

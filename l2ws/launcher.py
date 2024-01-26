@@ -71,7 +71,7 @@ class Workspace:
         self.delta = 0.01
 
         self.conv_rates = np.array([.8, .85, .9, .91, .92, .93, .94, .95, .96, .97, 
-                                    .98, .985, .99, .995, 1.0])
+                                    .98, .985, .99, .995, 1.0, 1.05, 1.10, 1.15, 1.2, 1.25, 1.3])
 
         # self.pretrain_cfg = cfg.pretrain
         self.key_count = 0
@@ -1186,10 +1186,11 @@ class Workspace:
         if fp:
             ratios = (jnp.linalg.norm(z_all[:, 2:, :] - z_all[:, 1:-1, :], axis=2)) / (jnp.linalg.norm(z_all[:, 1:-1, :] - z_all[:, :-2, :], axis=2))
         else:
-            # import pdb
-            # pdb.set_trace()
+            
             num = z_all.shape[0]
-            ratios = (jnp.linalg.norm(z_all[:, 1:, :] - z_stars[:num, None, :], axis=2)) / (jnp.linalg.norm(z_all[:, :-1, :] - z_stars[:num, None, :], axis=2))
+            ratios = (jnp.linalg.norm(z_all[:, 1:-1, :] - z_stars[:num, None, :], axis=2)) / (jnp.linalg.norm(z_all[:, :-2, :] - z_stars[:num, None, :], axis=2))
+        # import pdb
+        # pdb.set_trace()
 
         conv_rates = np.zeros(self.conv_rates.size)
         conv_rates_pac_bayes = np.zeros(self.conv_rates.size)
