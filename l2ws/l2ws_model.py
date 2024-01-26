@@ -628,7 +628,7 @@ class L2WSmodel(object):
                                                                 self.c, 
                                                                 self.delta)
 
-                    bisec = Bisection(optimality_fun=kl_inv_fn, lower=0.0, upper=0.99999999999, 
+                    bisec = Bisection(optimality_fun=kl_inv_fn, lower=0.0, upper=1.0, 
                                       check_bracket=False,
                                       jit=True)
 
@@ -642,8 +642,8 @@ class L2WSmodel(object):
 
                     if self.deterministic:
                         return q_expit
-                    return p + 1000 * (penalty_loss - self.target_pen) ** 2
-                    # return q + jnp.sqrt(penalty_loss / 2)
+                    # return p + 100 * (penalty_loss - self.target_pen) ** 2
+                    return q + jnp.sqrt(penalty_loss / 2) + 100 * (penalty_loss - self.target_pen) ** 2
                 else:
                     predict_out = batch_predict(
                         params, inputs, b, iters, z_stars, key)
