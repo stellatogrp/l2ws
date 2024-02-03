@@ -40,7 +40,16 @@ loss_overlay_titles: []
 nearest_neighbor_datetime: '2023-08-28/14-56-38' #'2023-08-20/19-34-54' # '2023-08-19/21-55-53'
 pretrain_datetime: ''
 cold_start_datetime: '2023-08-28/14-56-38' #'2023-08-20/19-34-54' # '2023-08-19/21-55-53'
-eval_iters: 499
+eval_iters: 1000000000
 accuracies: [1e-1, 1e-2, 1e-3, 1e-4]
 rel_tols: [1e-1, 1e-2, 1e-3, 1e-4, 1e-5]
 abs_tols: [1e-1, 1e-2, 1e-3, 1e-4, 1e-5]
+
+cold_start_datetimes: 
+- 2024-02-03/10-53-46
+- 2024-02-03/10-56-40
+- 2024-02-03/11-03-05
+
+worst_case_datetime: 2024-02-03/11-03-05
+
+worst_case: True

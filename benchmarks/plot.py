@@ -316,25 +316,7 @@ def create_classical_results(example, cfg):
 
 
     z_star_max = get_worst_case_datetime(example, cfg)
-    # filename = cfg.worst_case_datetime
 
-    # Open the file in read mode
-    # with open(filename, 'r') as file:
-    #     # reader = csv.reader(file)
-    #     reader = read_csv(file)
-        
-    #     # Read the first row and extract the scalar value
-    #     for row in reader:
-    #         z_star_max = row[0]
-    
-    # worst_case = worst_case.at[indices].set(1.0)
-    # import pdb
-    # pdb.set_trace()
-
-
-
-    # out = get_frac_solved_data(example, cfg)
-    # all_test_results, all_pac_bayes_results, cold_start_results, nearest_neighbor_results = out
     markers = ['o', 's', '<', 'D']
     cmap = plt.cm.Set1
     colors = cmap.colors
@@ -387,7 +369,6 @@ def create_classical_results(example, cfg):
             else:
                 curr_curve = curr_pac_bayes_results[j]
             plt.plot(curr_curve, 
-                        #  linestyle='-', 
                         color=colors[j], 
                         # markevery=(0, 100),
                         markevery=0.1,
@@ -592,8 +573,9 @@ def mnist_plot_eval_iters(cfg):
     # plot_eval_iters(example, cfg, train=False)
     
     # plot_eval_iters(example, cfg, train=False)
-    create_journal_results(example, cfg, train=False)
-    overlay_training_losses(example, cfg)
+    # create_journal_results(example, cfg, train=False)
+    # overlay_training_losses(example, cfg)
+    create_classical_results(example, cfg)
 
 
 @hydra.main(config_path='configs/jamming', config_name='jamming_plot.yaml')
