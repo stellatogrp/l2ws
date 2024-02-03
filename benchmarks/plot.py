@@ -286,6 +286,7 @@ def create_classical_results(example, cfg):
     # create_journal_results(example, cfg, train=False)
     # create_genL2O_results()
     metrics, timing_data, titles = get_all_data(example, cfg, train=False)
+    eval_iters = int(cfg.eval_iters)
 
     if len(titles) == 4:
         titles[-2] = titles[-2] + '_deterministic'
@@ -293,7 +294,7 @@ def create_classical_results(example, cfg):
     for i in range(len(nmse)):
         # if titles[i] != 'cold_start' and titles[i] != 'nearest_neighbor':
         #     plt.plot(nmse[i])
-        plt.plot(nmse[i][:cfg.eval_iters],
+        plt.plot(nmse[i][:eval_iters],
                  linestyle=titles_2_styles[titles[i]], 
                  color=titles_2_colors[titles[i]],
                  marker=titles_2_markers[titles[i]],
@@ -308,11 +309,16 @@ def create_classical_results(example, cfg):
 
 
     cold_start_results, guarantee_results = get_frac_solved_data_classical(example, cfg)
+    
 
     # worst case
-    worst_case = np.zeros(cfg.eval_iters)
-    steps = np.arange(cfg.eval_iters)
+    # worst_case = np.zeros(eval_iters)
+    # steps = np.arange(cfg.eval_iters)
     # z_star_max = # Specify the CSV file name
+
+    steps1 = np.arange(cold_start_results[i].size)
+    steps2 = np.linspace(cold_start_results[i].size, eval_iters, 100000)
+    steps = np.concatenate([steps1, steps2])
 
 
     z_star_max = get_worst_case_datetime(example, cfg)
@@ -325,7 +331,7 @@ def create_classical_results(example, cfg):
         acc = cfg.accuracies[i]
         mark_start = titles_2_marker_starts['cold_start']
         if cfg.worst_case:
-            curr_curve = np.zeros(cfg.eval_iters)
+            curr_curve = np.zeros(steps.size)
             curr_size = cold_start_results[i].size
 
             # prob bounds
@@ -333,19 +339,20 @@ def create_classical_results(example, cfg):
 
             # worst-case bounds
             indices = 1 / np.sqrt(steps + 2) * z_star_max * 1.1 < acc
-            # cold_start_results[i][:cfg.eval_iters]
 
             curr_curve[curr_size:] = cold_start_results[i].max()
 
             curr_curve[indices] = 1.0
         else:
-            curr_curve = cold_start_results[i][:cfg.eval_iters]
-        plt.plot(curr_curve, 
+            curr_curve = cold_start_results[i][:eval_iters]
+        plt.plot(steps,
+            curr_curve, 
                 linestyle=titles_2_styles['cold_start'], 
                 color=titles_2_colors['cold_start'],
                 marker=titles_2_markers['cold_start'],
+                linewidth=2.0,
                 # markevery=(30, 100)
-                markevery=0.1
+                markevery=(0.05, 0.1)
                 )
 
         # plot the learned variants
@@ -353,7 +360,7 @@ def create_classical_results(example, cfg):
         curr_pac_bayes_results = guarantee_results[i]
         for j in range(len(curr_pac_bayes_results)):
             if cfg.worst_case:
-                curr_curve = np.zeros(cfg.eval_iters)
+                curr_curve = np.zeros(steps.size)
                 curr_size = curr_pac_bayes_results[j].size
 
                 # prob bounds
@@ -368,8 +375,10 @@ def create_classical_results(example, cfg):
                 curr_curve[indices] = 1.0
             else:
                 curr_curve = curr_pac_bayes_results[j]
-            plt.plot(curr_curve, 
+            plt.plot(steps,
+                curr_curve, 
                         color=colors[j], 
+                        alpha=0.6,
                         # markevery=(0, 100),
                         markevery=0.1,
                         marker=markers[j])
