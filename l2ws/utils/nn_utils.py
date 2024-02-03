@@ -21,7 +21,7 @@ def invert_kl(q, c):
     prob = cp.Problem(cp.Maximize(p_bernoulli[0]), constraints)
 
     # Solve problem
-    prob.solve(verbose=True, solver=cp.SCS) # solver=cvx.ECOS
+    prob.solve(verbose=False, solver=cp.SCS) # solver=cvx.ECOS
     
     kl_inv = p_bernoulli.value[0] 
 

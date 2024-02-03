@@ -61,14 +61,14 @@ pac_bayes_flag: False
 # nn_load_type: stochastic
 
 pac_bayes_cfg:
-  init_var: 1e-4
+  init_var: 1e-2
   c: 100.0
   b: 100
   delta: 0.01
   penalty_coeff: 1.0
   deterministic: False
   frac_solved_accs: [-10, -20, -30]
-  target_pen: 0.3
+  target_pen: 0.01
 lambd: 0.1
 save_weights_flag: False
-algo: lista
+algo: glista

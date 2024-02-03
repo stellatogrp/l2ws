@@ -21,7 +21,7 @@ plt.rcParams.update({
 
 
 def main():
-    # pinsker()
+    pinsker()
     plot_3d()
     
 
@@ -42,15 +42,28 @@ def pinsker():
     pinsker = np.zeros(num)
     klinv = np.zeros(num)
 
+    cmap = plt.cm.Set1
+    colors = cmap.colors
+
     for i in range(num):
         out = bisec.run(q=q, c=c_vals[i])
         pinsker[i] = q + np.sqrt(c_vals[i] / 2)
         r = out.params
         klinv[i] = q + (1 - q) * r
         print(i, klinv[i])
-    plt.plot(c_vals, pinsker)
-    plt.plot(c_vals, klinv)
-    plt.show()
+    
+    plt.plot(c_vals, pinsker, color=colors[0])
+    plt.plot(c_vals, klinv, color=colors[1])
+    
+    # plt.show()
+    plt.tight_layout()
+    plt.title(r'cross section at $q=0.2$')
+    plt.xlabel(r'c')
+    plt.savefig("pinsker/vary_c.pdf", bbox_inches='tight')
+
+    # plt.xlabel('q')
+    # plt.savefig('pinsker/vary_c.pdf')
+    plt.clf()
 
 
     q_vals = np.linspace(0.0001, 1, num)
@@ -63,9 +76,15 @@ def pinsker():
         r = out.params
         klinv[i] = q_vals[i] + (1 - q_vals[i]) * r
         print(i, q_vals[i], klinv[i])
-    plt.plot(q_vals, pinsker)
-    plt.plot(q_vals, klinv)
-    plt.show()
+    
+    plt.plot(q_vals, pinsker, color=colors[0])
+    plt.plot(q_vals, klinv, color=colors[1])
+    
+    # plt.show()
+    plt.tight_layout()
+    plt.title(r'cross section at $c=0.3$')
+    plt.xlabel(r'$q$')
+    plt.savefig('pinsker/vary_q.pdf', bbox_inches='tight')
 
 
 def plot_3d():
@@ -88,15 +107,19 @@ def plot_3d():
             klinv[i ,j] = q_vals[i] + (1 - q_vals[i]) * r
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    surf = ax.plot_surface(Q, C, pinsker) #, cmap='viridis')
-    surf2 = ax.plot_surface(Q, C, klinv)
-    ax.set_xlabel('$q$', labelpad=10)
-    ax.set_ylabel('$c$', labelpad=10)
+
+    cmap = plt.cm.Set1
+    colors = cmap.colors
+    surf = ax.plot_surface(Q, C, pinsker, color=colors[0]) #, cmap='viridis')
+    surf2 = ax.plot_surface(Q, C, klinv, color=colors[1])
+    ax.set_xlabel(r'$q$', labelpad=10)
+    ax.set_ylabel(r'$c$', labelpad=10)
+    # ax.set_title('3D visualization', pad=-100)
     # ax.set_zlabel(r'$p^\star(q,c)$', labelpad=10)
     ax.view_init(elev=10, azim=-60)
     # plt.show()
     plt.tight_layout()
-    plt.savefig('pinsker_3d.pdf')
+    plt.savefig('pinsker/pinsker_3d.pdf')
 
 
 if __name__ == '__main__':

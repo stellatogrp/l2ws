@@ -26,8 +26,10 @@ from l2ws.algo_steps import (
 from l2ws.alista_model import ALISTAmodel
 from l2ws.eg_model import EGmodel
 from l2ws.gd_model import GDmodel
+from l2ws.glista_model import GLISTAmodel
 from l2ws.ista_model import ISTAmodel
 from l2ws.lista_model import LISTAmodel
+from l2ws.lista_cpss_model import LISTA_CPSSmodel
 from l2ws.osqp_model import OSQPmodel
 from l2ws.scs_model import SCSmodel
 from l2ws.tilista_model import TILISTAmodel
@@ -167,6 +169,33 @@ class Workspace:
             self.q_mat_train = thetas[:N_train, :]
             self.q_mat_test = thetas[N_train:N, :]
             self.create_lista_model(cfg, static_dict)
+        elif algo == 'lista_cpss':
+            self.q_mat_train = thetas[:N_train, :]
+            self.q_mat_test = thetas[N_train:N, :]
+            self.create_lista_cpss_model(cfg, static_dict)
+        elif algo == 'glista':
+            self.q_mat_train = thetas[:N_train, :]
+            self.q_mat_test = thetas[N_train:N, :]
+            self.create_glista_model(cfg, static_dict)
+
+        # write th z_stars_max
+        # Scalar value to be saved
+        # include the worst-case
+        z_star_max = 1.0 * jnp.max(jnp.linalg.norm(self.z_stars_train, axis=1))
+        # worst_case = jnp.zeros(frac_solved.size)
+        # steps = jnp.arange(frac_solved.size)
+        # indices = 1 / jnp.sqrt(steps + 2) * z_star_max / 100 < self.frac_solved_accs[i]
+        # worst_case = worst_case.at[indices].set(1.0)
+
+        # Specify the CSV file name
+        filename = 'z_star_max.csv'
+
+        # Open the file in write mode
+        with open(filename, 'w', newline='') as file:
+            writer = csv.writer(file)
+            
+            # Write the scalar value to the file
+            writer.writerow([z_star_max])
 
 
     def create_ista_model(self, cfg, static_dict):
@@ -233,6 +262,38 @@ class Workspace:
                                     alista_cfg=alista_cfg,
                                     algo_dict=input_dict)
         
+    def create_glista_model(self, cfg, static_dict):
+        # get A, lambd, ista_step
+        W, D = static_dict['W'], static_dict['D']
+        alista_cfg = {'step': static_dict['step'], 'eta': static_dict['eta']}
+        # ista_step = static_dict['ista_step']
+
+        input_dict = dict(algorithm='glista',
+                        #   supervised=cfg.supervised,
+                        #   train_unrolls=self.train_unrolls,
+                        #   jit=True,
+                        #   train_inputs=self.train_inputs,
+                        #   test_inputs=self.test_inputs,
+                          b_mat_train=self.q_mat_train,
+                          b_mat_test=self.q_mat_test,
+                          D=D,
+                          W=W
+                        #   nn_cfg=cfg.nn_cfg,
+                        #   z_stars_train=self.z_stars_train,
+                        #   z_stars_test=self.z_stars_test,
+                          )
+        self.l2ws_model = GLISTAmodel(train_unrolls=self.train_unrolls,
+                                    eval_unrolls=self.eval_unrolls,
+                                    train_inputs=self.train_inputs,
+                                    test_inputs=self.test_inputs,
+                                    regression=cfg.supervised,
+                                    nn_cfg=cfg.nn_cfg,
+                                    pac_bayes_cfg=cfg.pac_bayes_cfg,
+                                    z_stars_train=self.z_stars_train,
+                                    z_stars_test=self.z_stars_test,
+                                    alista_cfg=alista_cfg,
+                                    algo_dict=input_dict)
+        
     def create_tilista_model(self, cfg, static_dict):
         # get A, lambd, ista_step
         W, D = static_dict['W'], static_dict['D']
@@ -279,6 +340,31 @@ class Workspace:
                           lambd=cfg.lambd
                           )
         self.l2ws_model = LISTAmodel(train_unrolls=self.train_unrolls,
+                                    eval_unrolls=self.eval_unrolls,
+                                    train_inputs=self.train_inputs,
+                                    test_inputs=self.test_inputs,
+                                    regression=cfg.supervised,
+                                    nn_cfg=cfg.nn_cfg,
+                                    pac_bayes_cfg=cfg.pac_bayes_cfg,
+                                    z_stars_train=self.z_stars_train,
+                                    z_stars_test=self.z_stars_test,
+                                    alista_cfg=alista_cfg,
+                                    algo_dict=input_dict)
+
+    def create_lista_cpss_model(self, cfg, static_dict):
+        # get A, lambd, ista_step
+        W, D = static_dict['W'], static_dict['D']
+        alista_cfg = {'step': static_dict['step'], 'eta': static_dict['eta']}
+        # ista_step = static_dict['ista_step']
+
+        input_dict = dict(algorithm='lista_cpss',
+                          b_mat_train=self.q_mat_train,
+                          b_mat_test=self.q_mat_test,
+                          D=D,
+                          W=W,
+                          lambd=cfg.lambd
+                          )
+        self.l2ws_model = LISTA_CPSSmodel(train_unrolls=self.train_unrolls,
                                     eval_unrolls=self.eval_unrolls,
                                     train_inputs=self.train_inputs,
                                     test_inputs=self.test_inputs,
@@ -1053,7 +1139,7 @@ class Workspace:
         # losses_over_examples = out_train[2].T
         losses_over_examples = out_train[1].T
         
-        yscalelog = False if self.l2ws_model.algo in ['lista', 'alista', 'tilista'] else True
+        yscalelog = False if self.l2ws_model.algo in ['glista', 'lista_cpss', 'lista', 'alista', 'tilista'] else True
         self.plot_losses_over_examples(losses_over_examples, train, col, yscalelog=yscalelog)
 
         # update the eval csv files
@@ -1096,12 +1182,15 @@ class Workspace:
             #                         self.l2ws_model.delta,
             #                         prior=self.l2ws_model.prior
             #                         )
-            penalty = self.l2ws_model.calculate_total_penalty(self.l2ws_model.N_train, 
-                                    self.l2ws_model.params, 
-                                    self.l2ws_model.c,
-                                    self.l2ws_model.b,
-                                    self.l2ws_model.delta
-                                    )
+            if col == 'no_train':
+                penalty = jnp.log(2 / self.l2ws_model.delta) / self.l2ws_model.N_train
+            else:
+                penalty = self.l2ws_model.calculate_total_penalty(self.l2ws_model.N_train, 
+                                        self.l2ws_model.params, 
+                                        self.l2ws_model.c,
+                                        self.l2ws_model.b,
+                                        self.l2ws_model.delta
+                                        )
             final_pac_bayes_loss = jnp.zeros(frac_solved.size)
             for j in range(frac_solved.size):
                 if self.rep:
@@ -1110,9 +1199,19 @@ class Workspace:
                 else:
                     kl_inv = jnp.clip(frac_solved[j] - jnp.sqrt(penalty / 2), a_min=0)
                     final_pac_bayes_loss = final_pac_bayes_loss.at[j].set(kl_inv)
-
-
             final_pac_bayes_frac_solved = jnp.clip(final_pac_bayes_loss, a_min=0)
+
+            # worst-case
+            # if col == 'no_train':
+            #     # include the worst-case
+            #     z_star_max = 1.5 * jnp.max(jnp.linalg.norm(self.z_stars_train, axis=1))
+            #     worst_case = jnp.zeros(frac_solved.size)
+            #     steps = jnp.arange(frac_solved.size)
+            #     indices = 1 / jnp.sqrt(steps + 2) * z_star_max / 100 < self.frac_solved_accs[i]
+            #     worst_case = worst_case.at[indices].set(1.0)
+
+            #     final_pac_bayes_frac_solved = final_pac_bayes_frac_solved.at[indices].set(1.0)
+            
 
 
             # update the df
@@ -1133,7 +1232,7 @@ class Workspace:
         z_all = out_train[2]
 
         # update the lin_conv csv files
-        fp = False if self.l2ws_model.algo in ['lista', 'alista', 'tilista'] else True
+        fp = False if self.l2ws_model.algo in ['glista', 'lista_cpss', 'lista', 'alista', 'tilista'] else True
 
         z_stars = self.z_stars_train if train else self.z_stars_test
         conv_rates, conv_rates_pac_bayes = self.calc_conv_rates(z_all, penalty, z_stars, fp=fp)
@@ -2353,7 +2452,7 @@ class Workspace:
                         train, col):
         # self.plot_eval_iters_df(curr_df, train, col, ylabel, filename, yscale=yscale, 
             #                         pac_bayes=True)
-        yscale = 'standard' if self.l2ws_model.algo in ['lista', 'alista', 'tilista'] else 'log'
+        yscale = 'standard' if self.l2ws_model.algo in ['glista', 'lista_cpss', 'lista', 'alista', 'tilista'] else 'log'
         self.plot_eval_iters_df(iters_df, train, col, 'fixed point residual', 'eval_iters', yscale=yscale)
         if primal_residuals_df is not None:
             self.plot_eval_iters_df(primal_residuals_df, train, col,

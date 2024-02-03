@@ -16,10 +16,19 @@ output_datetimes:
 loss_overlay_titles: []
 nearest_neighbor_datetime: 2024-01-22/11-07-50 #2024-01-07/23-07-31
 pretrain_datetime: ''
-cold_start_datetime: 2024-01-22/11-07-50 #2024-01-07/23-07-31
-eval_iters: 500
+cold_start_datetime: 2024-02-01/16-44-06 #2024-01-22/11-07-50 #2024-01-07/23-07-31
+eval_iters: 1000000 #500
 accuracies:
 - 0.1
 - 0.01
 - 0.001
 - 0.0001
+
+cold_start_datetimes: 
+- 2024-02-01/16-44-06
+- 2024-02-01/16-48-10
+- 2024-02-01/16-52-01
+
+worst_case_datetime: 2024-02-02/22-14-26
+
+worst_case: True

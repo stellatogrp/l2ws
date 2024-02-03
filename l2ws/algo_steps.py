@@ -24,6 +24,109 @@ TAU_FACTOR = 10
 #     y2 = y0 + eg_step * (-2 * R @ y1 + A @ x1 - b)
 #     return jnp.concatenate([x2, y2])
 
+
+def k_steps_train_glista(k, z0, q, params, W, D, supervised, z_star, jit):
+    iter_losses = jnp.zeros(k)
+
+    fp_train_partial = partial(fp_train_glista,
+                               supervised=supervised,
+                               z_star=z_star,
+                               W=W,
+                               D=D,
+                               b=q,
+                               params=params
+                               )
+    val = z0, iter_losses
+    start_iter = 0
+    if jit:
+        out = lax.fori_loop(start_iter, k, fp_train_partial, val)
+    else:
+        out = python_fori_loop(start_iter, k, fp_train_partial, val)
+    z_final, iter_losses = out
+    return z_final, iter_losses
+
+
+def k_steps_eval_glista(k, z0, q, params, W, D, supervised, z_star, jit):
+    iter_losses, obj_diffs = jnp.zeros(k), jnp.zeros(k)
+    z_all_plus_1 = jnp.zeros((k + 1, z0.size))
+    z_all_plus_1 = z_all_plus_1.at[0, :].set(z0)
+    fp_eval_partial = partial(fp_eval_glista,
+                              supervised=supervised,
+                               z_star=z_star,
+                               W=W,
+                               D=D,
+                               b=q,
+                               params=params
+                              )
+    z_all = jnp.zeros((k, z0.size))
+    val = z0, iter_losses, z_all, obj_diffs
+    start_iter = 0
+    if jit:
+        out = lax.fori_loop(start_iter, k, fp_eval_partial, val)
+    else:
+        out = python_fori_loop(start_iter, k, fp_eval_partial, val)
+    z_final, iter_losses, z_all, obj_diffs = out
+    z_all_plus_1 = z_all_plus_1.at[1:, :].set(z_all)
+    return z_final, iter_losses, z_all_plus_1, obj_diffs
+
+
+def fixed_point_glista(z, W, D, b, gamma, theta, mu, nu, a):
+    """
+    applies the ista fixed point operator
+    """
+    # return soft_threshold(z - gamma * W.T.dot(D.dot(z) - b), theta)
+
+    # gain
+    gain = gain_gate(z, theta, mu, nu)
+    z_gain = jnp.multiply(gain, z)
+    z_tilde = fixed_point_alista(z_gain, W, D, b, gamma, theta)
+
+    # overshoot
+    overshoot = overshoot_gate(z, z_tilde, a)
+    z_next = jnp.multiply(overshoot, z_tilde) + jnp.multiply((1 - overshoot), z)
+    return z_next
+
+
+def overshoot_gate(z, z_tilde, a):
+    epsilon = .1
+    return 1 + a / (jnp.abs(z_tilde - z) + epsilon)
+
+
+def gain_gate(z, theta, mu, nu):
+    # exponential function
+    f = jnp.exp(-nu * jnp.abs(z))
+    return 1 + mu * theta * f
+
+
+def fp_train_glista(i, val, supervised, z_star, params, W, D, b):
+    z, loss_vec = val
+    gamma = params[i, 0] #jnp.exp(params[i, 0])
+    theta = params[i, 1] #jnp.exp(params[i, 1])
+    mu = params[i, 2]
+    nu = params[i, 3]
+    a = params[i, 4]
+    z_next = fixed_point_glista(z, W, D, b, gamma, theta, mu, nu, a)
+    diff = jnp.linalg.norm(z - z_star) ** 2
+    loss_vec = loss_vec.at[i].set(diff)
+    return z_next, loss_vec
+
+
+def fp_eval_glista(i, val, supervised, z_star, params, W, D, b):
+    z, loss_vec, z_all, obj_diffs = val
+    gamma = params[i, 0]
+    theta = params[i, 1]
+    mu = params[i, 2]
+    nu = params[i, 3]
+    a = params[i, 4]
+    z_next = fixed_point_glista(z, W, D, b, gamma, theta, mu, nu, a)
+    diff = 10 * jnp.log10(jnp.linalg.norm(z - z_star) ** 2 / jnp.linalg.norm(z_star) ** 2)
+    loss_vec = loss_vec.at[i].set(diff)
+    obj = .5 * jnp.linalg.norm(D @ z_next - b) ** 2 # + lambd * jnp.linalg.norm(z_next, ord=1)
+    opt_obj = .5 * jnp.linalg.norm(D @ z_star - b) ** 2 # + lambd * jnp.linalg.norm(z_star, ord=1)
+    obj_diffs = obj_diffs.at[i].set(obj - opt_obj)
+    z_all = z_all.at[i, :].set(z_next)
+    return z_next, loss_vec, z_all, obj_diffs
+
 def true_fun(_):
     return 0
 
@@ -58,6 +161,91 @@ def create_kl_inv_layer():
     )
 
     return layer
+
+
+def k_steps_train_lista_cpss(k, z0, q, params, D, supervised, z_star, jit):
+    iter_losses = jnp.zeros(k)
+
+    fp_train_partial = partial(fp_train_lista_cpss,
+                               supervised=supervised,
+                               z_star=z_star,
+                               b=q,
+                               D=D,
+                               params=params
+                               )
+    val = z0, iter_losses
+    start_iter = 0
+    if jit:
+        out = lax.fori_loop(start_iter, k, fp_train_partial, val)
+    else:
+        out = python_fori_loop(start_iter, k, fp_train_partial, val)
+    z_final, iter_losses = out
+    return z_final, iter_losses
+
+
+def k_steps_eval_lista_cpss(k, z0, q, params, D, supervised, z_star, jit):
+    iter_losses, obj_diffs = jnp.zeros(k), jnp.zeros(k)
+    z_all_plus_1 = jnp.zeros((k + 1, z0.size))
+    z_all_plus_1 = z_all_plus_1.at[0, :].set(z0)
+    fp_eval_partial = partial(fp_eval_lista_cpss,
+                              supervised=supervised,
+                               z_star=z_star,
+                               b=q,
+                               D=D,
+                               params=params
+                              )
+    z_all = jnp.zeros((k, z0.size))
+    val = z0, iter_losses, z_all, obj_diffs
+    start_iter = 0
+    if jit:
+        out = lax.fori_loop(start_iter, k, fp_eval_partial, val)
+    else:
+        out = python_fori_loop(start_iter, k, fp_eval_partial, val)
+    z_final, iter_losses, z_all, obj_diffs = out
+    z_all_plus_1 = z_all_plus_1.at[1:, :].set(z_all)
+    return z_final, iter_losses, z_all_plus_1, obj_diffs
+
+
+def fixed_point_lista_cpss(z, W_1, D, b, theta):
+    """
+    applies the ista fixed point operator
+    """
+    # return soft_threshold(W_1 @ b + W_2 @ z, theta)
+    return soft_threshold(z - W_1.T.dot(D.dot(z) - b), theta)
+
+
+def fp_train_lista_cpss(i, val, supervised, z_star, params, D, b):
+    z, loss_vec = val
+    # gamma = params[0][i, 0] #jnp.exp(params[i, 0])
+    # theta = params[0][i, 1] #jnp.exp(params[i, 1])
+    # W = params[1]
+    theta = params[0][i]
+    W_1 = params[1][:,:,i]
+    # W_2 = params[2][:,:,i]
+    # import pdb
+    # pdb.set_trace()
+    z_next = fixed_point_lista_cpss(z, W_1, D, b, theta)
+    diff = jnp.linalg.norm(z - z_star) ** 2
+    loss_vec = loss_vec.at[i].set(diff)
+    return z_next, loss_vec
+
+
+def fp_eval_lista_cpss(i, val, supervised, z_star, params, D, b):
+    z, loss_vec, z_all, obj_diffs = val
+    # gamma = params[0][i, 0] #jnp.exp(params[i, 0])
+    # theta = params[0][i, 1] #jnp.exp(params[i, 1])
+    # W = params[1]
+    theta = params[0][i]
+    W_1 = params[1][:,:,i]
+    # W_2 = params[2][:,:,i]
+    z_next = fixed_point_lista_cpss(z, W_1, D, b, theta)
+    diff = 10 * jnp.log10(jnp.linalg.norm(z - z_star) ** 2 / jnp.linalg.norm(z_star) ** 2)
+    loss_vec = loss_vec.at[i].set(diff)
+    # obj = .5 * jnp.linalg.norm(D @ z_next - b) ** 2 # + lambd * jnp.linalg.norm(z_next, ord=1)
+    # opt_obj = .5 * jnp.linalg.norm(D @ z_star - b) ** 2 # + lambd * jnp.linalg.norm(z_star, ord=1)
+    # obj_diffs = obj_diffs.at[i].set(obj - opt_obj)
+    z_all = z_all.at[i, :].set(z_next)
+    return z_next, loss_vec, z_all, obj_diffs
 
 
 def k_steps_train_lista(k, z0, q, params, supervised, z_star, jit):

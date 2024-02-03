@@ -131,6 +131,11 @@ def sparse_coding_plot_eval_iters(cfg):
     # create_journal_results(example, cfg, train=False)
     # create_genL2O_results()
     metrics, timing_data, titles = get_all_data(example, cfg, train=False)
+    cmap = plt.cm.Set1
+    colors = cmap.colors
+    colors = [colors[i] for i in range(len(colors))]
+    colors[5] = colors[7]
+    markers = ['o', 's', '>', '^', 'D', 'X']
 
     if len(titles) == 4:
         titles[-2] = titles[-2] + '_deterministic'
@@ -138,12 +143,22 @@ def sparse_coding_plot_eval_iters(cfg):
     for i in range(len(nmse)):
         # if titles[i] != 'cold_start' and titles[i] != 'nearest_neighbor':
         #     plt.plot(nmse[i])
-        plt.plot(nmse[i][:cfg.eval_iters],
-                 linestyle=titles_2_styles[titles[i]], 
-                 color=titles_2_colors[titles[i]],
-                 marker=titles_2_markers[titles[i]],
-                #  markevery=(0, 2)
-                 )
+        if titles[i] == 'cold_start' or titles[i] == 'nearest_neighbor':
+            plt.plot(nmse[i][:cfg.eval_iters],
+                    linestyle=titles_2_styles[titles[i]], 
+                    color=titles_2_colors[titles[i]],
+                    # color=colors[2*i-2],
+                    marker=titles_2_markers[titles[i]],
+                    #  markevery=(0, 2)
+                    )
+        else:
+            plt.plot(nmse[i][:cfg.eval_iters],
+                    linestyle=titles_2_styles[titles[i]], 
+                    # color=titles_2_colors[titles[i]],
+                    color=colors[2*(i-2)],
+                    marker=markers[2*(i-2)],
+                    #  markevery=(0, 2)
+                    )
     plt.tight_layout()
     plt.xlabel('evaluation steps')
     plt.ylabel("NMSE (dB)")
@@ -158,9 +173,10 @@ def sparse_coding_plot_eval_iters(cfg):
     #           plot it
     out = get_frac_solved_data(example, cfg)
     all_test_results, all_pac_bayes_results, cold_start_results, nearest_neighbor_results = out
-    markers = ['o', 's', '<', '^']
-    cmap = plt.cm.Set1
-    colors = cmap.colors
+    # markers = ['o', 's', '>', '^', 'D', 'X']
+    
+    # import pdb
+    # pdb.set_trace()
     styles = ['-', '-']
     for i in range(len(cfg.accuracies)):
         # plot ista and fista
@@ -186,11 +202,13 @@ def sparse_coding_plot_eval_iters(cfg):
             plt.plot(curr_test_results[j], 
                      linestyle='-', 
                      color=colors[0 + 2 * j], 
-                     marker=markers[0 + 2 * j])
+                     marker=markers[0 + 2 * j],
+                     markevery=(0, 2))
             plt.plot(curr_pac_bayes_results[j], 
                      linestyle='-', 
                      color=colors[1 + 2* j], 
-                     marker=markers[1 + 2 * j])
+                     marker=markers[1 + 2 * j],
+                     markevery=(1, 2))
         plt.tight_layout()
         plt.xlabel('evaluation steps')
         plt.ylabel(f"frac. at {acc} NMSE (dB)")
@@ -208,9 +226,11 @@ def plot_conv_rates(example, cfg):
     # plot the pac_bayes curve and the test curve
     out = get_conv_rates_data(example, cfg)
     conv_rates, all_test_results, all_pac_bayes_results, cold_start_results, nearest_neighbor_results = out
-    markers = ['o', 's', '<', '^']
+    markers = ['o', 's', '>', '^', 'o', 's']
     cmap = plt.cm.Set1
     colors = cmap.colors
+    colors = [colors[i] for i in range(len(colors))]
+    colors[5] = colors[7]
     styles = ['-', '-']
     # for i in range(len(cfg.accuracies)):
     # plot ista and fista
@@ -239,13 +259,13 @@ def plot_conv_rates(example, cfg):
     curr_test_results = all_test_results
     curr_pac_bayes_results = all_pac_bayes_results
     for j in range(len(curr_test_results)):
-        plt.plot(conv_rates, curr_test_results[j], 
+        plt.plot(conv_rates, curr_test_results[j][:conv_rates.size], 
                     linestyle='-', 
                     color=colors[0 + 2 * j], 
                     marker=markers[0 + 2 * j],
                     # markevery=(80, 100)
                     )
-        plt.plot(conv_rates, curr_pac_bayes_results[j], 
+        plt.plot(conv_rates, curr_pac_bayes_results[j][:conv_rates.size], 
                     linestyle='-', 
                     color=colors[1 + 2 * j], 
                     # markevery=(0, 100),
@@ -259,6 +279,148 @@ def plot_conv_rates(example, cfg):
     import pdb
     pdb.set_trace()
 
+
+def create_classical_results(example, cfg):
+    # example = 'sparse_coding'
+    # overlay_training_losses(example, cfg)
+    # create_journal_results(example, cfg, train=False)
+    # create_genL2O_results()
+    metrics, timing_data, titles = get_all_data(example, cfg, train=False)
+
+    if len(titles) == 4:
+        titles[-2] = titles[-2] + '_deterministic'
+    nmse = metrics[0]
+    for i in range(len(nmse)):
+        # if titles[i] != 'cold_start' and titles[i] != 'nearest_neighbor':
+        #     plt.plot(nmse[i])
+        plt.plot(nmse[i][:cfg.eval_iters],
+                 linestyle=titles_2_styles[titles[i]], 
+                 color=titles_2_colors[titles[i]],
+                 marker=titles_2_markers[titles[i]],
+                 markevery=(0, 100)
+                 )
+    plt.tight_layout()
+    plt.xlabel('evaluation steps')
+    plt.ylabel("fixed-point residual")
+    plt.yscale('log')
+    plt.savefig('fp_res.pdf', bbox_inches='tight')
+    plt.clf()
+
+
+    cold_start_results, guarantee_results = get_frac_solved_data_classical(example, cfg)
+
+    # worst case
+    worst_case = np.zeros(cfg.eval_iters)
+    steps = np.arange(cfg.eval_iters)
+    # z_star_max = # Specify the CSV file name
+
+
+    z_star_max = get_worst_case_datetime(example, cfg)
+    # filename = cfg.worst_case_datetime
+
+    # Open the file in read mode
+    # with open(filename, 'r') as file:
+    #     # reader = csv.reader(file)
+    #     reader = read_csv(file)
+        
+    #     # Read the first row and extract the scalar value
+    #     for row in reader:
+    #         z_star_max = row[0]
+    
+    # worst_case = worst_case.at[indices].set(1.0)
+    # import pdb
+    # pdb.set_trace()
+
+
+
+    # out = get_frac_solved_data(example, cfg)
+    # all_test_results, all_pac_bayes_results, cold_start_results, nearest_neighbor_results = out
+    markers = ['o', 's', '<', 'D']
+    cmap = plt.cm.Set1
+    colors = cmap.colors
+    styles = ['-', '-']
+    for i in range(len(cfg.accuracies)):
+        acc = cfg.accuracies[i]
+        mark_start = titles_2_marker_starts['cold_start']
+        if cfg.worst_case:
+            curr_curve = np.zeros(cfg.eval_iters)
+            curr_size = cold_start_results[i].size
+
+            # prob bounds
+            curr_curve[:curr_size] = cold_start_results[i] #[:cfg.eval_iters]
+
+            # worst-case bounds
+            indices = 1 / np.sqrt(steps + 2) * z_star_max * 1.1 < acc
+            # cold_start_results[i][:cfg.eval_iters]
+
+            curr_curve[curr_size:] = cold_start_results[i].max()
+
+            curr_curve[indices] = 1.0
+        else:
+            curr_curve = cold_start_results[i][:cfg.eval_iters]
+        plt.plot(curr_curve, 
+                linestyle=titles_2_styles['cold_start'], 
+                color=titles_2_colors['cold_start'],
+                marker=titles_2_markers['cold_start'],
+                # markevery=(30, 100)
+                markevery=0.1
+                )
+
+        # plot the learned variants
+        acc = cfg.accuracies[i]
+        curr_pac_bayes_results = guarantee_results[i]
+        for j in range(len(curr_pac_bayes_results)):
+            if cfg.worst_case:
+                curr_curve = np.zeros(cfg.eval_iters)
+                curr_size = curr_pac_bayes_results[j].size
+
+                # prob bounds
+                curr_curve[:curr_size] = curr_pac_bayes_results[j] #[:cfg.eval_iters]
+
+                # worst-case bounds
+                indices = 1 / np.sqrt(steps + 2) * z_star_max * 1.1 < acc
+                # cold_start_results[i][:cfg.eval_iters]
+
+                curr_curve[curr_size:] = curr_pac_bayes_results[j].max()
+
+                curr_curve[indices] = 1.0
+            else:
+                curr_curve = curr_pac_bayes_results[j]
+            plt.plot(curr_curve, 
+                        #  linestyle='-', 
+                        color=colors[j], 
+                        # markevery=(0, 100),
+                        markevery=0.1,
+                        marker=markers[j])
+        plt.tight_layout()
+        plt.xlabel('evaluation steps')
+        plt.ylabel(f"frac. at {acc} fp res")
+        plt.xscale('log')
+        plt.savefig(f"acc_{acc}.pdf", bbox_inches='tight')
+        plt.clf()
+
+
+def get_worst_case_datetime(example, cfg):
+    orig_cwd = hydra.utils.get_original_cwd()
+    datetime = cfg.worst_case_datetime
+    path = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/z_star_max.csv"
+
+    # fp_file = f"tol={acc}_train.csv" if train else f"tol={acc}_test.csv"
+    # df = read_csv(f"{path}/{fp_file}")
+    # filename = cfg.worst_case_datetime
+
+    # Open the file in read mode
+    with open(path, 'r') as file:
+        # reader = csv.reader(file)
+        reader = read_csv(file)
+        z_star_max = float(reader.columns[0])
+        # import pdb
+        # pdb.set_trace()
+        
+        # Read the first row and extract the scalar value
+        # for row in reader:
+        #     z_star_max = row[0]
+    return z_star_max
 
 def create_gen_l2o_results(example, cfg):
     # example = 'sparse_coding'
@@ -392,7 +554,9 @@ def lasso_plot_eval_iters(cfg):
     # overlay_training_losses(example, cfg)
     # # plot_eval_iters(example, cfg, train=False)
     # create_journal_results(example, cfg, train=False)
-    create_gen_l2o_results(example, cfg)
+
+    # create_gen_l2o_results(example, cfg)
+    create_classical_results(example, cfg)
 
 
 @hydra.main(config_path='configs/unconstrained_qp', config_name='unconstrained_qp_plot.yaml')
@@ -743,6 +907,55 @@ def get_conv_rates_data(example, cfg):
     # all_pac_bayes_results.append(curr_pac_bayes_results)
     # all_test_results.append(curr_test_results)
     return conv_rates, curr_test_results, curr_pac_bayes_results, curr_cold_start_results, curr_nearest_neighbor_results
+
+
+def get_frac_solved_data_classical(example, cfg):
+    # setup
+    orig_cwd = hydra.utils.get_original_cwd()
+
+    cold_start_datetimes = cfg.cold_start_datetimes
+    
+    
+
+    # get the datetimes
+    # learn_datetimes = cfg.output_datetimes
+    # if learn_datetimes == []:
+    #     dt = recover_last_datetime(orig_cwd, example, 'train')
+    #     learn_datetimes = [dt]
+
+    # all_test_results = []
+    # all_pac_bayes_results = []
+    cold_start_results = []
+    guarantee_results = []
+    # nearest_neighbor_results = []
+    for acc in cfg.accuracies:
+    # for i in range(len(cfg.accuracies)):
+    #     acc = cfg.accuracies[i]
+        # if cold_start_datetime != '':
+        # cold_start_datetime = recover_last_datetime(orig_cwd, example, 'train')
+        curr_cold_start_results = load_frac_solved(example, cold_start_datetimes[0], acc, train=True, 
+                                                    title='no_train')
+        cold_start_results.append(curr_cold_start_results)
+        curr_guarantee_results = []
+        for datetime in cold_start_datetimes:
+            single_guarantee_results = load_frac_solved(example, datetime, acc, train=True, 
+                                                        title='no_train_pac_bayes')
+            curr_guarantee_results.append(single_guarantee_results)
+        guarantee_results.append(curr_guarantee_results)
+        # if nn_datetime != '':
+        #     # nn_datetime = recover_last_datetime(orig_cwd, example, 'train')
+        #     curr_nearest_neighbor_results = load_frac_solved(example, nn_datetime, acc, train=False, title='nearest_neighbor')
+        #     nearest_neighbor_results.append(curr_nearest_neighbor_results)
+        # curr_pac_bayes_results = []
+        # curr_test_results = []
+        # for datetime in learn_datetimes:
+        #     pac_bayes_curve = load_frac_solved(example, datetime, acc, train=True)
+        #     test_curve = load_frac_solved(example, datetime, acc, train=False)
+        #     curr_pac_bayes_results.append(pac_bayes_curve)
+        #     curr_test_results.append(test_curve)
+        # all_pac_bayes_results.append(curr_pac_bayes_results)
+        # all_test_results.append(curr_test_results)
+    return cold_start_results, guarantee_results
 
 
 def get_frac_solved_data(example, cfg):
