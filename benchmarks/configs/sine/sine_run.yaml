@@ -1,8 +1,8 @@
 nn_cfg:
-  lr: 1e-3
+  lr: 1e-2
   method: adam
-  intermediate_layer_sizes: [500, 500]
-  batch_size: 100
+  intermediate_layer_sizes: [40, 40]
+  batch_size: 10
   epochs: 1e6
   decay_lr: .1
   min_lr: 1e-7
@@ -25,18 +25,18 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 10
-eval_unrolls: 10
-eval_every_x_epochs: 10
+train_unrolls: 2
+eval_unrolls: 2
+eval_every_x_epochs: 50
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 2
-N_train: 50000
-N_test: 1000
-# num_samples: 1000
-num_samples_train: 1000
-num_samples_test: 1000
+N_train: 1000
+N_test: 10
+num_samples: 10
+# num_samples_train: 1000
+# num_samples_test: 1000
 prediction_variable: w
 angle_anchors: [0]
 supervised: True
@@ -45,7 +45,7 @@ loss_method: 'fixed_k' #'fixed_k' #'constant_sum'
 share_all: False
 num_clusters: 10
 pretrain_alpha: False
-normalize_inputs: True
+normalize_inputs: False
 normalize_alpha: 'other'
 
 accuracies: [.1, .01, .001, .0001]
@@ -68,7 +68,8 @@ pac_bayes_cfg:
   penalty_coeff: 1.0
   deterministic: False
   frac_solved_accs: [-10, -20, -30]
-  target_pen: 0.01
+  target_pen: 0.5
 lambd: 0.1
 save_weights_flag: False
-algo: glista
+algo: maml
+gamma: 0.01

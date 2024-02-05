@@ -30,6 +30,7 @@ from l2ws.glista_model import GLISTAmodel
 from l2ws.ista_model import ISTAmodel
 from l2ws.lista_model import LISTAmodel
 from l2ws.lista_cpss_model import LISTA_CPSSmodel
+from l2ws.maml_model import MAMLmodel
 from l2ws.osqp_model import OSQPmodel
 from l2ws.scs_model import SCSmodel
 from l2ws.tilista_model import TILISTAmodel
@@ -177,6 +178,10 @@ class Workspace:
             self.q_mat_train = thetas[:N_train, :]
             self.q_mat_test = thetas[N_train:N, :]
             self.create_glista_model(cfg, static_dict)
+        elif algo == 'maml':
+            self.q_mat_train = thetas[:N_train, :]
+            self.q_mat_test = thetas[N_train:N, :]
+            self.create_maml_model(cfg, static_dict)
 
         # write th z_stars_max
         # Scalar value to be saved
@@ -374,6 +379,36 @@ class Workspace:
                                     z_stars_train=self.z_stars_train,
                                     z_stars_test=self.z_stars_test,
                                     alista_cfg=alista_cfg,
+                                    algo_dict=input_dict)
+        
+    def create_maml_model(self, cfg, static_dict):
+        # get A, lambd, ista_step
+        # W, D = static_dict['W'], static_dict['D']
+        # alista_cfg = {'step': static_dict['step'], 'eta': static_dict['eta']}
+        # ista_step = static_dict['ista_step']
+
+        input_dict = dict(algorithm='maml',
+                        #   supervised=cfg.supervised,
+                        #   train_unrolls=self.train_unrolls,
+                        #   jit=True,
+                        #   train_inputs=self.train_inputs,
+                        #   test_inputs=self.test_inputs,
+                          b_mat_train=self.q_mat_train,
+                          b_mat_test=self.q_mat_test,
+                          gamma=cfg.gamma
+                        #   nn_cfg=cfg.nn_cfg,
+                        #   z_stars_train=self.z_stars_train,
+                        #   z_stars_test=self.z_stars_test,
+                          )
+        self.l2ws_model = MAMLmodel(train_unrolls=self.train_unrolls,
+                                    eval_unrolls=self.eval_unrolls,
+                                    train_inputs=self.train_inputs,
+                                    test_inputs=self.test_inputs,
+                                    regression=cfg.supervised,
+                                    nn_cfg=cfg.nn_cfg,
+                                    pac_bayes_cfg=cfg.pac_bayes_cfg,
+                                    z_stars_train=self.z_stars_train,
+                                    z_stars_test=self.z_stars_test,
                                     algo_dict=input_dict)
 
     def create_gd_model(self, cfg, static_dict):
@@ -1234,29 +1269,24 @@ class Workspace:
         # update the lin_conv csv files
         fp = False if self.l2ws_model.algo in ['glista', 'lista_cpss', 'lista', 'alista', 'tilista'] else True
 
-        z_stars = self.z_stars_train if train else self.z_stars_test
-        conv_rates, conv_rates_pac_bayes = self.calc_conv_rates(z_all, penalty, z_stars, fp=fp)
-        self.conv_rates_df[col] = conv_rates
-        self.conv_rates_df[col + '_pac_bayes'] = conv_rates_pac_bayes
-        filename = "conv_rates"
-        csv_filename = filename + '_train.csv' if train else filename + '_test.csv'
-        self.conv_rates_df.to_csv(csv_filename)
+        if self.l2ws_model.algo != 'maml':
+            z_stars = self.z_stars_train if train else self.z_stars_test
+            conv_rates, conv_rates_pac_bayes = self.calc_conv_rates(z_all, penalty, z_stars, fp=fp)
+            self.conv_rates_df[col] = conv_rates
+            self.conv_rates_df[col + '_pac_bayes'] = conv_rates_pac_bayes
+            filename = "conv_rates"
+            csv_filename = filename + '_train.csv' if train else filename + '_test.csv'
+            self.conv_rates_df.to_csv(csv_filename)
 
-        # plot the results
-        # plt.ylabel('fraction of steps satisfied')
-        # plt.xlabel('convergence rates')
-        # plt.plot(self.conv_rates, conv_rates)
-        # plt.plot(self.conv_rates, conv_rates_pac_bayes)
-        # plt.tight_layout()
-        # plt.savefig('conv_rates.pdf')
-        ylabel = 'fraction of steps satisfied'
-        xlabel = 'convergence rates'
-        filename = 'conv_rates'
-        self.plot_eval_iters_df(self.conv_rates_df, train, col, ylabel, filename, 
-                                xlabel=xlabel, 
-                                xvals=self.conv_rates, 
-                                yscale='standard',
-                                pac_bayes=True)
+            # plot the results
+            ylabel = 'fraction of steps satisfied'
+            xlabel = 'convergence rates'
+            filename = 'conv_rates'
+            self.plot_eval_iters_df(self.conv_rates_df, train, col, ylabel, filename, 
+                                    xlabel=xlabel, 
+                                    xvals=self.conv_rates, 
+                                    yscale='standard',
+                                    pac_bayes=True)
 
         if isinstance(self.l2ws_model, SCSmodel):
             out_train[6]
@@ -1268,7 +1298,8 @@ class Workspace:
             z_plot = z_all
         # import pdb
         # pdb.set_trace()
-        self.plot_warm_starts(None, z_plot, train, col)
+        if self.l2ws_model.algo != 'maml':
+            self.plot_warm_starts(None, z_plot, train, col)
 
         
 
@@ -1297,11 +1328,11 @@ class Workspace:
         # z0_mat = z_all[:, 0, :]
         # self.solve_scs(z0_mat, train, col)
         # self.solve_scs(z_all, u_all, train, col)
-        z0_mat = z_all[:, 0, :]
+        # z0_mat = z_all[:, 0, :]
 
-        if self.solve_c_num > 0:
-            if 'solve_c' in dir(self.l2ws_model):
-                self.solve_c_helper(z0_mat, train, col)
+        # if self.solve_c_num > 0:
+        #     if 'solve_c' in dir(self.l2ws_model):
+        #         self.solve_c_helper(z0_mat, train, col)
 
         if self.save_weights_flag:
             self.save_weights()
@@ -1771,7 +1802,7 @@ class Workspace:
             self.eval_iters_train_and_test('no_train', False)
 
             # fixed ws evaluation
-            if self.l2ws_model.z_stars_train is not None:
+            if self.l2ws_model.z_stars_train is not None and self.l2ws_model.algo != 'maml':
                 self.eval_iters_train_and_test('nearest_neighbor', False)
 
             # prev sol eval
