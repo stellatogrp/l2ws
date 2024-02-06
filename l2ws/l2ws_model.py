@@ -297,7 +297,10 @@ class L2WSmodel(object):
         self.num_batches = int(self.N_train/self.batch_size)
 
         # layer sizes
-        input_size = self.train_inputs.shape[1]
+        if self.algo == 'maml':
+            input_size = 1
+        else:
+            input_size = self.train_inputs.shape[1]
 
         output_size = self.output_size
         hidden_layer_sizes = nn_cfg.get('intermediate_layer_sizes', [])
@@ -643,7 +646,7 @@ class L2WSmodel(object):
                     if self.deterministic:
                         return q_expit
                     return p + 1000 * (penalty_loss - self.target_pen) ** 2
-                    # return q + jnp.sqrt(penalty_loss / 2) + 100 * (penalty_loss - self.target_pen) ** 2
+                    # return q #+ jnp.sqrt(penalty_loss / 2) + 100 * (penalty_loss - self.target_pen) ** 2
                 else:
                     predict_out = batch_predict(
                         params, inputs, b, iters, z_stars, key)

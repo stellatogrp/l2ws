@@ -5,6 +5,7 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 from cvxpylayers.jax import CvxpyLayer
 from jax import grad, jit, lax, vmap
+from jax.tree_util import tree_map
 
 from l2ws.utils.generic_utils import python_fori_loop, unvec_symm, vec_symm
 
@@ -23,6 +24,122 @@ TAU_FACTOR = 10
 #     x2 = x0 - eg_step * (2 * Q @ x1 + A.T @ y1 + c)
 #     y2 = y0 + eg_step * (-2 * R @ y1 + A @ x1 - b)
 #     return jnp.concatenate([x2, y2])
+
+def k_steps_train_maml(k, z0, q, neural_net_fwd, neural_net_grad, gamma, supervised, z_star, jit):
+    iter_losses = jnp.zeros(k)
+
+    fp_train_partial = partial(fp_train_maml,
+                               supervised=supervised,
+                               z_star=z_star,
+                               neural_net_fwd=neural_net_fwd,
+                               neural_net_grad=neural_net_grad,
+                               theta=q,
+                               gamma=gamma
+                               )
+    val = z0, iter_losses
+    start_iter = 0
+    if jit:
+        out = lax.fori_loop(start_iter, k, fp_train_partial, val)
+    else:
+        out = python_fori_loop(start_iter, k, fp_train_partial, val)
+    z_final, iter_losses = out
+    return z_final, iter_losses
+
+
+def k_steps_eval_maml(k, z0, q, neural_net_fwd, neural_net_grad, gamma, supervised, z_star, jit):
+    iter_losses, obj_diffs = jnp.zeros(k), jnp.zeros(k)
+    # z_all_plus_1 = jnp.zeros((k + 1, z0.size))
+    # z_all_plus_1 = z_all_plus_1.at[0, :].set(z0)
+    fp_eval_partial = partial(fp_eval_maml,
+                              supervised=supervised,
+                               z_star=z_star,
+                               neural_net_fwd=neural_net_fwd,
+                               neural_net_grad=neural_net_grad,
+                               theta=q,
+                               gamma=gamma
+                              )
+    # z_all = None #jnp.zeros((k, z0.size))
+    val = z0, iter_losses #, z_all, obj_diffs
+    start_iter = 0
+    if jit:
+        out = lax.fori_loop(start_iter, k, fp_eval_partial, val)
+    else:
+        out = python_fori_loop(start_iter, k, fp_eval_partial, val)
+    z_final, iter_losses = out #, z_all, obj_diffs = out
+    # z_all_plus_1 = z_all_plus_1.at[1:, :].set(z_all)
+    return z_final, iter_losses, None, jnp.zeros(k)
+
+
+def fixed_point_maml(z, neural_net_grad, theta, gamma):
+    """
+    theta is the problem data
+    """
+    # return soft_threshold(z - gamma * W.T.dot(D.dot(z) - b), theta)
+
+    # gain
+    # gain = gain_gate(z, theta, mu, nu)
+    # z_gain = jnp.multiply(gain, z)
+    # z_tilde = fixed_point_alista(z_gain, W, D, b, gamma, theta)
+
+    # # overshoot
+    # overshoot = overshoot_gate(z, z_tilde, a)
+    # z_next = jnp.multiply(overshoot, z_tilde) + jnp.multiply((1 - overshoot), z)
+    # return z_next
+    # curr_loss = neural_net_fwd(z, theta)
+    gradient = neural_net_grad(z, theta)
+    # for i in range(len(z)):
+
+    # import pdb
+    # pdb.set_trace()
+    #     z_next = z - gamma * gradient
+    # z_next = z
+    # z_next = [tuple(z_elem - gamma * grad_elem for z_elem, grad_elem in zip(z_tuple, grad_tuple))
+    #                 for z_tuple, grad_tuple in zip(z, gradient)
+    #             ]
+    inner_sgd_fn = lambda g, state: (state - gamma*g)
+    z_next = tree_map(inner_sgd_fn, gradient, z)
+    return z_next
+
+
+def fp_train_maml(i, val, supervised, z_star, neural_net_fwd, neural_net_grad, theta, gamma):
+    z, loss_vec = val
+    # gamma = params[i, 0] #jnp.exp(params[i, 0])
+    # theta = params[i, 1] #jnp.exp(params[i, 1])
+    # mu = params[i, 2]
+    # nu = params[i, 3]
+    # a = params[i, 4]
+    z_next = fixed_point_maml(z, neural_net_grad, theta, gamma)
+    # diff = jnp.linalg.norm(z - z_star) ** 2
+
+    # z_star is all of the points
+    # loss = neural_net_fwd(z_next, z_star)
+    loss = neural_net_fwd(z, z_star)
+    loss_vec = loss_vec.at[i].set(loss)
+    return z_next, loss_vec
+
+
+def fp_eval_maml(i, val, supervised, z_star, neural_net_fwd, neural_net_grad, theta, gamma):
+    # z, loss_vec, z_all, obj_diffs = val
+    z, loss_vec = val
+
+    z_next = fixed_point_maml(z, neural_net_grad, theta, gamma)
+
+    # z_star is all of the points
+    loss = neural_net_fwd(z, z_star)
+    loss_vec = loss_vec.at[i].set(loss)
+
+    # z_all = z_all.at[i, :].set(z_next)
+    # obj_diffs = obj_diffs.at[i].set(0)
+    return z_next, loss_vec #, z_all, obj_diffs
+
+    # z_next = fixed_point_glista(z, W, D, b, gamma, theta, mu, nu, a)
+    # diff = 10 * jnp.log10(jnp.linalg.norm(z - z_star) ** 2 / jnp.linalg.norm(z_star) ** 2)
+    # loss_vec = loss_vec.at[i].set(diff)
+    # obj = .5 * jnp.linalg.norm(D @ z_next - b) ** 2 # + lambd * jnp.linalg.norm(z_next, ord=1)
+    # opt_obj = .5 * jnp.linalg.norm(D @ z_star - b) ** 2 # + lambd * jnp.linalg.norm(z_star, ord=1)
+    # obj_diffs = obj_diffs.at[i].set(obj - opt_obj)
+    # z_all = z_all.at[i, :].set(z_next)
+    # return z_next, loss_vec, z_all, obj_diffs
 
 
 def k_steps_train_glista(k, z0, q, params, W, D, supervised, z_star, jit):
