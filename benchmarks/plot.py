@@ -316,8 +316,8 @@ def create_classical_results(example, cfg):
     # steps = np.arange(cfg.eval_iters)
     # z_star_max = # Specify the CSV file name
 
-    steps1 = np.arange(cold_start_results[i].size)
-    steps2 = np.linspace(cold_start_results[i].size, eval_iters, 100000)
+    steps1 = np.arange(cold_start_results[0].size)
+    steps2 = np.linspace(cold_start_results[0].size, eval_iters, 100000)
     steps = np.concatenate([steps1, steps2])
 
 
