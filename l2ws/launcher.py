@@ -187,6 +187,7 @@ class Workspace:
         # Scalar value to be saved
         # include the worst-case
         z_star_max = 1.0 * jnp.max(jnp.linalg.norm(self.z_stars_train, axis=1))
+        theta_max = jnp.max(jnp.linalg.norm(self.thetas_train, axis=1))
         # worst_case = jnp.zeros(frac_solved.size)
         # steps = jnp.arange(frac_solved.size)
         # indices = 1 / jnp.sqrt(steps + 2) * z_star_max / 100 < self.frac_solved_accs[i]
@@ -196,11 +197,17 @@ class Workspace:
         filename = 'z_star_max.csv'
 
         # Open the file in write mode
-        with open(filename, 'w', newline='') as file:
-            writer = csv.writer(file)
-            
-            # Write the scalar value to the file
-            writer.writerow([z_star_max])
+        if self.l2ws_model.algo in ['gd', 'ista', 'scs', 'osqp']:
+            with open(filename, 'w', newline='') as file:
+                writer = csv.writer(file)
+                
+                # Write the scalar value to the file
+                writer.writerow([z_star_max])
+                writer.writerow([theta_max])
+                for i in range(len(self.l2ws_model.params[0])):
+                    U, S, VT = jnp.linalg.svd(self.l2ws_model.params[0][i][0])
+                    ti = S.max()
+                    writer.writerow([ti])
 
 
     def create_ista_model(self, cfg, static_dict):
@@ -1287,6 +1294,7 @@ class Workspace:
                                     xvals=self.conv_rates, 
                                     yscale='standard',
                                     pac_bayes=True)
+            
 
         if isinstance(self.l2ws_model, SCSmodel):
             out_train[6]
@@ -1333,6 +1341,27 @@ class Workspace:
         # if self.solve_c_num > 0:
         #     if 'solve_c' in dir(self.l2ws_model):
         #         self.solve_c_helper(z0_mat, train, col)
+
+        # Specify the CSV file name
+        filename = 'z_star_max2.csv'
+
+        if self.l2ws_model.algo == 'gd':
+            # Open the file in write mode
+            with open(filename, 'w', newline='') as file:
+                writer = csv.writer(file)
+                
+                # Write the scalar value to the file
+                # writer.writerow([z_star_max])
+                # writer.writerow([theta_max])
+                for i in range(len(self.l2ws_model.params[0])):
+                    U, S, VT = jnp.linalg.svd(self.l2ws_model.params[0][i][0])
+                    # import pdb
+                    # pdb.set_trace()
+                    max_size = jnp.max(jnp.array(self.l2ws_model.params[0][i][0].shape))
+                    
+                    sigma = jnp.exp(jnp.max(self.l2ws_model.params[1][i][0]))
+                    ti = S.max() + max_size * sigma * jnp.log(100 * 2 * max_size)
+                    writer.writerow([ti])
 
         if self.save_weights_flag:
             self.save_weights()

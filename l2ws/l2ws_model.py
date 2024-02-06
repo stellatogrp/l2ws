@@ -645,8 +645,8 @@ class L2WSmodel(object):
 
                     if self.deterministic:
                         return q_expit
-                    # return p + 1000 * (penalty_loss - self.target_pen) ** 2
-                    return q #+ jnp.sqrt(penalty_loss / 2) + 100 * (penalty_loss - self.target_pen) ** 2
+                    return p + 1000 * (penalty_loss - self.target_pen) ** 2
+                    # return q #+ jnp.sqrt(penalty_loss / 2) + 100 * (penalty_loss - self.target_pen) ** 2
                 else:
                     predict_out = batch_predict(
                         params, inputs, b, iters, z_stars, key)

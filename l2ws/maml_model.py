@@ -8,7 +8,7 @@ from l2ws.algo_steps import (
     k_steps_train_maml,
 )
 from l2ws.l2ws_model import L2WSmodel
-from l2ws.utils.nn_utils import calculate_pinsker_penalty, compute_single_param_KL, predict_y
+from l2ws.utils.nn_utils import calculate_pinsker_penalty, compute_single_param_KL, predict_y, get_perturbed_weights
 
 
 class MAMLmodel(L2WSmodel):
@@ -88,8 +88,12 @@ class MAMLmodel(L2WSmodel):
             if self.deterministic:
                 stochastic_params = params[0]
             else:
-                stochastic_params = params[0] #+ jnp.sqrt(jnp.exp(params[1])) * perturb
-            z0 = params[0]
+                mean_params, sigma_params = params[0], params[1]
+                perturb = get_perturbed_weights(random.PRNGKey(key), self.layer_sizes, 1)
+                stochastic_params = [(perturb[i][0] * jnp.sqrt(jnp.exp(sigma_params[i][0])) + mean_params[i][0], 
+                                    perturb[i][1] * jnp.sqrt(jnp.exp(sigma_params[i][1])) + mean_params[i][1]) for i in range(len(mean_params))]
+                # stochastic_params = params[0] #+ jnp.sqrt(jnp.exp(params[1])) * perturb
+            z0 = stochastic_params #params[0]
 
             if bypass_nn:
                 eval_out = k_steps_eval_maml(k=iters,

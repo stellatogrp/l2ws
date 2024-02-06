@@ -25,16 +25,16 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 2
-eval_unrolls: 2
-eval_every_x_epochs: 50
+train_unrolls: 1
+eval_unrolls: 10
+eval_every_x_epochs: 10
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 2
-N_train: 1000
-N_test: 10
-num_samples: 10
+N_train: 10000
+N_test: 100
+num_samples: 100
 # num_samples_train: 1000
 # num_samples_test: 1000
 prediction_variable: w
@@ -67,8 +67,8 @@ pac_bayes_cfg:
   delta: 0.01
   penalty_coeff: 1.0
   deterministic: False
-  frac_solved_accs: [-10, -20, -30]
-  target_pen: 0.5
+  frac_solved_accs: [1, 0.5, 0.1]
+  target_pen: 0.05
 lambd: 0.1
 save_weights_flag: False
 algo: maml

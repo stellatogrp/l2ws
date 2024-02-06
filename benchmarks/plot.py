@@ -21,6 +21,7 @@ titles_2_colors = dict(cold_start='black',
                        nearest_neighbor=colors[6], 
                        prev_sol=colors[4],
                        reg_k0=colors[3],
+                       reg_k2=colors[0],
                        reg_k5=colors[0],
                        reg_k5_deterministic=colors[2],
                        reg_k10=colors[0],
@@ -41,6 +42,7 @@ titles_2_styles = dict(cold_start='-.',
                        nearest_neighbor='-.', 
                        prev_sol='-.',
                        reg_k0='-',
+                       reg_k2='-',
                        reg_k5='-',
                        reg_k5_deterministic='-',
                        reg_k10='-',
@@ -61,6 +63,7 @@ titles_2_markers = dict(cold_start='v',
                        nearest_neighbor='<', 
                        prev_sol='^',
                        reg_k0='>',
+                       reg_k2='o',
                        reg_k5='o',
                        reg_k5_deterministic='D',
                        reg_k10='o',
@@ -80,6 +83,7 @@ titles_2_marker_starts = dict(cold_start=0,
                        nearest_neighbor=16, 
                        prev_sol=23,
                        reg_k0=8,
+                       reg_k2=4,
                        reg_k5=4,
                        reg_k10=4,
                        reg_k15=12,
@@ -321,7 +325,7 @@ def create_classical_results(example, cfg):
     steps = np.concatenate([steps1, steps2])
 
 
-    z_star_max = get_worst_case_datetime(example, cfg)
+    z_star_max, theta_max = get_worst_case_datetime(example, cfg)
 
     markers = ['o', 's', '<', 'D']
     cmap = plt.cm.Set1
@@ -346,10 +350,22 @@ def create_classical_results(example, cfg):
         else:
             curr_curve = cold_start_results[i][:eval_iters]
         plt.plot(steps,
-            curr_curve, 
+                curr_curve, 
                 linestyle=titles_2_styles['cold_start'], 
                 color=titles_2_colors['cold_start'],
                 marker=titles_2_markers['cold_start'],
+                linewidth=2.0,
+                # markevery=(30, 100)
+                markevery=(0.05, 0.1)
+                )
+        worst_case_curve = np.zeros(steps.size)
+        worst_case_curve[indices] = 1.0
+
+        plt.plot(steps,
+                worst_case_curve, 
+                linestyle=titles_2_styles['nearest_neighbor'], 
+                color=titles_2_colors['nearest_neighbor'],
+                marker=titles_2_markers['nearest_neighbor'],
                 linewidth=2.0,
                 # markevery=(30, 100)
                 markevery=(0.05, 0.1)
@@ -404,15 +420,120 @@ def get_worst_case_datetime(example, cfg):
         # reader = csv.reader(file)
         reader = read_csv(file)
         z_star_max = float(reader.columns[0])
+        theta_max = reader[str(z_star_max)][0]
         # import pdb
         # pdb.set_trace()
         
         # Read the first row and extract the scalar value
         # for row in reader:
         #     z_star_max = row[0]
-    return z_star_max
+    return z_star_max, theta_max
 
 def create_gen_l2o_results(example, cfg):
+    # example = 'sparse_coding'
+    # overlay_training_losses(example, cfg)
+    # create_journal_results(example, cfg, train=False)
+    # create_genL2O_results()
+    metrics, timing_data, titles = get_all_data(example, cfg, train=False)
+
+    if len(titles) == 4:
+        titles[-2] = titles[-2] + '_deterministic'
+    nmse = metrics[0]
+    for i in range(len(nmse)):
+        # if titles[i] != 'cold_start' and titles[i] != 'nearest_neighbor':
+        #     plt.plot(nmse[i])
+        plt.plot(nmse[i][:cfg.eval_iters],
+                 linestyle=titles_2_styles[titles[i]], 
+                 color=titles_2_colors[titles[i]],
+                 marker=titles_2_markers[titles[i]],
+                 markevery=(0, 100)
+                 )
+    plt.tight_layout()
+    plt.xlabel('evaluation steps')
+    plt.ylabel("fixed-point residual")
+    plt.yscale('log')
+    plt.savefig('fp_res.pdf', bbox_inches='tight')
+    plt.clf()
+
+    z_star_max, theta_max = get_worst_case_datetime(example, cfg)
+
+    out = get_frac_solved_data(example, cfg)
+    all_test_results, all_pac_bayes_results, cold_start_results, nearest_neighbor_results = out
+    markers = ['o', 's']
+    cmap = plt.cm.Set1
+    colors = cmap.colors
+    styles = ['-', '-']
+    for i in range(len(cfg.accuracies)):
+        # plot ista and fista
+        mark_start = titles_2_marker_starts['cold_start']
+        plt.plot(cold_start_results[i][:cfg.eval_iters], 
+                 linestyle=titles_2_styles['cold_start'], 
+                 color=titles_2_colors['cold_start'],
+                 marker=titles_2_markers['cold_start'],
+                #  markevery=(30, 100)
+                markevery=0.1
+                 )
+        mark_start = titles_2_marker_starts['nearest_neighbor']
+        plt.plot(nearest_neighbor_results[i][:cfg.eval_iters], 
+                linestyle=titles_2_styles['nearest_neighbor'], 
+                color=titles_2_colors['nearest_neighbor'],
+                marker=titles_2_markers['nearest_neighbor'],
+                # markevery=(60, 100)
+                markevery=0.1
+                )
+
+        # plot the learned variants
+        acc = cfg.accuracies[i]
+        curr_test_results = all_test_results[i]
+        curr_pac_bayes_results = all_pac_bayes_results[i]
+        for j in range(len(curr_test_results)):
+            curr_size = curr_pac_bayes_results[j].size
+            curr_test = np.ones(cfg.eval_iters)
+            curr_test[:curr_size] = curr_test_results[j]
+            plt.plot(curr_test, 
+                     linestyle='-', 
+                     color=colors[0], 
+                     marker=markers[0],
+                     markevery=0.1
+                     )
+            # curr_pac = curr_pac_bayes_results[j]
+
+            # worst-case
+            # prob bounds
+            # curr_curve[:curr_size] = curr_pac_bayes_results[j] #[:cfg.eval_iters]
+
+            # worst-case bounds
+            
+            steps = np.arange(cfg.eval_iters)
+
+            init_diff = z_star_max * 1.1 + 1.1 * theta_max * 30
+            indices = .995 ** steps * init_diff  < acc
+            # import pdb
+            # pdb.set_trace()
+            # cold_start_results[i][:cfg.eval_iters]
+
+            curr_pac = np.zeros(cfg.eval_iters)
+            curr_pac[:curr_size] = curr_pac_bayes_results[j]
+            curr_pac[curr_size:] = curr_pac_bayes_results[j].max()
+            curr_pac[indices] = 1.0
+
+
+            plt.plot(curr_pac, 
+                     linestyle='-', 
+                     color=colors[1], 
+                     markevery=0.1,
+                     marker=markers[1])
+        plt.tight_layout()
+        plt.xlabel('evaluation steps')
+        plt.xscale('log')
+        plt.ylabel(f"frac. at {acc} fp res")
+        plt.savefig(f"acc_{acc}.pdf", bbox_inches='tight')
+        plt.clf()
+    import pdb
+    pdb.set_trace()
+
+
+def create_gen_l2o_results_maml(example, cfg):
     # example = 'sparse_coding'
     # overlay_training_losses(example, cfg)
     # create_journal_results(example, cfg, train=False)
@@ -441,51 +562,58 @@ def create_gen_l2o_results(example, cfg):
 
 
     out = get_frac_solved_data(example, cfg)
-    all_test_results, all_pac_bayes_results, cold_start_results, nearest_neighbor_results = out
+    all_test_results, all_pac_bayes_results, cold_start_results, pretrain_results = out
     markers = ['o', 's']
     cmap = plt.cm.Set1
     colors = cmap.colors
     styles = ['-', '-']
     for i in range(len(cfg.accuracies)):
         # plot ista and fista
-        mark_start = titles_2_marker_starts['cold_start']
-        plt.plot(cold_start_results[i][:cfg.eval_iters], 
+        # mark_start = titles_2_marker_starts['cold_start']
+        # plt.plot(cold_start_results[i], #[:cfg.eval_iters], 
+        #          linestyle=titles_2_styles['cold_start'], 
+        #          color=titles_2_colors['cold_start'],
+        #          marker=titles_2_markers['cold_start'],
+        #          markevery=2
+        #          )
+
+        # plot the pretrained model
+        plt.plot(pretrain_results[i],
                  linestyle=titles_2_styles['cold_start'], 
                  color=titles_2_colors['cold_start'],
                  marker=titles_2_markers['cold_start'],
-                 markevery=(30, 100)
+                 markevery=2
                  )
-        mark_start = titles_2_marker_starts['nearest_neighbor']
-        plt.plot(nearest_neighbor_results[i][:cfg.eval_iters], 
-                 linestyle=titles_2_styles['nearest_neighbor'], 
-                 color=titles_2_colors['nearest_neighbor'],
-                 marker=titles_2_markers['nearest_neighbor'],
-                 markevery=(60, 100)
-                 )
+
 
         # plot the learned variants
         acc = cfg.accuracies[i]
         curr_test_results = all_test_results[i]
         curr_pac_bayes_results = all_pac_bayes_results[i]
         for j in range(len(curr_test_results)):
-            plt.plot(curr_test_results[j], 
+            plt.plot(curr_pac_bayes_results[j], 
                      linestyle='-', 
                      color=colors[1], 
                      marker=markers[1],
-                     markevery=(80, 100)
+                     markevery=2
                      )
-            plt.plot(curr_pac_bayes_results[j], 
+            plt.plot(curr_test_results[j], 
                      linestyle='-', 
                      color=colors[0], 
-                     markevery=(0, 100),
+                     markevery=2,
                      marker=markers[0])
+            
         plt.tight_layout()
-        plt.xlabel('evaluation steps')
-        plt.ylabel(f"frac. at {acc} fp res")
+        plt.title(r'${}$ loss threshold'.format(acc))
+        plt.hlines(0.0, 0, curr_test_results[j].size-1, color='black', linestyle='--', alpha=0.3)
+        plt.hlines(1.0, 0, curr_test_results[j].size-1, color='black', linestyle='--', alpha=0.3)
+        plt.ylim((-.05, 1.05))
+        plt.xlabel('gradient steps')
+        plt.ylabel(f"fraction less than {acc} loss")
         plt.savefig(f"acc_{acc}.pdf", bbox_inches='tight')
         plt.clf()
-    import pdb
-    pdb.set_trace()
+        # import pdb
+        # pdb.set_trace()
 
 
 
@@ -557,6 +685,15 @@ def unconstrained_qp_plot_eval_iters(cfg):
     # create_journal_results(example, cfg, train=False)
     # overlay_training_losses(example, cfg)
     create_gen_l2o_results(example, cfg)
+
+
+@hydra.main(config_path='configs/sine', config_name='sine_plot.yaml')
+def sine_plot_eval_iters(cfg):
+    example = 'sine'
+    # plot_eval_iters(example, cfg, train=False)
+    # create_journal_results(example, cfg, train=False)
+    # overlay_training_losses(example, cfg)
+    create_gen_l2o_results_maml(example, cfg)
 
 
 @hydra.main(config_path='configs/mpc', config_name='mpc_plot.yaml')
@@ -855,7 +992,7 @@ def create_journal_results(example, cfg, train=False):
 
 
 def determine_scs_or_osqp(example):
-    if example == 'unconstrained_qp' or example == 'lasso' or example == 'jamming' or example == 'sparse_coding':
+    if example == 'unconstrained_qp' or example == 'lasso' or example == 'jamming' or example == 'sparse_coding' or example == 'sine':
         return False
     return True
 
@@ -957,6 +1094,9 @@ def get_frac_solved_data(example, cfg):
     
 
     nn_datetime = cfg.nearest_neighbor_datetime
+
+    pretrain_datetime = cfg.pretrain_datetime
+
     
 
     # get the datetimes
@@ -977,6 +1117,11 @@ def get_frac_solved_data(example, cfg):
         if nn_datetime != '':
             # nn_datetime = recover_last_datetime(orig_cwd, example, 'train')
             curr_nearest_neighbor_results = load_frac_solved(example, nn_datetime, acc, train=False, title='nearest_neighbor')
+            nearest_neighbor_results.append(curr_nearest_neighbor_results)
+        if pretrain_datetime != '':
+            # nn_datetime = recover_last_datetime(orig_cwd, example, 'train')
+            # curr_nearest_neighbor_results = load_frac_solved(example, nn_datetime, acc, train=False, title='nearest_neighbor')
+            curr_nearest_neighbor_results = load_frac_solved(example, pretrain_datetime, acc, train=False)
             nearest_neighbor_results.append(curr_nearest_neighbor_results)
         curr_pac_bayes_results = []
         curr_test_results = []
@@ -1021,7 +1166,7 @@ def get_all_data(example, cfg, train=False):
     if 'cold_start_datetime' in cfg.keys():
         benchmarks.append('cold_start')
         benchmark_dts.append(cold_start_datetime)
-    if 'nearest_neighbor_datetime' in cfg.keys():
+    if 'nearest_neighbor_datetime' in cfg.keys() and example != 'sine':
         benchmarks.append('nearest_neighbor')
         benchmark_dts.append(nn_datetime)
     if prev_sol_bool:
@@ -1950,6 +2095,10 @@ if __name__ == '__main__':
         sys.argv[1] = base + 'sparse_coding/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]
         sparse_coding_plot_eval_iters()
+    elif sys.argv[1] == 'sine':
+        sys.argv[1] = base + 'sine/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
+        sys.argv = [sys.argv[0], sys.argv[1]]
+        sine_plot_eval_iters()
     elif sys.argv[1] == 'jamming':
         sys.argv[1] = base + 'jamming/plots/${now:%Y-%m-%d}/${now:%H-%M-%S}'
         sys.argv = [sys.argv[0], sys.argv[1]]

@@ -112,7 +112,8 @@ def fp_train_maml(i, val, supervised, z_star, neural_net_fwd, neural_net_grad, t
     # diff = jnp.linalg.norm(z - z_star) ** 2
 
     # z_star is all of the points
-    loss = neural_net_fwd(z_next, z_star)
+    # loss = neural_net_fwd(z_next, z_star)
+    loss = neural_net_fwd(z, z_star)
     loss_vec = loss_vec.at[i].set(loss)
     return z_next, loss_vec
 
@@ -124,7 +125,7 @@ def fp_eval_maml(i, val, supervised, z_star, neural_net_fwd, neural_net_grad, th
     z_next = fixed_point_maml(z, neural_net_grad, theta, gamma)
 
     # z_star is all of the points
-    loss = neural_net_fwd(z_next, z_star)
+    loss = neural_net_fwd(z, z_star)
     loss_vec = loss_vec.at[i].set(loss)
 
     # z_all = z_all.at[i, :].set(z_next)
