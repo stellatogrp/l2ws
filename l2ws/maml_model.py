@@ -35,13 +35,15 @@ class MAMLmodel(L2WSmodel):
 
         neural_net_grad = grad(neural_net_fwd, argnums=0)
 
+        neural_net_fwd2 = partial(neural_net_fwd, norm='inf')
+
         self.k_steps_train_fn = partial(k_steps_train_maml, 
                                         neural_net_fwd=neural_net_fwd,
                                         neural_net_grad=neural_net_grad,
                                         gamma=gamma,
                                         jit=self.jit)
         self.k_steps_eval_fn = partial(k_steps_eval_maml,
-                                       neural_net_fwd=neural_net_fwd,
+                                       neural_net_fwd=neural_net_fwd2,
                                        neural_net_grad=neural_net_grad,
                                        gamma=gamma,
                                        jit=self.jit)
@@ -134,7 +136,7 @@ class MAMLmodel(L2WSmodel):
         return loss_fn
     
 
-def neural_net_fwd(z, theta):
+def neural_net_fwd(z, theta, norm='2'):
     num = int(theta.size / 2)
     inputs = theta[:num]
     outputs = jnp.reshape(theta[num:], (num, 1))
@@ -142,7 +144,10 @@ def neural_net_fwd(z, theta):
     inputs_reshaped = jnp.reshape(inputs, (inputs.size, 1))
     predicted_outputs = neural_net_single_input_batch(z, inputs_reshaped)
     # loss = jnp.linalg.norm(outputs - predicted_outputs) ** 2 / num
-    loss = jnp.mean((outputs - predicted_outputs)**2)
+    if norm == '2':
+        loss = jnp.mean((outputs - predicted_outputs)**2)
+    elif norm == 'inf':
+        loss = jnp.max(outputs - predicted_outputs)
     # import pdb
     # pdb.set_trace()
     return loss

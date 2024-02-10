@@ -204,15 +204,16 @@ def sparse_coding_plot_eval_iters(cfg):
         curr_pac_bayes_results = all_pac_bayes_results[i]
         for j in range(len(curr_test_results)):
             plt.plot(curr_test_results[j], 
-                     linestyle='-', 
-                     color=colors[0 + 2 * j], 
+                     linestyle='dotted', 
+                     color=colors[0 + 1 * j], 
                      marker=markers[0 + 2 * j],
-                     markevery=(0, 2))
+                     markerfacecolor='none', 
+                    markevery=(0, 1))
             plt.plot(curr_pac_bayes_results[j], 
                      linestyle='-', 
-                     color=colors[1 + 2* j], 
+                     color=colors[0 + 1* j], 
                      marker=markers[1 + 2 * j],
-                     markevery=(1, 2))
+                     markevery=(0, 2))
         plt.tight_layout()
         plt.xlabel('evaluation steps')
         plt.ylabel(f"frac. at {acc} NMSE (dB)")
