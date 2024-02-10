@@ -1,7 +1,7 @@
 from functools import partial
 
 import jax.numpy as jnp
-from jax import random, vmap, grad
+from jax import random, vmap, grad, value_and_grad
 
 from l2ws.algo_steps import (
     k_steps_eval_maml,
@@ -33,7 +33,7 @@ class MAMLmodel(L2WSmodel):
         # lambd = 0.1 
         # self.ista_step = lambd / evals.max()
 
-        neural_net_grad = grad(neural_net_fwd, argnums=0)
+        neural_net_grad = grad(neural_net_fwd, argnums=0, has_aux=True)
 
         neural_net_fwd2 = partial(neural_net_fwd, norm='inf')
 
@@ -148,9 +148,7 @@ def neural_net_fwd(z, theta, norm='2'):
         loss = jnp.mean((outputs - predicted_outputs)**2)
     elif norm == 'inf':
         loss = jnp.max(outputs - predicted_outputs)
-    # import pdb
-    # pdb.set_trace()
-    return loss
+    return loss, (predicted_outputs, outputs)
 
 
 

@@ -86,7 +86,7 @@ def fixed_point_maml(z, neural_net_grad, theta, gamma):
     # z_next = jnp.multiply(overshoot, z_tilde) + jnp.multiply((1 - overshoot), z)
     # return z_next
     # curr_loss = neural_net_fwd(z, theta)
-    gradient = neural_net_grad(z, theta)
+    gradient, aux_data = neural_net_grad(z, theta)
     # for i in range(len(z)):
 
     # import pdb
@@ -113,7 +113,8 @@ def fp_train_maml(i, val, supervised, z_star, neural_net_fwd, neural_net_grad, t
 
     # z_star is all of the points
     # loss = neural_net_fwd(z_next, z_star)
-    loss = neural_net_fwd(z, z_star)
+    loss, aux = neural_net_fwd(z, z_star)
+
     loss_vec = loss_vec.at[i].set(loss)
     return z_next, loss_vec
 
@@ -125,7 +126,7 @@ def fp_eval_maml(i, val, supervised, z_star, neural_net_fwd, neural_net_grad, th
     z_next = fixed_point_maml(z, neural_net_grad, theta, gamma)
 
     # z_star is all of the points
-    loss = neural_net_fwd(z, z_star)
+    loss, aux = neural_net_fwd(z, z_star)
     loss_vec = loss_vec.at[i].set(loss)
 
     # z_all = z_all.at[i, :].set(z_next)

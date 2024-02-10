@@ -1308,7 +1308,8 @@ class Workspace:
         # pdb.set_trace()
         if self.l2ws_model.algo != 'maml':
             self.plot_warm_starts(None, z_plot, train, col)
-
+        else:
+            self.plot_maml(z_plot, train, col)
         
 
         # plot the alpha coefficients
