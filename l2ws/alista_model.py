@@ -159,3 +159,4 @@ class ALISTAmodel(L2WSmodel):
         avg_posterior_var = variances.mean()
         stddev_posterior_var = variances.std()
         return avg_posterior_var, stddev_posterior_var
+    

@@ -57,6 +57,7 @@ class Workspace:
     def __init__(self, algo, cfg, static_flag, static_dict, example,
                  traj_length=None,
                  custom_visualize_fn=None,
+                 custom_loss=None,
                  shifted_sol_fn=None,
                  closed_loop_rollout_dict=None):
         '''
@@ -65,8 +66,18 @@ class Workspace:
         static_dict holds the data that doesn't change from problem to problem
         example is the string (e.g. 'robust_kalman')
         '''
+        if cfg.get('custom_loss', False):
+            self.custom_loss = custom_loss
+        else:
+            self.custom_loss = None
         pac_bayes_cfg = cfg.get('pac_bayes_cfg', {})
-        self.frac_solved_accs = pac_bayes_cfg.get('frac_solved_accs', [0.1, 0.01, 0.001, 0.0001])
+
+        pac_bayes_accs = pac_bayes_cfg.get('frac_solved_accs', [0.1, 0.01, 0.001, 0.0001])
+        if pac_bayes_accs == 'fp_full':
+            start = -4  # Start of the log range (log10(10^-5))
+            end = 2  # End of the log range (log10(1))
+            pac_bayes_accs = list(np.round(np.logspace(start, end, num=61), 6))
+        self.frac_solved_accs = pac_bayes_accs
         self.rep = pac_bayes_cfg.get('rep', True)
         self.sigma_nn_grid = np.array(cfg.get('sigma_nn', []))
         self.sigma_beta_grid = np.array(cfg.get('sigma_beta', []))
@@ -635,7 +646,8 @@ class Workspace:
                      'scale': scale,
                      'alpha_relax': alpha_relax,
                      'cones': cones,
-                     'lightweight': cfg.get('lightweight', False)
+                     'lightweight': cfg.get('lightweight', False),
+                     'custom_loss': self.custom_loss
                      }
         self.l2ws_model = SCSmodel(train_unrolls=self.train_unrolls,
                                    eval_unrolls=self.eval_unrolls,
@@ -865,8 +877,6 @@ class Workspace:
                 # print('beta', beta[0][0])
 
 
-                # import pdb
-                # pdb.set_trace()
 
                 
                 fs = (out_train[1] < 1e-3)
@@ -915,8 +925,7 @@ class Workspace:
 
         self.l2ws_model.sigma = 0
 
-        import pdb
-        pdb.set_trace()
+
 
 
     def load_weights(self, example, datetime, nn_type):
@@ -1192,6 +1201,8 @@ class Workspace:
         elif len(out_train) == 5:
             obj_vals_diff = out_train[4].mean(axis=0)
 
+        self.update_percentiles(losses_over_examples.T, train, col)
+
         df_out = self.update_eval_csv(
             iter_losses_mean, train, col,
             primal_residuals=primal_residuals,
@@ -1199,6 +1210,9 @@ class Workspace:
             obj_vals_diff=obj_vals_diff
         )
         iters_df, primal_residuals_df, dual_residuals_df, obj_vals_diff_df = df_out
+
+        
+
 
         if not self.skip_startup:
             # write accuracies dataframe to csv
@@ -1270,6 +1284,9 @@ class Workspace:
             csv_filename = filename + '_train.csv' if train else filename + '_test.csv'
             curr_df.to_csv(csv_filename)
 
+        
+        
+
         # plot the warm-start predictions
         z_all = out_train[2]
 
@@ -1310,6 +1327,9 @@ class Workspace:
             self.plot_warm_starts(None, z_plot, train, col)
         else:
             self.plot_maml(z_plot, train, col)
+        if self.l2ws_model.algo == 'alista':
+            self.plot_alista_weights(self.l2ws_model.params, col)
+            
         
 
         # plot the alpha coefficients
@@ -1356,8 +1376,7 @@ class Workspace:
                 # writer.writerow([theta_max])
                 for i in range(len(self.l2ws_model.params[0])):
                     U, S, VT = jnp.linalg.svd(self.l2ws_model.params[0][i][0])
-                    # import pdb
-                    # pdb.set_trace()
+
                     max_size = jnp.max(jnp.array(self.l2ws_model.params[0][i][0].shape))
                     
                     sigma = jnp.exp(jnp.max(self.l2ws_model.params[1][i][0]))
@@ -1379,8 +1398,7 @@ class Workspace:
             
             num = z_all.shape[0]
             ratios = (jnp.linalg.norm(z_all[:, 1:-1, :] - z_stars[:num, None, :], axis=2)) / (jnp.linalg.norm(z_all[:, :-2, :] - z_stars[:num, None, :], axis=2))
-        # import pdb
-        # pdb.set_trace()
+
 
         conv_rates = np.zeros(self.conv_rates.size)
         conv_rates_pac_bayes = np.zeros(self.conv_rates.size)
@@ -1937,8 +1955,6 @@ class Workspace:
         # loop the last (self.l2ws_model.num_batches - 1) iterates if not
         #   the first time calling train_batch
         # init_val = epoch_train_losses, params, state
-        # import pdb
-        # pdb.set_trace()
         # body_fn = partial(self.train_over_epochs_body_fn, permutation=permutation)
         # val = lax.fori_loop(start_index, loop_size, body_fn, init_val)
         # epoch_batch_end_time = time.time()
@@ -1947,8 +1963,6 @@ class Workspace:
         # epoch_train_losses, params, state = val
 
         init_val = epoch_train_losses, params, state, permutation
-        # import pdb
-        # pdb.set_trace()
         # body_fn = self.train_over_epochs_body_simple_fn
         val = lax.fori_loop(start_index, loop_size,
                             self.train_over_epochs_body_simple_fn_jitted, init_val)
@@ -2031,9 +2045,10 @@ class Workspace:
 
     def eval_iters_train_and_test(self, col, pretrain_on):
         self.evaluate_iters(
-            self.num_samples_test, col, train=False, plot_pretrain=pretrain_on)
-        self.evaluate_iters(
             self.num_samples_train, col, train=True, plot_pretrain=pretrain_on)
+        self.evaluate_iters(
+            self.num_samples_test, col, train=False, plot_pretrain=pretrain_on)
+        
 
     def write_train_results(self, loop_size, prev_batches, epoch_train_losses,
                             time_train_per_epoch):
@@ -2081,8 +2096,7 @@ class Workspace:
 
         inputs = self.get_inputs_for_eval(fixed_ws, num, train, col)
         # if inputs.shape[0]
-        # import pdb
-        # pdb.set_trace()
+
 
         # do the batching
         num_batches = int(num / batch_size)
@@ -2301,6 +2315,14 @@ class Workspace:
         self.conv_rates_df = pd.DataFrame()
         self.conv_rates_df['conv_rate'] = self.conv_rates
 
+        self.percentiles = [30, 50, 90, 95, 99]
+        self.percentiles_df_list_train = []
+        self.percentiles_df_list_test = []
+        for i in range(len(self.percentiles)):
+            self.percentiles_df_list_train.append(pd.DataFrame(columns=['iterations']))
+        for i in range(len(self.frac_solved_accs)):
+            self.percentiles_df_list_test.append(pd.DataFrame(columns=['iterations']))
+
     def train_full(self):
         print("Training full...")
         pretrain_on = True
@@ -2422,6 +2444,24 @@ class Workspace:
         plt.legend()
         plt.savefig('train_losses_over_training.pdf', bbox_inches='tight')
         plt.clf()
+
+    def update_percentiles(self, losses, train, col):
+        # update the percentiles
+        path = 'percentiles'
+        if not os.path.exists(path):
+            os.mkdir(path)
+        for i in range(len(self.percentiles)):
+            if train:
+                filename = f"{path}/train_{self.percentiles[i]}.csv"
+                curr_percentile = np.percentile(losses, self.percentiles[i], axis=0)
+                self.percentiles_df_list_train[i][col] = curr_percentile
+                self.percentiles_df_list_train[i].to_csv(filename)
+            else:
+                filename = f"{path}/test_{self.percentiles[i]}.csv"
+                curr_percentile = np.percentile(losses, self.percentiles[i], axis=0)
+                self.percentiles_df_list_test[i][col] = curr_percentile
+                self.percentiles_df_list_test[i].to_csv(filename)
+            
 
     def update_eval_csv(self, iter_losses_mean, train, col, primal_residuals=None,
                         dual_residuals=None, obj_vals_diff=None):
@@ -2694,6 +2734,109 @@ class Workspace:
             plt.hlines(0, 0, angles[i, :].size, 'r')
             plt.savefig(f"{polar_path}/{col}/prob_{i}_angles.pdf")
             plt.clf()
+
+    def plot_alista_weights(self, params, col):
+        path = 'alista_weights'
+        if not os.path.exists(path):
+            os.mkdir(path)
+        if not os.path.exists(f"{path}/{col}"):
+            os.mkdir(f"{path}/{col}")
+
+        mean_params, variance_params, priors = params
+
+        std_devs = jnp.sqrt(jnp.exp(variance_params[:, 0]))
+        plt.errorbar(np.arange(mean_params[:, 0].size), mean_params[:, 0], yerr=std_devs, 
+                     fmt='o', markersize=0.1)
+        plt.plot(mean_params[:, 0])
+        # plt.fill_between(np.arange(mean_params[:, 0].size), 
+        #                  mean_params[:, 0] - std_devs, 
+        #                  mean_params[:, 0] + std_devs, color='red', alpha=0.5)
+
+        plt.savefig(f"alista_weights/{col}/shrinkage.pdf")
+        plt.clf()
+
+        std_devs = jnp.sqrt(jnp.exp(variance_params[:, 1]))
+        plt.plot(mean_params[:, 1])
+        plt.errorbar(np.arange(mean_params[:, 1].size), mean_params[:, 1], yerr=std_devs, 
+                     fmt='o', markersize=0.1)
+        plt.savefig(f"alista_weights/{col}/step.pdf")
+        plt.clf()
+        
+
+    def plot_maml(self, z_all, train, col):
+        if train:
+            ws_path = 'warm-starts_train'
+        else:
+            ws_path = 'warm-starts_test'
+        if not os.path.exists(ws_path):
+            os.mkdir(ws_path)
+        if not os.path.exists(f"{ws_path}/{col}"):
+            os.mkdir(f"{ws_path}/{col}")
+
+        num = int(self.l2ws_model.z_stars_train[0, :].size / 2)
+        num_theta = int(self.thetas_train[0, :].size / 2)
+
+        for i in range(20):
+            for j in self.plot_iterates:
+                
+                
+                # plt.plot(z_all[i, j, :], label=f"prediction_{j}")
+                prediction = z_all[i, j, :]
+                if train:
+                    x_vals = self.l2ws_model.z_stars_train[i, :num]
+                    y_vals = self.l2ws_model.z_stars_train[i, num:]
+                    x_grad_points = self.thetas_train[i, :num_theta]
+                    y_grad_points = self.thetas_train[i, num_theta:]
+                else:
+                    x_vals = self.l2ws_model.z_stars_test[i, :num]
+                    y_vals = self.l2ws_model.z_stars_test[i, num:]
+                    x_grad_points = self.thetas_test[i, :num_theta]
+                    y_grad_points = self.thetas_test[i, num_theta:]
+                sorted_indices = np.argsort(x_vals)
+                plt.plot(x_vals[sorted_indices], y_vals[sorted_indices], label='optimal')
+                plt.plot(x_vals[sorted_indices], prediction[sorted_indices], label=f"prediction_{j}")
+
+                plt.fill_between(x_vals[sorted_indices], y_vals[sorted_indices] - 1, y_vals[sorted_indices] + 1, color='red', alpha = 0.2)
+
+                # mark the points used for gradients
+                plt.scatter(x_grad_points, y_grad_points, color='green', marker='^')
+
+                plt.legend()
+                plt.savefig(f"{ws_path}/{col}/prob_{i}_z_ws.pdf")
+                plt.clf()
+                df_acc = pd.DataFrame()
+                df_acc['x_vals'] = x_vals[sorted_indices]
+                df_acc['y_vals'] = y_vals[sorted_indices]
+                df_acc['predicted_y_vals'] = prediction[sorted_indices]
+                df_acc.to_csv(f"{ws_path}/{col}/prob_{i}_z_ws.csv")
+
+                df_grad_points = pd.DataFrame()
+                df_grad_points['x_grad_points'] = x_grad_points
+                df_grad_points['y_grad_points'] = y_grad_points
+                df_grad_points.to_csv(f"{ws_path}/{col}/grad_points_{i}.csv")
+
+        # accuracies
+        # iter_vals = np.zeros(len(self.accs))
+        # for i in range(len(self.accs)):
+        #     if losses.min() < self.accs[i]:
+        #         iter_vals[i] = int(np.argmax(losses < self.accs[i]))
+        #     else:
+        #         iter_vals[i] = losses.size
+        # int_iter_vals = iter_vals.astype(int)
+        # df_acc[col] = int_iter_vals
+
+        # # save no learning accuracies
+        # if col == 'no_train':
+        #     self.no_learning_accs = int_iter_vals
+        # # percent reduction
+        # df_percent = pd.DataFrame()
+        # df_percent['accuracies'] = np.array(self.accs)
+        # for col in df_acc.columns:
+        #     if col != 'accuracies':
+        #         val = 1 - df_acc[col] / self.no_learning_accs
+        #         df_percent[col] = np.round(val, decimals=2)
+        # df_percent.to_csv(f"{ws_path}/{col}/prob_{i}_z_ws.csv")
+        
 
     def plot_warm_starts(self, u_all, z_all, train, col):
         """

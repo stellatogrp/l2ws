@@ -58,16 +58,16 @@ def k_steps_eval_maml(k, z0, q, neural_net_fwd, neural_net_grad, gamma, supervis
                                theta=q,
                                gamma=gamma
                               )
-    # z_all = None #jnp.zeros((k, z0.size))
-    val = z0, iter_losses #, z_all, obj_diffs
+    z_all = jnp.zeros((k, int(z_star.size / 2)))
+    val = z0, iter_losses, z_all #, z_all, obj_diffs
     start_iter = 0
     if jit:
         out = lax.fori_loop(start_iter, k, fp_eval_partial, val)
     else:
         out = python_fori_loop(start_iter, k, fp_eval_partial, val)
-    z_final, iter_losses = out #, z_all, obj_diffs = out
+    z_final, iter_losses, z_all = out #, z_all, obj_diffs = out
     # z_all_plus_1 = z_all_plus_1.at[1:, :].set(z_all)
-    return z_final, iter_losses, None, jnp.zeros(k)
+    return z_final, iter_losses, z_all, jnp.zeros(k)
 
 
 def fixed_point_maml(z, neural_net_grad, theta, gamma):
@@ -121,17 +121,19 @@ def fp_train_maml(i, val, supervised, z_star, neural_net_fwd, neural_net_grad, t
 
 def fp_eval_maml(i, val, supervised, z_star, neural_net_fwd, neural_net_grad, theta, gamma):
     # z, loss_vec, z_all, obj_diffs = val
-    z, loss_vec = val
+    z, loss_vec, z_all = val
 
     z_next = fixed_point_maml(z, neural_net_grad, theta, gamma)
 
     # z_star is all of the points
     loss, aux = neural_net_fwd(z, z_star)
+    predicted_outputs = aux[0]
+
     loss_vec = loss_vec.at[i].set(loss)
 
-    # z_all = z_all.at[i, :].set(z_next)
+    z_all = z_all.at[i, :].set(predicted_outputs[:,0])
     # obj_diffs = obj_diffs.at[i].set(0)
-    return z_next, loss_vec #, z_all, obj_diffs
+    return z_next, loss_vec, z_all #, obj_diffs
 
     # z_next = fixed_point_glista(z, W, D, b, gamma, theta, mu, nu, a)
     # diff = 10 * jnp.log10(jnp.linalg.norm(z - z_star) ** 2 / jnp.linalg.norm(z_star) ** 2)
@@ -1026,8 +1028,8 @@ def fp_eval_fista(i, val, supervised, z_star, A, b, lambd, ista_step):
     return z_next, y_next, t_next, loss_vec, z_all
 
 
-def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, scale_vec, alpha,
-            lightweight=False, verbose=False):
+def fp_eval(i, val, q_r, z_star, factor, proj, P, A, c, b, hsde, homogeneous, scale_vec, alpha,
+            lightweight=False, custom_loss=None, verbose=False):
     """
     q_r = r if hsde else q_r = q
     homogeneous tells us if we set tau = 1.0 or use the root_plus method
@@ -1043,7 +1045,11 @@ def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, scale_vec,
         q = q_r
         z_next, u, u_tilde, v = fixed_point(z, q, factor, proj, scale_vec, alpha, verbose=verbose)
 
-    diff = jnp.linalg.norm(z_next / z_next[-1] - z / z[-1])
+    # diff = jnp.linalg.norm(z_next / z_next[-1] - z / z[-1])
+    if custom_loss is None:
+        diff = jnp.linalg.norm(z_next / z_next[-1] - z / z[-1])
+    else:
+        diff = rkf_loss(z_next / z_next[-1], z_star)
     loss_vec = loss_vec.at[i].set(diff)
 
     # primal and dual residuals
@@ -1057,6 +1063,14 @@ def fp_eval(i, val, q_r, factor, proj, P, A, c, b, hsde, homogeneous, scale_vec,
     all_u = all_u.at[i, :].set(u)
     all_v = all_v.at[i, :].set(v)
     return z_next, z_prev, loss_vec, all_z, all_u, all_v, primal_residuals, dual_residuals
+
+
+def rkf_loss(z_next, z_star):
+    x_mat = jnp.reshape(z_next[:100], (50, 2))
+    x_star_mat = jnp.reshape(z_star[:100], (50, 2))
+    norms = jnp.linalg.norm(x_mat - x_star_mat, axis=1)
+    max_norm = jnp.max(norms)
+    return max_norm
 
 
 def k_steps_train_scs(k, z0, q, factor, supervised, z_star, proj, jit, hsde, m, n, zero_cone_size,
@@ -1223,7 +1237,7 @@ def k_steps_eval_gd(k, z0, q, P, gd_step, supervised, z_star, jit):
 
 
 def k_steps_eval_scs(k, z0, q, factor, proj, P, A, supervised, z_star, jit, hsde, zero_cone_size,
-                     rho_x=1, scale=1, alpha=1.0, lightweight=False):
+                     rho_x=1, scale=1, alpha=1.0, custom_loss=None, lightweight=False):
     """
     if k = 500 we store u_1, ..., u_500 and z_0, z_1, ..., z_500
         which is why we have all_z_plus_1
@@ -1263,9 +1277,10 @@ def k_steps_eval_scs(k, z0, q, factor, proj, P, A, supervised, z_star, jit, hsde
     c, b = rhs[:n], rhs[n:]
     # print('b', b)
 
-    fp_eval_partial = partial(fp_eval, q_r=q, factor=factor,
+    fp_eval_partial = partial(fp_eval, q_r=q, z_star=z_star, factor=factor,
                               proj=proj, P=P, A=A, c=c, b=b, hsde=hsde,
                               homogeneous=True, scale_vec=scale_vec, alpha=alpha,
+                              custom_loss=custom_loss,
                               verbose=verbose)
     val = z0, z0, iter_losses, all_z, all_u, all_v, primal_residuals, dual_residuals
     start_iter = 1 if hsde else 0
