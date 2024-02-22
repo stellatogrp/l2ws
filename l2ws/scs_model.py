@@ -54,6 +54,9 @@ class SCSmodel(L2WSmodel):
         self.output_size = self.n + self.m
         self.out_axes_length = 8
 
+        # custom_loss
+        custom_loss = input_dict.get('custom_loss')
+
         self.k_steps_train_fn = partial(k_steps_train_scs, factor=factor, proj=self.proj,
                                         rho_x=self.rho_x, scale=self.scale,
                                         alpha=self.alpha_relax, jit=self.jit,
@@ -68,6 +71,7 @@ class SCSmodel(L2WSmodel):
                                        alpha=self.alpha_relax,
                                        jit=self.jit,
                                        hsde=True,
+                                       custom_loss=custom_loss,
                                        lightweight=lightweight)
 
     # def setup_optimal_solutions(self, dict):

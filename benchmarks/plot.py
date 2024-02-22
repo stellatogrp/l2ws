@@ -9,6 +9,9 @@ from pandas import read_csv
 
 from l2ws.utils.data_utils import recover_last_datetime
 
+from PEPit import PEP
+from PEPit.operators import LipschitzOperator
+
 plt.rcParams.update({
     "text.usetex": True,
     "font.family": "serif",   # For talks, use sans-serif
@@ -138,8 +141,12 @@ def sparse_coding_plot_eval_iters(cfg):
     cmap = plt.cm.Set1
     colors = cmap.colors
     colors = [colors[i] for i in range(len(colors))]
+    temp = colors[5]
     colors[5] = colors[7]
-    markers = ['o', 's', '>', '^', 'D', 'X']
+    colors[7] = temp
+    import pdb
+    pdb.set_trace()
+    markers = ['o', 's', '>', '^', 'D', 'X', 'P', '*']
 
     if len(titles) == 4:
         titles[-2] = titles[-2] + '_deterministic'
@@ -157,10 +164,14 @@ def sparse_coding_plot_eval_iters(cfg):
                     )
         else:
             plt.plot(nmse[i][:cfg.eval_iters],
-                    linestyle=titles_2_styles[titles[i]], 
+                    # linestyle=titles_2_styles[titles[i]], 
                     # color=titles_2_colors[titles[i]],
-                    color=colors[2*(i-2)],
-                    marker=markers[2*(i-2)],
+                    # color=colors[2*(i-2)],
+                    color=colors[0 + 1* (i-2)],
+                    # marker=markers[2*(i-2)],
+                    linestyle='dotted', 
+                    markerfacecolor='none', 
+                    marker=markers[0 + 2 * (i - 2)]
                     #  markevery=(0, 2)
                     )
     plt.tight_layout()
@@ -184,13 +195,13 @@ def sparse_coding_plot_eval_iters(cfg):
     styles = ['-', '-']
     for i in range(len(cfg.accuracies)):
         # plot ista and fista
-        mark_start = titles_2_marker_starts['cold_start']
-        plt.plot(cold_start_results[i][:cfg.eval_iters], 
-                 linestyle=titles_2_styles['cold_start'], 
-                 color=titles_2_colors['cold_start'],
-                 marker=titles_2_markers['cold_start'],
-                 markevery=(0, 2)
-                 )
+        # mark_start = titles_2_marker_starts['cold_start']
+        # plt.plot(cold_start_results[i][:cfg.eval_iters], 
+        #          linestyle=titles_2_styles['cold_start'], 
+        #          color=titles_2_colors['cold_start'],
+        #          marker=titles_2_markers['cold_start'],
+        #          markevery=(0, 2)
+        #          )
         mark_start = titles_2_marker_starts['nearest_neighbor']
         plt.plot(nearest_neighbor_results[i][:cfg.eval_iters], 
                  linestyle=titles_2_styles['nearest_neighbor'], 
@@ -204,15 +215,16 @@ def sparse_coding_plot_eval_iters(cfg):
         curr_pac_bayes_results = all_pac_bayes_results[i]
         for j in range(len(curr_test_results)):
             plt.plot(curr_test_results[j], 
-                     linestyle='-', 
-                     color=colors[0 + 2 * j], 
+                     linestyle='dotted', 
+                     color=colors[0 + 1 * j], 
                      marker=markers[0 + 2 * j],
-                     markevery=(0, 2))
+                     markerfacecolor='none', 
+                    markevery=(0, 1))
             plt.plot(curr_pac_bayes_results[j], 
                      linestyle='-', 
-                     color=colors[1 + 2* j], 
+                     color=colors[0 + 1* j], 
                      marker=markers[1 + 2 * j],
-                     markevery=(1, 2))
+                     markevery=(0, 2))
         plt.tight_layout()
         plt.xlabel('evaluation steps')
         plt.ylabel(f"frac. at {acc} NMSE (dB)")
@@ -221,7 +233,7 @@ def sparse_coding_plot_eval_iters(cfg):
     # import pdb
     # pdb.set_trace()
 
-    plot_conv_rates(example, cfg)
+    # plot_conv_rates(example, cfg)
 
 
 def plot_conv_rates(example, cfg):
@@ -285,10 +297,6 @@ def plot_conv_rates(example, cfg):
 
 
 def create_classical_results(example, cfg):
-    # example = 'sparse_coding'
-    # overlay_training_losses(example, cfg)
-    # create_journal_results(example, cfg, train=False)
-    # create_genL2O_results()
     metrics, timing_data, titles = get_all_data(example, cfg, train=False)
     eval_iters = int(cfg.eval_iters)
 
@@ -296,8 +304,6 @@ def create_classical_results(example, cfg):
         titles[-2] = titles[-2] + '_deterministic'
     nmse = metrics[0]
     for i in range(len(nmse)):
-        # if titles[i] != 'cold_start' and titles[i] != 'nearest_neighbor':
-        #     plt.plot(nmse[i])
         plt.plot(nmse[i][:eval_iters],
                  linestyle=titles_2_styles[titles[i]], 
                  color=titles_2_colors[titles[i]],
@@ -311,28 +317,36 @@ def create_classical_results(example, cfg):
     plt.savefig('fp_res.pdf', bbox_inches='tight')
     plt.clf()
 
-
-    cold_start_results, guarantee_results = get_frac_solved_data_classical(example, cfg)
-    
-
-    # worst case
-    # worst_case = np.zeros(eval_iters)
-    # steps = np.arange(cfg.eval_iters)
-    # z_star_max = # Specify the CSV file name
-
-    steps1 = np.arange(cold_start_results[0].size)
-    steps2 = np.linspace(cold_start_results[0].size, eval_iters, 100000)
-    steps = np.concatenate([steps1, steps2])
+    percentile_plots(example, cfg)
+    risk_plots(example, cfg)
 
 
-    z_star_max, theta_max = get_worst_case_datetime(example, cfg)
+def get_steps(cold_start_size, eval_iters, worst_case):
+    steps1 = np.arange(cold_start_size)
+    steps2 = np.linspace(cold_start_size, eval_iters, 100000)
+    if worst_case:
+        steps = np.concatenate([steps1, steps2])
+    else:
+        steps = steps1
+    return steps
 
+
+def risk_plots(example, cfg):
     markers = ['o', 's', '<', 'D']
     cmap = plt.cm.Set1
     colors = cmap.colors
-    styles = ['-', '-']
-    for i in range(len(cfg.accuracies)):
-        acc = cfg.accuracies[i]
+    accuracies = get_accs(cfg)
+    eval_iters = int(cfg.eval_iters)
+    cold_start_results, guarantee_results = get_frac_solved_data_classical(example, cfg)
+
+    cold_start_size = cold_start_results[-1].size
+    steps = get_steps(cold_start_size, eval_iters, cfg.worst_case)
+
+    if cfg.worst_case:
+        z_star_max, theta_max = get_worst_case_datetime(example, cfg)
+
+    for i in range(len(accuracies)):
+        acc = accuracies[i]
         mark_start = titles_2_marker_starts['cold_start']
         if cfg.worst_case:
             curr_curve = np.zeros(steps.size)
@@ -349,30 +363,30 @@ def create_classical_results(example, cfg):
             curr_curve[indices] = 1.0
         else:
             curr_curve = cold_start_results[i][:eval_iters]
+
         plt.plot(steps,
                 curr_curve, 
                 linestyle=titles_2_styles['cold_start'], 
                 color=titles_2_colors['cold_start'],
                 marker=titles_2_markers['cold_start'],
                 linewidth=2.0,
-                # markevery=(30, 100)
                 markevery=(0.05, 0.1)
                 )
-        worst_case_curve = np.zeros(steps.size)
-        worst_case_curve[indices] = 1.0
+        if cfg.worst_case:
+            worst_case_curve = np.zeros(steps.size)
+            worst_case_curve[indices] = 1.0
 
-        plt.plot(steps,
-                worst_case_curve, 
-                linestyle=titles_2_styles['nearest_neighbor'], 
-                color=titles_2_colors['nearest_neighbor'],
-                marker=titles_2_markers['nearest_neighbor'],
-                linewidth=2.0,
-                # markevery=(30, 100)
-                markevery=(0.05, 0.1)
-                )
+            plt.plot(steps,
+                    worst_case_curve, 
+                    linestyle=titles_2_styles['nearest_neighbor'], 
+                    color=titles_2_colors['nearest_neighbor'],
+                    marker=titles_2_markers['nearest_neighbor'],
+                    linewidth=2.0,
+                    markevery=(0.05, 0.1)
+                    )
 
-        # plot the learned variants
-        acc = cfg.accuracies[i]
+        # plot the bounds
+        acc = accuracies[i]
         curr_pac_bayes_results = guarantee_results[i]
         for j in range(len(curr_pac_bayes_results)):
             if cfg.worst_case:
@@ -384,7 +398,6 @@ def create_classical_results(example, cfg):
 
                 # worst-case bounds
                 indices = 1 / np.sqrt(steps + 2) * z_star_max * 1.1 < acc
-                # cold_start_results[i][:cfg.eval_iters]
 
                 curr_curve[curr_size:] = curr_pac_bayes_results[j].max()
 
@@ -395,15 +408,166 @@ def create_classical_results(example, cfg):
                 curr_curve, 
                         color=colors[j], 
                         alpha=0.6,
-                        # markevery=(0, 100),
                         markevery=0.1,
                         marker=markers[j])
         plt.tight_layout()
         plt.xlabel('evaluation steps')
-        plt.ylabel(f"frac. at {acc} fp res")
-        plt.xscale('log')
+        if cfg.worst_case:
+            ylabel = f"frac. at {acc} fp. res."
+        else:
+            if example == 'robust_kalman':
+                ylabel = f"frac. at max radius of {acc}"
+        plt.ylabel(ylabel)
+        if cfg.worst_case:
+            plt.xscale('log')
         plt.savefig(f"acc_{acc}.pdf", bbox_inches='tight')
         plt.clf()
+        # pep()
+
+
+def plot_final_classical_bounds(steps, bounds_list, cold_start, worst):
+    markers = ['o', 's', '<', 'D']
+    cmap = plt.cm.Set1
+    colors = cmap.colors
+
+
+
+def get_accs(cfg):
+    accuracies = cfg.accuracies
+    if accuracies == 'fp_full':
+        start = -4  # Start of the log range (log10(10^-5))
+        end = 2  # End of the log range (log10(1))
+        accuracies = list(np.round(np.logspace(start, end, num=61), 6))
+    return accuracies
+
+
+def get_e_stars(guarantee_results, accuracies, eval_iters):
+    num_N = len(guarantee_results[0])
+    e_stars = np.zeros((num_N, len(accuracies), eval_iters))
+    for i in range(len(accuracies)):
+        curr_pac_bayes_results = guarantee_results[i]
+        for j in range(len(curr_pac_bayes_results)):
+            e_stars[j, i, :] = curr_pac_bayes_results[j]
+    return e_stars
+
+
+def get_quantile(e_stars, percentile, eval_iters, worst, accuracies):
+    quantile_curve = np.zeros(eval_iters)
+    for k in range(eval_iters):
+        where = np.where(e_stars[:,k] > percentile / 100)[0]
+        if where.size == 0:
+            quantile_curve[k] = min(max(accuracies), worst[k])
+        else:
+            quantile_curve[k] = accuracies[np.min(where)]
+    return quantile_curve
+
+
+def percentile_plots(example, cfg):
+    accuracies, eval_iters = get_accs(cfg), int(cfg.eval_iters)
+
+    cold_start_results, guarantee_results = get_frac_solved_data_classical(example, cfg)
+    percentile_results = get_percentiles(example, cfg)
+
+
+    steps1 = np.arange(cold_start_results[-1].size)
+    z_star_max, theta_max = get_worst_case_datetime(example, cfg)
+
+    # fill in e_star tensor
+    num_N = len(guarantee_results[0])
+    e_stars = get_e_stars(guarantee_results, accuracies, eval_iters)
+
+    # orig_percentiles = [30, 50, 90, 95, 99]
+    percentiles = cfg.get('percentiles', [30, 90, 99])
+    corrected_indices = [0, 2, 4]
+    worst = z_star_max / np.sqrt(steps1 + 2)
+    for i in range(len(percentiles)):
+        percentile = percentiles[i]
+        bounds_list = []
+        for j in range(num_N):
+            curr_bound = get_quantile(e_stars[j, :, :], percentile, eval_iters, worst, accuracies)
+            bounds_list.append(curr_bound)
+        correct_index = corrected_indices[i]
+        cold_start_quantile = percentile_results[correct_index]
+        percentile_final_plots(percentile, cold_start_quantile, worst, bounds_list)
+
+
+
+def percentile_final_plots(percentile, cold_start_quantile, worst, bounds_list):
+    markers = ['o', 's', '<', 'D']
+    colors = plt.cm.Set1.colors
+    offsets = [0, .03, .06]
+    num_N = len(bounds_list)
+    for j in range(num_N):
+        curr = bounds_list[j] #get_quantile(e_stars[j, :, :], percentile, eval_iters, worst, accuracies)
+        plt.plot(curr, color=colors[j], marker=markers[j], 
+                    alpha=0.6, markevery=(0.00 + offsets[j], 0.1))
+            
+    plt.plot(cold_start_quantile, 
+                 titles_2_colors['cold_start'], 
+                 linestyle=titles_2_styles['cold_start'],
+                 marker=titles_2_markers['cold_start'],
+                 markevery=(0.05, 0.1))
+
+    # plot the worst case
+    plt.plot(worst, 
+                color=titles_2_colors['nearest_neighbor'], 
+                linestyle=titles_2_styles['nearest_neighbor'],
+                marker=titles_2_markers['nearest_neighbor'],
+                markevery=(0.05, 0.1))
+    plt.yscale('log')
+    plt.xlabel('evaluation steps')
+    plt.ylabel('fixed-point residual')
+
+    plt.title(r'${}$th quantile bound'.format(percentile))
+    plt.savefig(f"percentile_{percentile}.pdf", bbox_inches='tight')
+    plt.clf()
+
+
+def pep():
+    gamma = 0.5
+    n = 100
+
+    # Instantiate PEP
+    problem = PEP()
+
+    # Declare a non expansive operator
+    A = problem.declare_function(LipschitzOperator, L=1.)
+
+    # Start by defining its unique optimal point xs = x_*
+    xs, _, _ = A.fixed_point()
+
+    # Then define the starting point x0 of the algorithm
+    x0 = problem.set_initial_point()
+
+    # Set the initial constraint that is the difference between x0 and xs
+    problem.set_initial_condition((x0 - xs) ** 2 <= 1)
+
+    x = x0
+    for i in range(n):
+        x = (1 - gamma) * x + gamma * A.gradient(x)
+
+    # Set the performance metric to distance between xN and AxN
+    problem.set_performance_metric((1 / 2 * (x - A.gradient(x))) ** 2)
+
+    # Solve the PEP
+    verbose = 1
+    pepit_verbose = max(verbose, 0)
+    pepit_tau = problem.solve(verbose=pepit_verbose)
+
+    # Compute theoretical guarantee (for comparison)
+    if 1 / 2 <= gamma <= 1 / 2 * (1 + np.sqrt(n / (n + 1))):
+        theoretical_tau = 1 / (n + 1) * (n / (n + 1)) ** n / (4 * gamma * (1 - gamma))
+    elif 1 / 2 * (1 + np.sqrt(n / (n + 1))) < gamma <= 1:
+        theoretical_tau = (2 * gamma - 1) ** (2 * n)
+    else:
+        raise ValueError("{} is not a valid value for the step-size \'gamma\'."
+                         " \'gamma\' must be a number between 1/2 and 1".format(gamma))
+
+    # Print conclusion if required
+    print('*** Example file: worst-case performance of Kranoselskii-Mann iterations ***')
+    print('\tPEPit guarantee:\t 1/4||xN - AxN||^2 <= {:.6} ||x0 - x_*||^2'.format(pepit_tau))
+    print('\tTheoretical guarantee:\t 1/4||xN - AxN||^2 <= {:.6} ||x0 - x_*||^2'.format(theoretical_tau))
+
 
 
 def get_worst_case_datetime(example, cfg):
@@ -616,6 +780,9 @@ def create_gen_l2o_results_maml(example, cfg):
         # pdb.set_trace()
 
 
+# def plot_visualization_maml(example, cfg):
+
+
 
 
 @hydra.main(config_path='configs/osc_mass', config_name='osc_mass_plot.yaml')
@@ -645,8 +812,9 @@ def robust_pca_plot_eval_iters(cfg):
 def robust_kalman_plot_eval_iters(cfg):
     example = 'robust_kalman'
     # plot_eval_iters(example, cfg, train=False)
-    overlay_training_losses(example, cfg)
-    create_journal_results(example, cfg, train=False)
+    # overlay_training_losses(example, cfg)
+    # create_journal_results(example, cfg, train=False)
+    create_classical_results(example, cfg)
 
 
 @hydra.main(config_path='configs/robust_ls', config_name='robust_ls_plot.yaml')
@@ -693,6 +861,7 @@ def sine_plot_eval_iters(cfg):
     # plot_eval_iters(example, cfg, train=False)
     # create_journal_results(example, cfg, train=False)
     # overlay_training_losses(example, cfg)
+    get_maml_visualization_data(example, cfg)
     create_gen_l2o_results_maml(example, cfg)
 
 
@@ -1037,30 +1206,37 @@ def get_conv_rates_data(example, cfg):
     return conv_rates, curr_test_results, curr_pac_bayes_results, curr_cold_start_results, curr_nearest_neighbor_results
 
 
+def get_percentiles(example, cfg):
+    orig_cwd = hydra.utils.get_original_cwd()
+    percentile_dt = cfg.percentile_datetime
+    path = f"{orig_cwd}/outputs/{example}/train_outputs/{percentile_dt}"
+    # no_learning_path = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/{iters_file}"
+
+    # read the eval iters csv
+    # fp_file = 'eval_iters_train.csv' if train else 'eval_iters_test.csv'
+    # fp_file = 'iters_compared_train.csv' if train else 'iters_compared_test.csv'
+    # fp_df = read_csv(f"{path}/{fp_file}")
+
+    # return the first column
+    percentiles_list = []
+    percentiles = cfg.get('percentiles', [30, 50, 90, 95, 99])
+    for i in range(len(percentiles)):
+        filename = f"percentiles/train_{percentiles[i]}.csv"
+        df = read_csv(f"{path}/{filename}")
+        curr_percentile_curve = df['no_train']
+        percentiles_list.append(curr_percentile_curve)
+    return percentiles_list
+
+
 def get_frac_solved_data_classical(example, cfg):
     # setup
-    orig_cwd = hydra.utils.get_original_cwd()
-
     cold_start_datetimes = cfg.cold_start_datetimes
     
-    
-
-    # get the datetimes
-    # learn_datetimes = cfg.output_datetimes
-    # if learn_datetimes == []:
-    #     dt = recover_last_datetime(orig_cwd, example, 'train')
-    #     learn_datetimes = [dt]
-
-    # all_test_results = []
-    # all_pac_bayes_results = []
     cold_start_results = []
     guarantee_results = []
-    # nearest_neighbor_results = []
-    for acc in cfg.accuracies:
-    # for i in range(len(cfg.accuracies)):
-    #     acc = cfg.accuracies[i]
-        # if cold_start_datetime != '':
-        # cold_start_datetime = recover_last_datetime(orig_cwd, example, 'train')
+
+    accuracies = get_accs(cfg)
+    for acc in accuracies:
         curr_cold_start_results = load_frac_solved(example, cold_start_datetimes[0], acc, train=True, 
                                                     title='no_train')
         cold_start_results.append(curr_cold_start_results)
@@ -1070,19 +1246,7 @@ def get_frac_solved_data_classical(example, cfg):
                                                         title='no_train_pac_bayes')
             curr_guarantee_results.append(single_guarantee_results)
         guarantee_results.append(curr_guarantee_results)
-        # if nn_datetime != '':
-        #     # nn_datetime = recover_last_datetime(orig_cwd, example, 'train')
-        #     curr_nearest_neighbor_results = load_frac_solved(example, nn_datetime, acc, train=False, title='nearest_neighbor')
-        #     nearest_neighbor_results.append(curr_nearest_neighbor_results)
-        # curr_pac_bayes_results = []
-        # curr_test_results = []
-        # for datetime in learn_datetimes:
-        #     pac_bayes_curve = load_frac_solved(example, datetime, acc, train=True)
-        #     test_curve = load_frac_solved(example, datetime, acc, train=False)
-        #     curr_pac_bayes_results.append(pac_bayes_curve)
-        #     curr_test_results.append(test_curve)
-        # all_pac_bayes_results.append(curr_pac_bayes_results)
-        # all_test_results.append(curr_test_results)
+
     return cold_start_results, guarantee_results
 
 
@@ -1134,6 +1298,7 @@ def get_frac_solved_data(example, cfg):
         all_test_results.append(curr_test_results)
     return all_test_results, all_pac_bayes_results, cold_start_results, nearest_neighbor_results
 
+
 def get_all_data(example, cfg, train=False):
     # setup
     orig_cwd = hydra.utils.get_original_cwd()
@@ -1174,6 +1339,7 @@ def get_all_data(example, cfg, train=False):
         benchmark_dts.append(cfg.prev_sol_datetime)
 
     # for init in ['cold_start', 'nearest_neighbor', 'prev_sol']:
+
     for i in range(len(benchmarks)):
         init = benchmarks[i]
         datetime = benchmark_dts[i]
@@ -1233,6 +1399,143 @@ def get_all_data(example, cfg, train=False):
     metrics = [[row[i] for row in metrics_list] for i in range(len(metrics_list[0]))]
 
     return metrics, timing_data, titles
+
+
+
+def get_maml_vis_df(example, maml_pretrain_visualization_dt, maml_visualization_dt, iter):
+    orig_cwd = hydra.utils.get_original_cwd()
+    path = f"{orig_cwd}/outputs/{example}/train_outputs/{maml_pretrain_visualization_dt}/warm-starts_test"
+
+    import os
+    folders = os.listdir(path)
+    folders.sort()
+    last_time = folders[len(folders)-1]
+
+    # f"{last_date}/{last_time}"
+
+    # import pdb
+    # pdb.set_trace()
+    pretrain_test_df = read_csv(f"{path}/{last_time}/prob_{iter}_z_ws.csv")
+    pretrain_grad_points_df = read_csv(f"{path}/{last_time}/grad_points_{iter}.csv")
+
+    path2 = f"{orig_cwd}/outputs/{example}/train_outputs/{maml_visualization_dt}/warm-starts_test"
+    folders2 = os.listdir(path2)
+    folders2.sort()
+    last_time2 = folders2[len(folders2)-1]
+
+    maml_test_df = read_csv(f"{path2}/{last_time2}/prob_{iter}_z_ws.csv")
+    maml_grad_points_df = read_csv(f"{path2}/{last_time2}/grad_points_{iter}.csv")
+    return pretrain_test_df, pretrain_grad_points_df, maml_test_df, maml_grad_points_df
+
+
+def get_maml_visualization_data(example, cfg, train=False):
+    # setup
+    # orig_cwd = hydra.utils.get_original_cwd()
+
+    # maml_pretrain_visualization_dt:
+    # maml_visualization_dt:
+    maml_pretrain_visualization_dt = cfg.maml_pretrain_visualization_dt
+    maml_visualization_dt = cfg.maml_visualization_dt
+
+    cmap = plt.cm.Set1
+    colors = cmap.colors
+
+    for i in range(20):
+        out = get_maml_vis_df(example, maml_pretrain_visualization_dt, maml_visualization_dt, i)
+        pretrain_test_df, pretrain_grad_points_df, maml_test_df, maml_grad_points_df = out
+
+        x_vals = pretrain_test_df['x_vals']
+        y_vals = pretrain_test_df['y_vals']
+        x_grad_points = maml_grad_points_df['x_grad_points']
+        y_grad_points = maml_grad_points_df['y_grad_points']
+        pretrain = pretrain_test_df['predicted_y_vals']
+        maml = maml_test_df['predicted_y_vals']
+        plt.plot(x_vals, y_vals, color=colors[0], zorder=2) #, label='optimal')
+        plt.plot(x_vals, pretrain, color=colors[1], zorder=3) #, label=f"prediction_{j}")
+        plt.plot(x_vals, maml, color=colors[2], zorder=4)
+
+        plt.fill_between(x_vals, y_vals - 1, y_vals + 1, color=colors[4], alpha = 0.2, zorder=1)
+
+        # mark the points used for gradients
+        plt.scatter(x_grad_points, y_grad_points, color=colors[3], marker='^', s=100, zorder=5)
+
+        plt.ylim((-6, 6))
+
+        plt.savefig(f"maml_vis_{i}.pdf")
+        plt.clf()
+
+        
+    import pdb
+    pdb.set_trace()
+
+    # get the visuals dataframe
+    # pretrain_test_df = 
+    # pretrain_grad_points_df = 
+
+    # maml_test_df, maml_grad_points_df = get_maml_vis_df(example, maml_visualization_dt)
+
+
+    # get the datetimes
+    # learn_datetimes = cfg.output_datetimes
+    # if learn_datetimes == []:
+    #     dt = recover_last_datetime(orig_cwd, example, 'train')
+    #     learn_datetimes = [dt]
+
+    # metrics_list = []
+    # timing_data = []
+
+    # # check if prev_sol exists
+    # # if 'prev_sol' in cfg.keys():
+    # # prev_sol_bool = cfg.prev_sol_datetime
+    # prev_sol_bool = 'prev_sol_datetime' in cfg.keys()
+
+    # # benchmarks = ['cold_start', 'nearest_neighbor']
+    # # benchmark_dts = [cold_start_datetime, nn_datetime]
+    # benchmarks, benchmark_dts = [], []
+
+    # if prev_sol_bool:
+    #     benchmarks.append('prev_sol')
+    #     benchmark_dts.append(cfg.prev_sol_datetime)
+
+    # # for init in ['cold_start', 'nearest_neighbor', 'prev_sol']:
+    # for i in range(len(benchmarks)):
+    #     init = benchmarks[i]
+    #     datetime = benchmark_dts[i]
+    #     metric, timings = load_data_per_title(example, init, datetime)
+    #     metrics_list.append(metric)
+    #     timing_data.append(timings)
+
+    # learned warm-starts
+    # k_vals = np.zeros(len(learn_datetimes))
+    # loss_types = []
+    # for i in range(len(k_vals)):
+    #     datetime = learn_datetimes[i]
+    #     loss_type = get_loss_type(orig_cwd, example, datetime)
+    #     loss_types.append(loss_type)
+    #     k = get_k(orig_cwd, example, datetime)
+    #     k_vals[i] = k
+    #     metric, timings = load_data_per_title(example, k, datetime)
+    #     metrics_list.append(metric)
+    #     timing_data.append(timings)
+
+    # k_vals_new = []
+    # for i in range(k_vals.size):
+    #     k = k_vals[i]
+    #     new_k = k if k >= 2 else 0
+    #     k_vals_new.append(new_k)
+    # # titles = benchmarks + [f"k{int(k)}" for k in k_vals_new]
+    # titles = benchmarks
+    # for i in range(len(loss_types)):
+    #     loss_type = loss_types[i]
+    #     k = k_vals_new[i]
+    #     titles.append(f"{loss_type}_k{int(k)}")
+
+
+    # combine metrics
+    # metrics = combine_metrics(metrics_list)
+    # metrics = [[row[i] for row in metrics_list] for i in range(len(metrics_list[0]))]
+
+    # return metrics, timing_data, titles
 
 
 # def combine_metrics(metrics_list):

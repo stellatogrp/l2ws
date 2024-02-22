@@ -1,5 +1,5 @@
 nn_cfg:
-  lr: 1e-2
+  lr: 1e-3
   method: adam
   intermediate_layer_sizes: [40, 40]
   batch_size: 10
@@ -66,8 +66,8 @@ pac_bayes_cfg:
   b: 100
   delta: 0.01
   penalty_coeff: 1.0
-  deterministic: False
-  frac_solved_accs: [1, 0.5, 0.1]
+  deterministic: True
+  frac_solved_accs: [1.5, 1, 0.5, 0.1]
   target_pen: 0.05
 lambd: 0.1
 save_weights_flag: False

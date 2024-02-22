@@ -19,6 +19,8 @@ import matplotlib.colors as mc
 import colorsys
 from l2ws.algo_steps import get_scaled_vec_and_factor
 from l2ws.examples.solve_script import setup_script
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
+
 
 
 plt.rcParams.update(
@@ -472,18 +474,16 @@ def plot_positions_overlay(traj, labels, num_dots=2, grayscales=[.8, .3, 1.0, 0.
         if i < num_dots:
             if noise_only:
                 if i > 0:
-                    plt.plot(x[0, :], x[1, :], 'o', color=colors[i], alpha=alpha, label=labels[i])
+                    plt.plot(x[0, :], x[1, :], 'o', color=colors[i], alpha=alpha, label=labels[i], markersize=1)
             else:
-                plt.plot(x[0, :], x[1, :], 'o', color=colors[i], alpha=alpha, label=labels[i])
+                plt.plot(x[0, :], x[1, :], 'o', color=colors[i], alpha=alpha, label=labels[i], markersize=1)
         else:
-            plt.plot(x[0, :], x[1, :], color=colors[i], linestyle=linestyles[i], alpha=alpha, label=labels[i])
+            plt.plot(x[0, :], x[1, :], color=colors[i], linestyle=linestyles[i], alpha=alpha, label=labels[i], markersize=1)
 
     # save with legend
     if legend:
         plt.legend()
-    # plt.xlabel('x position')
-    # plt.ylabel('y position')
-    # plt.axis('off')
+
     plt.xticks([])
     plt.yticks([])
     if filename:
@@ -491,6 +491,141 @@ def plot_positions_overlay(traj, labels, num_dots=2, grayscales=[.8, .3, 1.0, 0.
     else:
         plt.show()
     plt.clf()
+
+
+def plot_positions_overlay_genL2O(noisy, optimal, num_dots=2, grayscales=[.8, .3, 1.0, 0.7, 1.0], axis=None, filename=None, legend=False, noise_only=False):
+    '''
+    show point clouds for true, observed, and recovered positions
+
+    the first num_dots trajectories are given as scatter plots (dots)
+    the rest of the trajectories are given as continuous lines
+    '''
+    # n = len(traj)
+
+    colors = ['green', 'red', 'gray', 'orange', 'blue']
+    # cmap = plt.cm.Set1
+    # colors = [cmap.colors[0], cmap.colors[1], cmap.colors[2], cmap.colors[3], cmap.colors[4]]
+    linestyles = ['o', 'o', '-.', ':', '--']
+
+    # for i in range(n - 2):
+    #     shade = (i + 1) / (n - 2)
+    #     colors.append(lighten_color('blue', shade))
+
+    # for i, x in enumerate(traj):
+    # alpha = grayscales[i] #1 #grayscales[i]
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+
+    # plot noisy
+    ax.plot(noisy[0, :], noisy[1, :], 'o', color=colors[0], alpha=1.0, markersize=1.2)
+
+    # plot optimal
+    ax.plot(optimal[0, :], optimal[1, :], 'o', color=colors[1], alpha=1.0, markersize=1.2)
+
+    # plot shaded region
+    # plt.plot(optimal[0, :], optimal[1, :], 'o', color=colors[i], alpha=1.0, label=labels[i], markersize=1)
+
+    # fig, ax = plt.subplots()  # Create a figure and an axes
+    radius = 0.1
+    radius2 = 0.01
+
+    from matplotlib.patches import Circle
+
+    # Loop through the points and plot a circle at each point
+    for i in range(optimal.shape[1]):
+        circle = Circle((optimal[0, i], optimal[1, i]), radius, color=colors[3], alpha=0.2)
+        ax.add_patch(circle)
+
+        circle = Circle((optimal[0, i], optimal[1, i]), radius2, color=colors[4], alpha=0.2)
+        ax.add_patch(circle)
+
+    x_min, x_max, y_min, y_max = adjust_xy_min_max(noisy[0,:].min(), noisy[0,:].max(), noisy[1,:].min(), noisy[1,:].max())
+    ax.set_xlim([x_min, x_max])
+    ax.set_ylim([y_min, y_max])
+
+
+
+
+
+
+
+    axins = inset_axes(ax, width="30%", height="30%", loc='lower left',
+                   bbox_to_anchor=(0.0, 0.0, 1.0, 1.0),
+                   bbox_transform=ax.transAxes)
+
+    # Optional: Set limits if you want to specify the bounds of your plot
+    # ax.set_xlim([xmin, xmax])
+    # ax.set_ylim([ymin, ymax])
+    # Plot the same data on inset
+    axins.plot(noisy[0, :], noisy[1, :], 'o', color=colors[0], alpha=1.0, markersize=3)
+    axins.plot(optimal[0, :], optimal[1, :], 'o', color=colors[1], alpha=1.0, markersize=3)
+
+    # Specify the region for zooming (can adjust as necessary)
+    # x1, x2, y1, y2 = -0.2, 0.2, -0.2, 0.2  # Define zoom boundaries here
+    # mid = 25
+    center_x = optimal[0, 15]
+    center_y = optimal[1, 15]
+    width = 0.15
+    x1, x2, y1, y2 = -width + center_x, width + center_x, -width + center_y, width + center_y
+    axins.set_xlim(x1, x2)
+    axins.set_ylim(y1, y2)
+
+    # Optionally, add circles in the zoomed region as well
+    for i in range(optimal.shape[1]):
+        if x1 < optimal[0, i] < x2 and y1 < optimal[1, i] < y2:
+            circle = Circle((optimal[0, i], optimal[1, i]), radius, color=colors[3], alpha=0.2)
+            axins.add_patch(circle)
+
+            circle = Circle((optimal[0, i], optimal[1, i]), radius2, color=colors[4], alpha=0.2)
+            axins.add_patch(circle)
+    axins.set_xticks([])
+    axins.set_yticks([])
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    ax.indicate_inset_zoom(axins, edgecolor="black")
+    mark_inset(ax, axins, loc1=2, loc2=4, fc="none", ec="0.5")
+    ax.set_aspect('equal')  # This ensures the circle is not oval in case the ax
+    
+    # is units are not equal
+
+    
+
+
+    # save with legend
+    if legend:
+        plt.legend()
+
+    plt.xticks([])
+    plt.yticks([])
+    plt.tight_layout()
+    if filename:
+        plt.savefig(filename, bbox_inches='tight')
+    else:
+        plt.show()
+    plt.clf()
+
+
+def adjust_xy_min_max(x_min, x_max, y_min, y_max):
+    # Calculate the centers of the x and y ranges
+    x_center = (x_min + x_max) / 2.0
+    y_center = (y_min + y_max) / 2.0
+
+    # Calculate the spans (ranges) of the x and y ranges
+    x_span = x_max - x_min
+    y_span = y_max - y_min
+
+    # Determine the maximum span (range) between x and y
+    max_span = max(x_span, y_span)
+    # max_span = 6
+
+    # Calculate new min and max for x and y to ensure equal ranges
+    cushion = 0.2
+    x_min_new = x_center - max_span / 2.0 - cushion
+    x_max_new = x_center + max_span / 2.0 + cushion
+    y_min_new = y_center - max_span / 2.0 - cushion
+    y_max_new = y_center + max_span / 2.0 + cushion
+    return x_min_new, x_max_new, y_min_new, y_max_new
 
 
 def cvxpy_huber(T, y, gamma, dt, mu, rho):
@@ -679,6 +814,14 @@ def single_q(theta, mu, rho, T, gamma, dt):
     return q
 
 
+def rkf_loss(z_next, z_star, T):
+    x_mat = jnp.reshape(z_next[:2 * T], (T, 2))
+    x_star_mat = jnp.reshape(z_star[:T * 2], (T, 2))
+    norms = jnp.linalg.norm(x_mat - x_star_mat, axis=1)
+    max_norm = jnp.max(norms)
+    return max_norm
+
+
 def run(run_cfg):
     """
     retrieve data for this config
@@ -749,8 +892,11 @@ def run(run_cfg):
     partial_shifted_sol_fn = partial(shifted_sol, T=setup_cfg['T'],  m=m, n=n)
     batch_shifted_sol_fn = vmap(partial_shifted_sol_fn, in_axes=(0), out_axes=(0))
 
+    custom_loss = partial(rkf_loss, T=setup_cfg['T'])
+
     workspace = Workspace(algo, run_cfg, static_flag, static_dict, example,
                           custom_visualize_fn=custom_visualize_fn_partial,
+                          custom_loss=custom_loss,
                           shifted_sol_fn=batch_shifted_sol_fn,
                           traj_length=setup_cfg['rollout_length'])
 
@@ -872,7 +1018,10 @@ def setup_probs(setup_cfg):
 
         plot_positions_overlay([x_kalman, y_mat_rotated[i, :, :]],
                                ['True', 'KF recovery', 'Noisy'],
+                               grayscales=[1.0, 1.0, 1.0, 1.0, 1.0],
                                filename=f"positions_plots/positions_{i}_rotated.pdf")
+        plot_positions_overlay_genL2O(y_mat[i, :, :], x_kalman_rotated,
+                                      filename=f"positions_plots/positions_{i}_genL2O.pdf")
         # plot_positions_overlay([x_trues[i, :, :-1], x_kalman_rotated, y_mat[i, :, :]],
         #                        ['True', 'KF recovery', 'Noisy'],
         #                        filename=f"positions_plots/positions_{i}.pdf")

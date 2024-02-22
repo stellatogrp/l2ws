@@ -71,4 +71,4 @@ pac_bayes_cfg:
   target_pen: 0.01
 lambd: 0.1
 save_weights_flag: False
-algo: glista
+algo: alista
