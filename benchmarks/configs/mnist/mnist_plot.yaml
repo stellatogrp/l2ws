@@ -40,16 +40,27 @@ loss_overlay_titles: []
 nearest_neighbor_datetime: '2023-08-28/14-56-38' #'2023-08-20/19-34-54' # '2023-08-19/21-55-53'
 pretrain_datetime: ''
 cold_start_datetime: '2023-08-28/14-56-38' #'2023-08-20/19-34-54' # '2023-08-19/21-55-53'
-eval_iters: 1000000000
-accuracies: [1e-1, 1e-2, 1e-3, 1e-4]
+eval_iters: 3500
+accuracies: fp_full #[1e-1, 1e-2, 1e-3, 1e-4]
 rel_tols: [1e-1, 1e-2, 1e-3, 1e-4, 1e-5]
 abs_tols: [1e-1, 1e-2, 1e-3, 1e-4, 1e-5]
 
 cold_start_datetimes: 
-- 2024-02-03/10-53-46
-- 2024-02-03/10-56-40
-- 2024-02-03/11-03-05
+# - 2024-02-22/16-26-55 # fp 10
+# - 2024-02-22/16-22-20 # fp 100
+# - 2024-02-22/16-21-07 # fp 1000
+- 2024-02-22/15-13-17 # custom 10
+- 2024-02-22/15-12-01 # custom 100
+- 2024-02-22/16-03-24 # custom 1000
+worst_case: False
+custom_loss: True
+percentile_datetime: 2024-02-22/16-03-24 # fp: 2024-02-22/16-21-07 # custom: 2024-02-22/16-03-24 #2024-02-22/03-09-47 
+risk_accs: [5.011872, 3.162278, 1.258925]
 
-worst_case_datetime: 2024-02-03/11-03-05
+worst_case_datetime: 2024-02-22/03-09-47
 
-worst_case: True
+
+
+worst_case_iters: 1e9
+
+percentile_ylabel: 'fixed-point residual' #'dist. to original image'

@@ -1227,6 +1227,8 @@ class Workspace:
         # take care of frac_solved
         frac_solved_list = []
         frac_solved_df_list = self.frac_solved_df_list_train if train else self.frac_solved_df_list_test
+
+        cache = {}
         for i in range(len(self.frac_solved_accs)):
             # compute frac solved
             fs = (out_train[1] < self.frac_solved_accs[i])
@@ -1252,7 +1254,11 @@ class Workspace:
             final_pac_bayes_loss = jnp.zeros(frac_solved.size)
             for j in range(frac_solved.size):
                 if self.rep:
-                    kl_inv = invert_kl(1 - frac_solved[j], penalty)
+                    if float(frac_solved[j]) in cache.keys():
+                        kl_inv = cache[float(frac_solved[j])]
+                    else:
+                        kl_inv = invert_kl(1 - frac_solved[j], penalty)
+                        cache[float(frac_solved[j])] = kl_inv
                     final_pac_bayes_loss = final_pac_bayes_loss.at[j].set(1 - kl_inv)
                 else:
                     kl_inv = jnp.clip(frac_solved[j] - jnp.sqrt(penalty / 2), a_min=0)

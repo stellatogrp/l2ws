@@ -72,7 +72,7 @@ iterates_visualize: [10, 20, 50, 90] #[10, 20, 50, 100, 200, 500]
 vis_num: 0
 skip_startup: False
 
-eval_unrolls: 2000
+eval_unrolls: 3500
 solve_c_num: 0
 supervised: True
 train_unrolls: 5
@@ -91,13 +91,14 @@ pac_bayes_cfg:
   init_var: 1e-3
   c: 10.0
   b: 100
-  delta: 0.01
+  delta: 0.0001
   rep: True
-  penalty_coeff: 0.6
+  penalty_coeff: 1.0
   deterministic: False
   target_pen: 0.3
+  frac_solved_accs: fp_full
 
-custom_loss: True
+custom_loss: False
 
 # output_datetimes: 
 # fp: ['2023-09-01/14-20-37', 
