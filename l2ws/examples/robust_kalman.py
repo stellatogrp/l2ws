@@ -1048,29 +1048,33 @@ def custom_visualize_fn(x_primals, x_stars, x_prev_sol, x_nn, thetas, iterates, 
     assume len(iterates) == 1 for now
         point is to compare no-learning vs learned for 20 iterations
     """
-    assert len(iterates) == 1
-    num = np.min([x_prev_sol.shape[0], num])
-    y_mat_rotated = jnp.reshape(thetas[:num, :], (num, T, 2))
-    for i in range(num):
-        titles = ['optimal solution', 'noisy trajectory']
-        x_true_kalman = get_x_kalman_from_x_primal(x_stars[i, :], T)
-        traj = [x_true_kalman, y_mat_rotated[i, :].T]
+    # assert len(iterates) == 1
+    # num = np.min([x_prev_sol.shape[0], num])
+    # y_mat_rotated = jnp.reshape(thetas[:num, :], (num, T, 2))
+    # for i in range(num):
+    #     titles = ['optimal solution', 'noisy trajectory']
+    #     x_true_kalman = get_x_kalman_from_x_primal(x_stars[i, :], T)
+    #     traj = [x_true_kalman, y_mat_rotated[i, :].T]
 
-        for j in range(len(iterates)):
-            iter = iterates[j]
-            x_prev_sol_kalman = get_x_kalman_from_x_primal(x_prev_sol[i, iter, :], T)
-            x_hat_kalman = get_x_kalman_from_x_primal(x_primals[i, iter, :], T)
-            x_nn_kalman = get_x_kalman_from_x_primal(x_nn[i, iter, :], T)
-            traj.append(x_prev_sol_kalman)
-            traj.append(x_nn_kalman)
-            traj.append(x_hat_kalman)
-            # titles.append(f"no learning: ${iter}$ iters")
-            titles.append(f"prev_sol: ${iter}$ iters")
-            titles.append(f"nearest neighbor: ${iter}$ iters")
-            titles.append(f"learned: ${iter}$ iters")
+    #     for j in range(len(iterates)):
+    #         iter = iterates[j]
+    #         x_prev_sol_kalman = get_x_kalman_from_x_primal(x_prev_sol[i, iter, :], T)
+    #         x_hat_kalman = get_x_kalman_from_x_primal(x_primals[i, iter, :], T)
+    #         x_nn_kalman = get_x_kalman_from_x_primal(x_nn[i, iter, :], T)
+    #         traj.append(x_prev_sol_kalman)
+    #         traj.append(x_nn_kalman)
+    #         traj.append(x_hat_kalman)
+    #         # titles.append(f"no learning: ${iter}$ iters")
+    #         titles.append(f"prev_sol: ${iter}$ iters")
+    #         titles.append(f"nearest neighbor: ${iter}$ iters")
+    #         titles.append(f"learned: ${iter}$ iters")
 
-        plot_positions_overlay(traj, titles, filename=f"{visual_path}/positions_{i}_rotated_legend.pdf", legend=True)
-        plot_positions_overlay(traj, titles, filename=f"{visual_path}/positions_{i}_rotated.pdf", legend=False)
+    #     plot_positions_overlay(traj, titles, filename=f"{visual_path}/positions_{i}_rotated_legend.pdf", legend=True)
+    #     plot_positions_overlay(traj, titles, filename=f"{visual_path}/positions_{i}_rotated.pdf", legend=False)
+    noisy = jnp.reshape(thetas[:num, :], (num, T, 2))
+    optimal = get_x_kalman_from_x_primal(x_stars[i, :], T)
+    cold = None
+    plot_positions_overlay_genL2O(noisy, optimal, cold, filename=f"{visual_path}/positions_{i}_rotated.pdf")
 
 
 def get_x_kalman_from_x_primal(x_primal, T):

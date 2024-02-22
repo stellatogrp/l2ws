@@ -331,113 +331,202 @@ def get_steps(cold_start_size, eval_iters, worst_case):
     return steps
 
 
+# def get_worse_case_curve(z_star_max, steps, acc):
+#     worst_case_curve = np.zeros(steps.size)
+#     curr_size = cold_start_results[i].size
+
+#     # prob bounds
+#     worst_case_curve[:curr_size] = cold_start_results[i]
+
+#     # worst-case bounds
+#     indices = 1 / np.sqrt(steps + 2) * z_star_max * 1.1 < acc
+
+#     worst_case_curve[curr_size:] = cold_start_results[i].max()
+
+#     worst_case_curve[indices] = 1.0
+#     return worst_case_curve
+
+
+def get_worse_indices(z_star_max, steps, acc):
+    # worst-case bounds
+    worst_case_indices = 1 / np.sqrt(steps + 2) * z_star_max * 1.1 < acc
+    return worst_case_indices
+
+
+def construct_full_curve(partial_curve, steps, worst_case_indices):
+    full_curve = np.zeros(steps.size)
+    curr_size = partial_curve.size
+
+    # prob bounds
+    full_curve[:curr_size] = partial_curve
+
+    # will only improve as more iterations are evaluated
+    full_curve[curr_size:] = partial_curve.max()
+
+    # covered by worst case analysis
+    full_curve[worst_case_indices] = 1.0
+    return full_curve
+
+
 def risk_plots(example, cfg):
-    markers = ['o', 's', '<', 'D']
-    cmap = plt.cm.Set1
-    colors = cmap.colors
     accuracies = get_accs(cfg)
-    eval_iters = int(cfg.eval_iters)
+    eval_iters = int(cfg.get('worst_case_iters', cfg.eval_iters))
     cold_start_results, guarantee_results = get_frac_solved_data_classical(example, cfg)
 
     cold_start_size = cold_start_results[-1].size
     steps = get_steps(cold_start_size, eval_iters, cfg.worst_case)
 
-    if cfg.worst_case:
-        z_star_max, theta_max = get_worst_case_datetime(example, cfg)
+    # if cfg.worst_case:
+    z_star_max, theta_max = get_worst_case_datetime(example, cfg)
+
+    acc_list, bounds_list_list = [], []
+    cold_start_list, worst_list = [], []
 
     for i in range(len(accuracies)):
         acc = accuracies[i]
-        mark_start = titles_2_marker_starts['cold_start']
+        worst_case_indices = get_worse_indices(z_star_max, steps, acc)
         if cfg.worst_case:
-            curr_curve = np.zeros(steps.size)
-            curr_size = cold_start_results[i].size
-
-            # prob bounds
-            curr_curve[:curr_size] = cold_start_results[i] #[:cfg.eval_iters]
-
-            # worst-case bounds
-            indices = 1 / np.sqrt(steps + 2) * z_star_max * 1.1 < acc
-
-            curr_curve[curr_size:] = cold_start_results[i].max()
-
-            curr_curve[indices] = 1.0
+            cold_start_curve = construct_full_curve(cold_start_results[i], steps, worst_case_indices)
         else:
-            curr_curve = cold_start_results[i][:eval_iters]
+            cold_start_curve = cold_start_results[i][:eval_iters]
 
-        plt.plot(steps,
-                curr_curve, 
+        if cfg.worst_case:
+            worst_case_curve = np.zeros(steps.size)
+            worst_case_curve[worst_case_indices] = 1.0
+        else:
+            worst_case_curve = None
+
+        # plot the bounds
+        curr_pac_bayes_results = guarantee_results[i]
+        bounds_list = []
+        for j in range(len(curr_pac_bayes_results)):
+            if cfg.worst_case:
+                curr_curve = construct_full_curve(curr_pac_bayes_results[j], 
+                                                 steps, worst_case_indices)
+            else:
+                curr_curve = curr_pac_bayes_results[j]
+            bounds_list.append(curr_curve)
+        if acc in [0.1, 0.01, 0.001]:
+            plot_final_classical_risk_bounds(acc, steps, bounds_list, cold_start_curve, 
+                                            worst_case_curve, cfg.worst_case, cfg.custom_loss)
+        
+            acc_list.append(acc)
+            bounds_list_list.append(bounds_list)
+            cold_start_list.append(cold_start_curve)
+            worst_list.append(worst_case_curve)
+    plot_final_classical_risk_bounds_together(acc_list, steps, bounds_list_list, cold_start_list,
+                                     worst_list, cfg.worst_case, cfg.custom_loss)
+
+
+def plot_final_classical_risk_bounds_together(acc_list, steps, bounds_list_list, cold_start_list,
+                                     worst_list, worst_case, custom_loss):
+    markers = ['o', 's', '<', 'D']
+    cmap = plt.cm.Set1
+    colors = cmap.colors
+    fig, axes = plt.subplots(nrows=1, ncols=len(acc_list), figsize=(20, 5), sharey='row')
+
+    fontsize = 30
+    title_fontsize = 30
+
+    # y-label
+    ylabel = r'$1 - r_{\mathcal{X}}$'
+    axes[0].set_ylabel(ylabel, fontsize=fontsize)
+
+    for k in range(len(acc_list)):
+        loc = len(acc_list) - 1 - k
+        acc = acc_list[k]
+        bounds_list = bounds_list_list[k]
+        cold_start = cold_start_list[k]
+        worst = worst_list[k]
+
+        num_bounds = len(bounds_list)
+        for j in range(num_bounds):
+            axes[loc].plot(steps, bounds_list[j], 
+                            color=colors[j], 
+                            alpha=0.6,
+                            markevery=0.1,
+                            marker=markers[j])
+        axes[loc].plot(steps,
+                    cold_start, 
+                    linestyle=titles_2_styles['cold_start'], 
+                    color=titles_2_colors['cold_start'],
+                    marker=titles_2_markers['cold_start'],
+                    linewidth=2.0,
+                    markevery=(0.05, 0.1)
+                    )
+        if worst_case:
+            axes[loc].plot(steps,
+                        worst, 
+                        linestyle=titles_2_styles['nearest_neighbor'], 
+                        color=titles_2_colors['nearest_neighbor'],
+                        marker=titles_2_markers['nearest_neighbor'],
+                        linewidth=2.0,
+                        markevery=(0.05, 0.1)
+                        )
+        axes[loc].set_xlabel('evaluation steps', fontsize=fontsize)
+        
+        if custom_loss:
+            title = r'max Euclidean distance: $\epsilon={}$'.format(acc)
+        else:
+            title = r'fixed-point residual: $\epsilon={}$'.format(acc)
+        axes[loc].set_title(title, fontsize=title_fontsize)
+        if worst_case:
+            axes[k].set_xscale('log')
+    plt.tight_layout()
+    plt.savefig("risk_together.pdf", bbox_inches='tight')
+    plt.clf()
+
+
+def plot_final_classical_risk_bounds(acc, steps, bounds_list, cold_start, worst, 
+                                     worst_case, custom_loss):
+    markers = ['o', 's', '<', 'D']
+    cmap = plt.cm.Set1
+    colors = cmap.colors
+    num_bounds = len(bounds_list)
+    for j in range(num_bounds):
+        plt.plot(steps, bounds_list[j], 
+                        color=colors[j], 
+                        alpha=0.6,
+                        markevery=0.1,
+                        marker=markers[j])
+    plt.plot(steps,
+                cold_start, 
                 linestyle=titles_2_styles['cold_start'], 
                 color=titles_2_colors['cold_start'],
                 marker=titles_2_markers['cold_start'],
                 linewidth=2.0,
                 markevery=(0.05, 0.1)
                 )
-        if cfg.worst_case:
-            worst_case_curve = np.zeros(steps.size)
-            worst_case_curve[indices] = 1.0
-
-            plt.plot(steps,
-                    worst_case_curve, 
+    if worst_case:
+        plt.plot(steps,
+                    worst, 
                     linestyle=titles_2_styles['nearest_neighbor'], 
                     color=titles_2_colors['nearest_neighbor'],
                     marker=titles_2_markers['nearest_neighbor'],
                     linewidth=2.0,
                     markevery=(0.05, 0.1)
                     )
-
-        # plot the bounds
-        acc = accuracies[i]
-        curr_pac_bayes_results = guarantee_results[i]
-        for j in range(len(curr_pac_bayes_results)):
-            if cfg.worst_case:
-                curr_curve = np.zeros(steps.size)
-                curr_size = curr_pac_bayes_results[j].size
-
-                # prob bounds
-                curr_curve[:curr_size] = curr_pac_bayes_results[j] #[:cfg.eval_iters]
-
-                # worst-case bounds
-                indices = 1 / np.sqrt(steps + 2) * z_star_max * 1.1 < acc
-
-                curr_curve[curr_size:] = curr_pac_bayes_results[j].max()
-
-                curr_curve[indices] = 1.0
-            else:
-                curr_curve = curr_pac_bayes_results[j]
-            plt.plot(steps,
-                curr_curve, 
-                        color=colors[j], 
-                        alpha=0.6,
-                        markevery=0.1,
-                        marker=markers[j])
-        plt.tight_layout()
-        plt.xlabel('evaluation steps')
-        if cfg.worst_case:
-            ylabel = f"frac. at {acc} fp. res."
-        else:
-            if example == 'robust_kalman':
-                ylabel = f"frac. at max radius of {acc}"
-        plt.ylabel(ylabel)
-        if cfg.worst_case:
-            plt.xscale('log')
-        plt.savefig(f"acc_{acc}.pdf", bbox_inches='tight')
-        plt.clf()
-        # pep()
-
-
-def plot_final_classical_bounds(steps, bounds_list, cold_start, worst):
-    markers = ['o', 's', '<', 'D']
-    cmap = plt.cm.Set1
-    colors = cmap.colors
-
+    plt.tight_layout()
+    plt.xlabel('evaluation steps')
+    ylabel = r'$1 - r_{\mathcal{X}}$'
+    plt.ylabel(ylabel)
+    if custom_loss:
+        title = r'max Euclidean distance: $\epsilon={}$'.format(acc)
+    else:
+        title = r'fixed-point residual: $\epsilon={}$'.format(acc)
+    plt.title(title)
+    if worst_case:
+        plt.xscale('log')
+    plt.savefig(f"acc_{acc}.pdf", bbox_inches='tight')
+    plt.clf()
 
 
 def get_accs(cfg):
     accuracies = cfg.accuracies
     if accuracies == 'fp_full':
-        start = -4  # Start of the log range (log10(10^-5))
+        start = -6  # Start of the log range (log10(10^-5))
         end = 2  # End of the log range (log10(1))
-        accuracies = list(np.round(np.logspace(start, end, num=61), 6))
+        accuracies = list(np.round(np.logspace(start, end, num=81), 6))
     return accuracies
 
 
@@ -480,27 +569,102 @@ def percentile_plots(example, cfg):
     percentiles = cfg.get('percentiles', [30, 90, 99])
     corrected_indices = [0, 2, 4]
     worst = z_star_max / np.sqrt(steps1 + 2)
+
+    cold_start_quantile_list, worst_list = [], []
+    bounds_list_list, plot_bool_list_list = [], []
+    
     for i in range(len(percentiles)):
         percentile = percentiles[i]
         bounds_list = []
+        plot_bool_list = []
         for j in range(num_N):
             curr_bound = get_quantile(e_stars[j, :, :], percentile, eval_iters, worst, accuracies)
             bounds_list.append(curr_bound)
+            if cfg.custom_loss and e_stars[j, :, :].max() < percentile / 100:
+                plot_bool_list.append(False)
+            else:
+                plot_bool_list.append(True)
         correct_index = corrected_indices[i]
         cold_start_quantile = percentile_results[correct_index]
-        percentile_final_plots(percentile, cold_start_quantile, worst, bounds_list)
+        
+        percentile_final_plots(percentile, cold_start_quantile, worst, 
+                            bounds_list, cfg.custom_loss, plot_bool_list, 
+                            cfg.percentile_ylabel)
+        cold_start_quantile_list.append(cold_start_quantile)
+        worst_list.append(worst)
+        bounds_list_list.append(bounds_list)
+        plot_bool_list_list.append(plot_bool_list)
+    percentile_final_plots_together(percentiles, cold_start_quantile_list, worst_list, 
+                            bounds_list_list, cfg.custom_loss, plot_bool_list_list, 
+                            cfg.percentile_ylabel)
 
 
+def percentile_final_plots_together(percentiles, cold_start_quantile_list, worst_list, 
+                            bounds_list_list, custom_loss, plot_bool_list_list, 
+                            ylabel):
+    markers = ['o', 's', '<', 'D']
+    cmap = plt.cm.Set1
+    colors = cmap.colors
+    offsets = [0, .03, .06]
+    fig, axes = plt.subplots(nrows=1, ncols=len(percentiles), figsize=(20, 5), sharey='row')
+    # axes[0].set_ylabel(ylabel)
 
-def percentile_final_plots(percentile, cold_start_quantile, worst, bounds_list):
+    fontsize = 30
+    title_fontsize = 30
+
+    # y-label
+    axes[0].set_ylabel(ylabel, fontsize=fontsize)
+
+    for k in range(len(percentiles)):
+        percentile = percentiles[k]
+        bounds_list = bounds_list_list[k]
+        cold_start_quantile = cold_start_quantile_list[k]
+        worst = worst_list[k]
+        plot_bool_list = plot_bool_list_list[k]
+
+        loc = k
+        num_N = len(bounds_list)
+        for j in range(num_N):
+            curr = bounds_list[j]
+            if plot_bool_list[j]:
+                axes[loc].plot(curr, color=colors[j], marker=markers[j], 
+                            alpha=0.6, markevery=(0.00 + offsets[j], 0.1))
+                
+        axes[loc].plot(cold_start_quantile, 
+                    titles_2_colors['cold_start'], 
+                    linestyle=titles_2_styles['cold_start'],
+                    marker=titles_2_markers['cold_start'],
+                    markevery=(0.05, 0.1))
+
+        # plot the worst case
+        if not custom_loss:
+            axes[loc].plot(worst, 
+                        color=titles_2_colors['nearest_neighbor'], 
+                        linestyle=titles_2_styles['nearest_neighbor'],
+                        marker=titles_2_markers['nearest_neighbor'],
+                        markevery=(0.05, 0.1))
+        axes[k].set_yscale('log')
+        axes[k].set_xlabel('evaluation steps', fontsize=fontsize)
+        # axes[k].set_ylabel(ylabel)
+
+        axes[loc].set_title(r'${}$th quantile bound'.format(percentile), fontsize=title_fontsize)
+        
+    plt.tight_layout()
+    plt.savefig(f"percentile_together.pdf", bbox_inches='tight')
+    plt.clf()
+
+
+def percentile_final_plots(percentile, cold_start_quantile, worst, bounds_list, 
+                           custom_loss, plot_bool_list, ylabel):
     markers = ['o', 's', '<', 'D']
     colors = plt.cm.Set1.colors
     offsets = [0, .03, .06]
     num_N = len(bounds_list)
     for j in range(num_N):
-        curr = bounds_list[j] #get_quantile(e_stars[j, :, :], percentile, eval_iters, worst, accuracies)
-        plt.plot(curr, color=colors[j], marker=markers[j], 
-                    alpha=0.6, markevery=(0.00 + offsets[j], 0.1))
+        curr = bounds_list[j]
+        if plot_bool_list[j]:
+            plt.plot(curr, color=colors[j], marker=markers[j], 
+                        alpha=0.6, markevery=(0.00 + offsets[j], 0.1))
             
     plt.plot(cold_start_quantile, 
                  titles_2_colors['cold_start'], 
@@ -509,14 +673,15 @@ def percentile_final_plots(percentile, cold_start_quantile, worst, bounds_list):
                  markevery=(0.05, 0.1))
 
     # plot the worst case
-    plt.plot(worst, 
-                color=titles_2_colors['nearest_neighbor'], 
-                linestyle=titles_2_styles['nearest_neighbor'],
-                marker=titles_2_markers['nearest_neighbor'],
-                markevery=(0.05, 0.1))
+    if not custom_loss:
+        plt.plot(worst, 
+                    color=titles_2_colors['nearest_neighbor'], 
+                    linestyle=titles_2_styles['nearest_neighbor'],
+                    marker=titles_2_markers['nearest_neighbor'],
+                    markevery=(0.05, 0.1))
     plt.yscale('log')
     plt.xlabel('evaluation steps')
-    plt.ylabel('fixed-point residual')
+    plt.ylabel(ylabel)
 
     plt.title(r'${}$th quantile bound'.format(percentile))
     plt.savefig(f"percentile_{percentile}.pdf", bbox_inches='tight')
