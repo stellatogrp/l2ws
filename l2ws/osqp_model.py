@@ -24,6 +24,9 @@ class OSQPmodel(L2WSmodel):
         self.alpha = input_dict.get('alpha', 1)
         self.output_size = self.n + self.m
 
+        # custom_loss
+        custom_loss = input_dict.get('custom_loss')
+
         """
         break into the 2 cases
         1. factors are the same for each problem (i.e. matrices A and P don't change)
@@ -39,7 +42,8 @@ class OSQPmodel(L2WSmodel):
             self.k_steps_train_fn = partial(
                 k_steps_train_osqp, A=self.A, rho=self.rho, sigma=self.sigma, jit=self.jit)
             self.k_steps_eval_fn = partial(k_steps_eval_osqp, P=self.P,
-                                           A=self.A, rho=self.rho, sigma=self.sigma, jit=self.jit)
+                                           A=self.A, rho=self.rho, sigma=self.sigma, jit=self.jit, 
+                                           custom_loss=custom_loss)
         else:
             self.k_steps_train_fn = self.create_k_steps_train_fn_dynamic()
             self.k_steps_eval_fn = self.create_k_steps_eval_fn_dynamic()

@@ -31,9 +31,9 @@ test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 2
 
-N_train: 1000
-N_test: 1000
-num_samples: 100
+N_train: 10
+N_test: 10
+num_samples: 10
 
 
 prediction_variable: w
@@ -96,6 +96,8 @@ pac_bayes_cfg:
   penalty_coeff: 0.6
   deterministic: False
   target_pen: 0.3
+
+custom_loss: True
 
 # output_datetimes: 
 # fp: ['2023-09-01/14-20-37', 

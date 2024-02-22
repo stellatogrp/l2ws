@@ -77,6 +77,7 @@ def run(run_cfg):
     
     vis_fn = partial(custom_visualize_fn, figsize=img_size**2, deblur_or_denoise=deblur_or_denoise)
     workspace = Workspace(algo, run_cfg, static_flag, static_dict, example, 
+                          custom_loss=image_deblurring_loss,
                           custom_visualize_fn=vis_fn)
 
     # run the workspace
@@ -191,6 +192,18 @@ def setup_probs(setup_cfg):
 
         # plt.legend()
         plt.savefig(f"images/blur_img_{i}.pdf")
+
+
+def image_deblurring_loss(z_next, z_star):
+    # image_diff = jnp.abs(z_next[:784] - z_star[:784])
+    # return jnp.max(image_diff)
+    return jnp.linalg.norm(z_next[:784] - z_star[:784])
+    
+    # x_mat = jnp.reshape(z_next[:2 * T], (T, 2))
+    # x_star_mat = jnp.reshape(z_star[:T * 2], (T, 2))
+    # norms = jnp.linalg.norm(x_mat - x_star_mat, axis=1)
+    # max_norm = jnp.max(norms)
+    # return max_norm
 
 
 def get_q_mat(img_matrix, prob, img_param, m, n, B):

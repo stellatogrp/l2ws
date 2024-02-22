@@ -74,9 +74,9 @@ class Workspace:
 
         pac_bayes_accs = pac_bayes_cfg.get('frac_solved_accs', [0.1, 0.01, 0.001, 0.0001])
         if pac_bayes_accs == 'fp_full':
-            start = -4  # Start of the log range (log10(10^-5))
+            start = -6  # Start of the log range (log10(10^-5))
             end = 2  # End of the log range (log10(1))
-            pac_bayes_accs = list(np.round(np.logspace(start, end, num=61), 6))
+            pac_bayes_accs = list(np.round(np.logspace(start, end, num=81), 6))
         self.frac_solved_accs = pac_bayes_accs
         self.rep = pac_bayes_cfg.get('rep', True)
         self.sigma_nn_grid = np.array(cfg.get('sigma_nn', []))
@@ -498,6 +498,7 @@ class Workspace:
                               m=m,
                               n=n,
                               factor=factor,
+                              custom_loss=self.custom_loss,
                             #   train_inputs=self.train_inputs,
                             #   test_inputs=self.test_inputs,
                             #   train_unrolls=self.train_unrolls,
@@ -562,6 +563,7 @@ class Workspace:
                               test_inputs=self.test_inputs,
                               factors_train=self.factors_train,
                               factors_test=self.factors_test,
+                              custom_loss=self.custom_loss,
                             #   train_unrolls=self.train_unrolls,
                             #   eval_unrolls=self.eval_unrolls,
                             #   nn_cfg=cfg.nn_cfg,
@@ -1825,6 +1827,10 @@ class Workspace:
         if train:
             if col != 'nearest_neighbor' and col != 'no_train' and col != 'prev_sol':
                 self.custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn,
+                                         thetas, self.iterates_visualize, visual_path)
+            else:
+                # try plotting
+                self.custom_visualize_fn(z_all, z_stars, z_no_learn, None,
                                          thetas, self.iterates_visualize, visual_path)
         else:
             if col != 'nearest_neighbor' and col != 'no_train' and col != 'prev_sol':

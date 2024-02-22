@@ -76,7 +76,7 @@ pac_bayes_cfg:
   penalty_coeff: 0.6
   deterministic: False
   target_pen: 0.3
-  frac_solved_accs: [0.1, 0.01, 0.03, 0.001, 0.0001] #fp_full #[0.1, 0.01, 0.03, 0.001, 0.0001]
+  frac_solved_accs: fp_full #[0.1, 0.01, 0.03, 0.001, 0.0001] #fp_full #fp_full #[0.1, 0.01, 0.03, 0.001, 0.0001]
 
 # output_datetimes: 
 # 8/2
