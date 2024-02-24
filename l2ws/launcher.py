@@ -73,10 +73,16 @@ class Workspace:
         pac_bayes_cfg = cfg.get('pac_bayes_cfg', {})
 
         pac_bayes_accs = pac_bayes_cfg.get('frac_solved_accs', [0.1, 0.01, 0.001, 0.0001])
+        self.nmse = False
         if pac_bayes_accs == 'fp_full':
             start = -6  # Start of the log range (log10(10^-5))
             end = 2  # End of the log range (log10(1))
             pac_bayes_accs = list(np.round(np.logspace(start, end, num=81), 6))
+        elif pac_bayes_accs == 'nmse_full':
+            start = 0
+            end = -80
+            self.nmse = True
+            pac_bayes_accs = list(np.round(np.linspace(start, end, num=81), 6))
         self.frac_solved_accs = pac_bayes_accs
         self.rep = pac_bayes_cfg.get('rep', True)
         self.sigma_nn_grid = np.array(cfg.get('sigma_nn', []))
@@ -1193,6 +1199,8 @@ class Workspace:
         losses_over_examples = out_train[1].T
         
         yscalelog = False if self.l2ws_model.algo in ['glista', 'lista_cpss', 'lista', 'alista', 'tilista'] else True
+        if min(self.frac_solved_accs) < 0:
+            yscalelog = False
         self.plot_losses_over_examples(losses_over_examples, train, col, yscalelog=yscalelog)
 
         # update the eval csv files
@@ -2332,7 +2340,7 @@ class Workspace:
         self.percentiles_df_list_test = []
         for i in range(len(self.percentiles)):
             self.percentiles_df_list_train.append(pd.DataFrame(columns=['iterations']))
-        for i in range(len(self.frac_solved_accs)):
+        for i in range(len(self.percentiles)):
             self.percentiles_df_list_test.append(pd.DataFrame(columns=['iterations']))
 
     def train_full(self):
@@ -2566,6 +2574,8 @@ class Workspace:
         # self.plot_eval_iters_df(curr_df, train, col, ylabel, filename, yscale=yscale, 
             #                         pac_bayes=True)
         yscale = 'standard' if self.l2ws_model.algo in ['glista', 'lista_cpss', 'lista', 'alista', 'tilista'] else 'log'
+        if self.nmse:
+            yscale = 'standard'
         self.plot_eval_iters_df(iters_df, train, col, 'fixed point residual', 'eval_iters', yscale=yscale)
         if primal_residuals_df is not None:
             self.plot_eval_iters_df(primal_residuals_df, train, col,

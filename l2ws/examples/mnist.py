@@ -77,7 +77,7 @@ def run(run_cfg):
     
     vis_fn = partial(custom_visualize_fn, figsize=img_size**2, deblur_or_denoise=deblur_or_denoise)
     workspace = Workspace(algo, run_cfg, static_flag, static_dict, example, 
-                          custom_loss=image_deblurring_loss,
+                          custom_loss=nmse_decibel,#image_deblurring_loss,
                           custom_visualize_fn=vis_fn)
 
     # run the workspace
@@ -521,7 +521,15 @@ def custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn, thetas, iterates, visu
                 x_star = z_stars[i, :figsize]
                 blurred_img_vec = thetas[i, :figsize]
                 x_no_learn = z_no_learn[i, steps, :figsize]
-                x_nn = z_nn[i, steps, :figsize]
+                # x_nn = z_nn[i, steps, :figsize]
+                # noise = jnp.array(np.random.normal(size=(figsize)))
+                # normalized_noise = noise / jnp.linalg.norm(noise) * 2.0
+                # print(steps, jnp.linalg.norm(x_no_learn - x_star))
+                # import pdb
+                # pdb.set_trace()
+                # x_nn = z_stars[i, :figsize] + normalized_noise
+                # diffs = 
+                # x_nn = 
                 x_learn = z_all[i, steps, :figsize]
             elif deblur_or_denoise == 'denoise':
                 base = 1458
@@ -578,6 +586,10 @@ def custom_visualize_fn(z_all, z_stars, z_no_learn, z_nn, thetas, iterates, visu
         x_nns = z_nn[indices, steps, :figsize]
         x_learns = z_all[indices, steps, :figsize]
         plot_mult_mnist_img(x_stars, blurred_img_vecs, x_no_learns, x_nns, x_learns, filename, figsize=figsize)
+
+
+def nmse_decibel(z, z_star):
+    return 10 * jnp.log(jnp.linalg.norm(z[:784] - z_star[:784]) ** 2 / jnp.linalg.norm(z_star[:784]) ** 2)
 
 
 def plot_mult_mnist_img(x_stars, blurred_img_vecs, x_no_learns, x_nns, x_learns, filename, figsize=784):
@@ -644,7 +656,7 @@ def plot_mult_mnist_img(x_stars, blurred_img_vecs, x_no_learns, x_nns, x_learns,
 def plot_mnist_img(x_star, blurred_img_vec, x_no_learn, x_nn, x_learn, filename, figsize=784):
     img_size = int(np.sqrt(figsize))
 
-    f, axarr = plt.subplots(1, 5)
+    f, axarr = plt.subplots(1, 4) #plt.subplots(1, 5)
 
     # get the clean image (optimal solution) from x_stars
     opt_img = np.reshape(x_star, (img_size, img_size))
@@ -667,14 +679,14 @@ def plot_mnist_img(x_star, blurred_img_vec, x_no_learn, x_nn, x_learn, filename,
     # nearest neighbor
     nearest_neighbor_img = np.reshape(x_nn, (img_size, img_size))
     axarr[3].imshow(nearest_neighbor_img, cmap=plt.get_cmap('gray'))
-    axarr[3].set_title('nearest \n neighbor')
+    axarr[3].set_title('sample bound')
     axarr[3].axis('off')
 
     # learned
-    learned_img = np.reshape(x_learn, (img_size, img_size))
-    axarr[4].imshow(learned_img, cmap=plt.get_cmap('gray'))
-    axarr[4].set_title('learned\n')
-    axarr[4].axis('off')
+    # learned_img = np.reshape(x_learn, (img_size, img_size))
+    # axarr[4].imshow(learned_img, cmap=plt.get_cmap('gray'))
+    # axarr[4].set_title('learned\n')
+    # axarr[4].axis('off')
 
     plt.tight_layout()
     plt.savefig(filename, bbox_inches='tight')

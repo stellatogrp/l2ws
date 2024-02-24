@@ -184,7 +184,8 @@ def single_rollout_theta(rollout_length, T, sigma, p, gamma, dt, w_noise_var, y_
 
     thetas = jnp.zeros((N, 2*T))
     for i in range(N):
-        theta = jnp.ravel(y_mat_rotated[i, :, :].T)
+        # theta = jnp.ravel(y_mat_rotated[i, :, :].T)
+        theta = jnp.ravel(y_mat[i, :, :].T)
         thetas = thetas.at[i, :].set(theta)
 
     # w_trues = w
@@ -493,7 +494,7 @@ def plot_positions_overlay(traj, labels, num_dots=2, grayscales=[.8, .3, 1.0, 0.
     plt.clf()
 
 
-def plot_positions_overlay_genL2O(noisy, optimal, num_dots=2, grayscales=[.8, .3, 1.0, 0.7, 1.0], axis=None, filename=None, legend=False, noise_only=False):
+def plot_positions_overlay_genL2O(noisy, optimal, cold, num_dots=2, grayscales=[.8, .3, 1.0, 0.7, 1.0], axis=None, filename=None, legend=False, noise_only=False):
     '''
     show point clouds for true, observed, and recovered positions
 
@@ -516,11 +517,16 @@ def plot_positions_overlay_genL2O(noisy, optimal, num_dots=2, grayscales=[.8, .3
 
     fig, ax = plt.subplots(figsize=(6, 6))
 
+    markersize = 2.0
+
     # plot noisy
-    ax.plot(noisy[0, :], noisy[1, :], 'o', color=colors[0], alpha=1.0, markersize=1.2)
+    ax.plot(noisy[0, :], noisy[1, :], 'o', color=colors[0], alpha=1.0, markersize=markersize)
 
     # plot optimal
-    ax.plot(optimal[0, :], optimal[1, :], 'o', color=colors[1], alpha=1.0, markersize=1.2)
+    ax.plot(optimal[0, :], optimal[1, :], 'o', color=colors[1], alpha=1.0, markersize=markersize)
+
+    # plot cold
+    ax.plot(cold[0, :], cold[1, :], 'o', color=colors[4], alpha=1.0, markersize=markersize)
 
     # plot shaded region
     # plt.plot(optimal[0, :], optimal[1, :], 'o', color=colors[i], alpha=1.0, label=labels[i], markersize=1)
@@ -536,20 +542,15 @@ def plot_positions_overlay_genL2O(noisy, optimal, num_dots=2, grayscales=[.8, .3
         circle = Circle((optimal[0, i], optimal[1, i]), radius, color=colors[3], alpha=0.2)
         ax.add_patch(circle)
 
-        circle = Circle((optimal[0, i], optimal[1, i]), radius2, color=colors[4], alpha=0.2)
-        ax.add_patch(circle)
+        # circle = Circle((optimal[0, i], optimal[1, i]), radius2, color=colors[4], alpha=0.2)
+        # ax.add_patch(circle)
 
     x_min, x_max, y_min, y_max = adjust_xy_min_max(noisy[0,:].min(), noisy[0,:].max(), noisy[1,:].min(), noisy[1,:].max())
     ax.set_xlim([x_min, x_max])
     ax.set_ylim([y_min, y_max])
 
 
-
-
-
-
-
-    axins = inset_axes(ax, width="30%", height="30%", loc='lower left',
+    axins = inset_axes(ax, width="40%", height="40%", loc='lower left',
                    bbox_to_anchor=(0.0, 0.0, 1.0, 1.0),
                    bbox_transform=ax.transAxes)
 
@@ -557,8 +558,10 @@ def plot_positions_overlay_genL2O(noisy, optimal, num_dots=2, grayscales=[.8, .3
     # ax.set_xlim([xmin, xmax])
     # ax.set_ylim([ymin, ymax])
     # Plot the same data on inset
-    axins.plot(noisy[0, :], noisy[1, :], 'o', color=colors[0], alpha=1.0, markersize=3)
-    axins.plot(optimal[0, :], optimal[1, :], 'o', color=colors[1], alpha=1.0, markersize=3)
+    inset_markersize = 7
+    axins.plot(noisy[0, :], noisy[1, :], 'o', color=colors[0], alpha=1.0, markersize=inset_markersize)
+    axins.plot(optimal[0, :], optimal[1, :], 'o', color=colors[1], alpha=1.0, markersize=inset_markersize)
+    axins.plot(cold[0, :], cold[1, :], 'o', color=colors[4], alpha=1.0, markersize=inset_markersize)
 
     # Specify the region for zooming (can adjust as necessary)
     # x1, x2, y1, y2 = -0.2, 0.2, -0.2, 0.2  # Define zoom boundaries here
@@ -576,8 +579,8 @@ def plot_positions_overlay_genL2O(noisy, optimal, num_dots=2, grayscales=[.8, .3
             circle = Circle((optimal[0, i], optimal[1, i]), radius, color=colors[3], alpha=0.2)
             axins.add_patch(circle)
 
-            circle = Circle((optimal[0, i], optimal[1, i]), radius2, color=colors[4], alpha=0.2)
-            axins.add_patch(circle)
+            # circle = Circle((optimal[0, i], optimal[1, i]), radius2, color=colors[4], alpha=0.2)
+            # axins.add_patch(circle)
     axins.set_xticks([])
     axins.set_yticks([])
     ax.set_xticks([])
@@ -1043,23 +1046,25 @@ def compile_outs(outs):
     return thetas_np, y_mat, x_trues, w_trues, y_mat_rotated, x_trues_rotated, w_trues_rot, angles
 
 
-def custom_visualize_fn(x_primals, x_stars, x_prev_sol, x_nn, thetas, iterates, visual_path, T, num=20):
+def custom_visualize_fn(x_primals, x_stars, x_prev_sol, x_nn, thetas, iterates, visual_path, T, num=50):
     """
     assume len(iterates) == 1 for now
         point is to compare no-learning vs learned for 20 iterations
     """
-    # assert len(iterates) == 1
+    assert len(iterates) == 1
+    num = np.min([x_stars.shape[0], num])
     # num = np.min([x_prev_sol.shape[0], num])
-    # y_mat_rotated = jnp.reshape(thetas[:num, :], (num, T, 2))
-    # for i in range(num):
+
+    y_mat_rotated = jnp.reshape(thetas[:num, :], (num, T, 2))
+    for i in range(num):
     #     titles = ['optimal solution', 'noisy trajectory']
     #     x_true_kalman = get_x_kalman_from_x_primal(x_stars[i, :], T)
     #     traj = [x_true_kalman, y_mat_rotated[i, :].T]
 
-    #     for j in range(len(iterates)):
-    #         iter = iterates[j]
+        for j in range(len(iterates)):
+            iter = iterates[j]
     #         x_prev_sol_kalman = get_x_kalman_from_x_primal(x_prev_sol[i, iter, :], T)
-    #         x_hat_kalman = get_x_kalman_from_x_primal(x_primals[i, iter, :], T)
+            x_hat_kalman = get_x_kalman_from_x_primal(x_primals[i, iter, :], T)
     #         x_nn_kalman = get_x_kalman_from_x_primal(x_nn[i, iter, :], T)
     #         traj.append(x_prev_sol_kalman)
     #         traj.append(x_nn_kalman)
@@ -1071,10 +1076,10 @@ def custom_visualize_fn(x_primals, x_stars, x_prev_sol, x_nn, thetas, iterates, 
 
     #     plot_positions_overlay(traj, titles, filename=f"{visual_path}/positions_{i}_rotated_legend.pdf", legend=True)
     #     plot_positions_overlay(traj, titles, filename=f"{visual_path}/positions_{i}_rotated.pdf", legend=False)
-    noisy = jnp.reshape(thetas[:num, :], (num, T, 2))
-    optimal = get_x_kalman_from_x_primal(x_stars[i, :], T)
-    cold = None
-    plot_positions_overlay_genL2O(noisy, optimal, cold, filename=f"{visual_path}/positions_{i}_rotated.pdf")
+            noisy = y_mat_rotated[i, :].T #jnp.reshape(thetas[i, :], (num, T, 2))
+            optimal = get_x_kalman_from_x_primal(x_stars[i, :], T)
+            cold = x_hat_kalman
+            plot_positions_overlay_genL2O(noisy, optimal, cold, filename=f"{visual_path}/positions_{i}_rotated.pdf")
 
 
 def get_x_kalman_from_x_primal(x_primal, T):

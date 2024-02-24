@@ -46,7 +46,7 @@ normalize_inputs: True
 normalize_alpha: 'other'
 epochs_jit: 2
 accuracies: [1, .1, .03, .01, .001, .0001]
-iterates_visualize: [5]
+iterates_visualize: [15]
 
 rho_x: 1
 scale: 1
@@ -57,7 +57,7 @@ alpha_relax: 1
 save_weights_flag: True
 # load_weights_datetime: '2023-12-31/14-54-18'
 # nn_load_type: stochastic
-vis_num: 0
+vis_num: 25
 supervised: False
 train_unrolls: 15
 skip_startup: False
@@ -76,7 +76,7 @@ pac_bayes_cfg:
   penalty_coeff: 0.6
   deterministic: False
   target_pen: 0.3
-  frac_solved_accs: fp_full #[0.1, 0.01, 0.03, 0.001, 0.0001] #fp_full #fp_full #[0.1, 0.01, 0.03, 0.001, 0.0001]
+  frac_solved_accs: [0.1, 0.01, 0.001, 0.0001] #fp_full #fp_full #[0.1, 0.01, 0.03, 0.001, 0.0001]
 
 # output_datetimes: 
 # 8/2
