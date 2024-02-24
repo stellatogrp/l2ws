@@ -469,7 +469,7 @@ def plot_final_classical_risk_bounds_together(example, acc_list, steps, bounds_l
             if example == 'robust_kalman':
                 title = r'max Euclidean distance: $\epsilon={}$'.format(acc)
             elif example == 'mnist':
-                title = r'dist. to original image: $\epsilon={}$'.format(np.round(acc, 1))
+                title = r'NMSE (dB): $\epsilon={}$'.format(np.round(acc, 1))
         else:
             title = r'fixed-point residual: $\epsilon={}$'.format(acc)
         axes[loc].set_title(title, fontsize=title_fontsize)
@@ -530,6 +530,10 @@ def get_accs(cfg):
         start = -6  # Start of the log range (log10(10^-5))
         end = 2  # End of the log range (log10(1))
         accuracies = list(np.round(np.logspace(start, end, num=81), 6))
+    if accuracies == 'nmse_full':
+        start = -80  # Start of the log range (log10(10^-5))
+        end = 0  # End of the log range (log10(1))
+        accuracies = list(np.round(np.linspace(start, end, num=81), 6))
     return accuracies
 
 
@@ -547,6 +551,7 @@ def get_quantile(e_stars, percentile, eval_iters, worst, accuracies):
     quantile_curve = np.zeros(eval_iters)
     for k in range(eval_iters):
         where = np.where(e_stars[:,k] > percentile / 100)[0]
+        print('where', where)
         if where.size == 0:
             quantile_curve[k] = min(max(accuracies), worst[k])
         else:
@@ -567,6 +572,7 @@ def percentile_plots(example, cfg):
     # fill in e_star tensor
     num_N = len(guarantee_results[0])
     e_stars = get_e_stars(guarantee_results, accuracies, eval_iters)
+    print('e_stars', e_stars.max(), e_stars)
 
     # orig_percentiles = [30, 50, 90, 95, 99]
     percentiles = cfg.get('percentiles', [30, 90, 99])
@@ -618,7 +624,7 @@ def percentile_final_plots_together(example, percentiles, cold_start_quantile_li
         if example == 'robust_kalman':
             ylabel = 'max Euclidean dist.'
         elif example == 'mnist':
-            ylabel = 'dist. to original image'
+            ylabel = 'NMSE (dB)'
     else:
         ylabel = 'fixed-point residual'
     axes[0].set_ylabel(ylabel, fontsize=fontsize)
@@ -651,7 +657,8 @@ def percentile_final_plots_together(example, percentiles, cold_start_quantile_li
                         linestyle=titles_2_styles['nearest_neighbor'],
                         marker=titles_2_markers['nearest_neighbor'],
                         markevery=(0.05, 0.1))
-        axes[k].set_yscale('log')
+        if cold_start_quantile.min() > 0:
+            axes[k].set_yscale('log')
         axes[k].set_xlabel('evaluation steps', fontsize=fontsize)
         # axes[k].set_ylabel(ylabel)
 
@@ -687,7 +694,8 @@ def percentile_final_plots(percentile, cold_start_quantile, worst, bounds_list,
                     linestyle=titles_2_styles['nearest_neighbor'],
                     marker=titles_2_markers['nearest_neighbor'],
                     markevery=(0.05, 0.1))
-    plt.yscale('log')
+    if cold_start_quantile.min() > 0:
+        plt.yscale('log')
     plt.xlabel('evaluation steps')
     plt.ylabel(ylabel)
 
