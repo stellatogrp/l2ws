@@ -51,7 +51,8 @@ class L2WSmodel(object):
         self.sigma = 0.01
         self.b = pac_bayes_cfg.get('b', 100)
         self.c = pac_bayes_cfg.get('c', 2.0)
-        self.delta = pac_bayes_cfg.get('delta', 0.01)
+        self.delta = pac_bayes_cfg.get('delta', 0.0001)
+        self.delta2 = pac_bayes_cfg.get('delta', 0.00001)
         self.target_pen = pac_bayes_cfg['target_pen']
         self.init_var = pac_bayes_cfg.get('init_var', 1e-1) # initializes all of s and the prior
         self.penalty_coeff = pac_bayes_cfg.get('penalty_coeff', 1.0)
@@ -214,6 +215,7 @@ class L2WSmodel(object):
                                             iters=self.train_unrolls,
                                             z_stars=batch_z_stars,
                                             key=key)
+            self.key = key
         params, state = results
         return state.value, params, state
 
@@ -261,6 +263,7 @@ class L2WSmodel(object):
         return loss, out, time_per_prob
 
     def static_eval(self, k, inputs, b, z_stars, key, tag='test', fixed_ws=False, light=False):
+        print('key', key)
         if fixed_ws:
             curr_loss_fn = self.loss_fn_fixed_ws
         else:
@@ -504,6 +507,8 @@ class L2WSmodel(object):
                 perturb = get_perturbed_weights(random.PRNGKey(key), self.layer_sizes, 1)
                 perturbed_weights = [(perturb[i][0] * jnp.sqrt(jnp.exp(sigma_params[i][0])) + mean_params[i][0], 
                                     perturb[i][1] * jnp.sqrt(jnp.exp(sigma_params[i][1])) + mean_params[i][1]) for i in range(len(mean_params))]
+                # perturbed_weights = [(perturb[i][0] * jnp.sqrt(1 / (1 + jnp.exp(-sigma_params[i][0]))) + mean_params[i][0], 
+                #                     perturb[i][1] * jnp.sqrt(1 / (1 + jnp.exp(-sigma_params[i][1]))) + mean_params[i][1]) for i in range(len(mean_params))]
 
                 nn_output = predict_y(perturbed_weights, input)
 
@@ -666,24 +671,54 @@ class L2WSmodel(object):
     #     penalty_loss = self.compute_all_params_KL(params[0], params[1], 
     #                                         params[2]) + pi_pen + log_pen
     #     return penalty_loss /  N_train
+
+    def round_priors(self, priors, lambda_max, b):
+        lambd = lambda_max / (1 + jnp.exp(-priors))
+        a = jnp.round(b * jnp.log(lambda_max / lambd))
+        rounded_lambd = lambda_max * jnp.exp(-a / b)
+        # return jnp.log(rounded_priors)
+        return jnp.log(rounded_lambd / (lambda_max - rounded_lambd))
+        # return rounded_lambd
     
+
     def calculate_total_penalty(self, N_train, params, c, b, delta, prior=0):
-        pi_pen = jnp.log(jnp.pi ** 2 * N_train / (6 * delta))
-        log_pen = 2 * jnp.log(b * jnp.log(c / jnp.exp(params[2][0])))
+        # first: round the priors
+        # import pdb
+        # pdb.set_trace()
+        # rounded_priors = self.round_priors(params[2], c, b)
+
+        # priors are already rounded
+        rounded_priors = params[2]
+
+        # second: calculate the penalties
+        num_groups = len(rounded_priors)
+        pi_pen = jnp.log(jnp.pi ** 2 * num_groups * N_train / (6 * delta))
+        log_pen = 0
+        for i in range(num_groups):
+            curr_lambd = jnp.clip(jnp.exp(rounded_priors[i]), a_max=c)
+            # curr_lambd = c / (1 + jnp.exp(-rounded_priors[i]))
+            log_pen += 2 * jnp.log(b * jnp.log((c+1e-6) / curr_lambd))
+
+        # calculate the KL penalty
         penalty_loss = self.compute_all_params_KL(params[0], params[1], 
-                                            params[2]) + pi_pen + log_pen
+                                            rounded_priors) + pi_pen + log_pen
         return penalty_loss /  N_train
 
 
-    def compute_all_params_KL(self, mean_params, sigma_params, lambd):
+    def compute_all_params_KL(self, mean_params, sigma_params, eta):
+        lambda_max = self.c
         total_pen = 0
         for i, params in enumerate(mean_params):
             weight_matrix, bias_vector = params
             weight_sigma, bias_sigma = sigma_params[i][0], sigma_params[i][1]
+            # curr_lambd_weight = lambda_max / (1 + jnp.exp(-eta[2*i]))
+            curr_lambd_weight = jnp.exp(eta[2*i])
             total_pen += compute_single_param_KL(weight_matrix, 
-                                                 jnp.exp(weight_sigma), jnp.exp(lambd[2*i]))
+                                                 jnp.exp(weight_sigma), curr_lambd_weight)
+            # curr_lambd_bias = lambda_max / (1 + jnp.exp(-eta[2*i+1]))
+            curr_lambd_bias = jnp.exp(eta[2*i+1])
             total_pen += compute_single_param_KL(bias_vector, 
-                                                 jnp.exp(bias_sigma), jnp.exp(lambd[2*i+1]))
+                                                 jnp.exp(bias_sigma), curr_lambd_bias)
         return total_pen
 
 

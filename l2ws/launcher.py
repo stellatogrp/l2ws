@@ -67,12 +67,18 @@ class Workspace:
         example is the string (e.g. 'robust_kalman')
         '''
         if cfg.get('custom_loss', False):
-            self.custom_loss = custom_loss
+            if self.algo == 'maml':
+                self.custom_loss = True
+            else:
+                self.custom_loss = custom_loss
         else:
             self.custom_loss = None
         pac_bayes_cfg = cfg.get('pac_bayes_cfg', {})
+        self.skip_pac_bayes_full = pac_bayes_cfg.get('skip_full', True)
 
         pac_bayes_accs = pac_bayes_cfg.get('frac_solved_accs', [0.1, 0.01, 0.001, 0.0001])
+        self.pac_bayes_num_samples = pac_bayes_cfg.get('pac_bayes_num_samples', 20)
+        
         self.nmse = False
         if pac_bayes_accs == 'fp_full':
             start = -6  # Start of the log range (log10(10^-5))
@@ -83,13 +89,17 @@ class Workspace:
             end = -80
             self.nmse = True
             pac_bayes_accs = list(np.round(np.linspace(start, end, num=81), 6))
+        elif pac_bayes_accs == 'maml_full':
+            start = -3  # Start of the log range (log10(10^-5))
+            end = 1  # End of the log range (log10(1))
+            pac_bayes_accs = list(np.round(np.logspace(start, end, num=81), 6))
         self.frac_solved_accs = pac_bayes_accs
         self.rep = pac_bayes_cfg.get('rep', True)
         self.sigma_nn_grid = np.array(cfg.get('sigma_nn', []))
         self.sigma_beta_grid = np.array(cfg.get('sigma_beta', []))
-        self.pac_bayes_num_samples = cfg.get('pac_bayes_num_samples', 50)
+        
         self.pac_bayes_hyperparameter_opt_flag = cfg.get('pac_bayes_flag', False)
-        self.delta = 0.01
+        # self.delta = 0.01
 
         self.conv_rates = np.array([.8, .85, .9, .91, .92, .93, .94, .95, .96, .97, 
                                     .98, .985, .99, .995, 1.0, 1.05, 1.10, 1.15, 1.2, 1.25, 1.3])
@@ -419,7 +429,8 @@ class Workspace:
                         #   test_inputs=self.test_inputs,
                           b_mat_train=self.q_mat_train,
                           b_mat_test=self.q_mat_test,
-                          gamma=cfg.gamma
+                          gamma=cfg.gamma,
+                          custom_loss=self.custom_loss
                         #   nn_cfg=cfg.nn_cfg,
                         #   z_stars_train=self.z_stars_train,
                         #   z_stars_test=self.z_stars_test,
@@ -847,6 +858,97 @@ class Workspace:
         weights_df['max_bias'] = max_weights[:, 1]
         weights_df.to_csv('weights_stats.csv')
 
+
+    def finalize_genL2O(self, train, num_samples):
+        '''
+        part 1: first obtain H (num_samples) samples
+        '''
+        K = self.l2ws_model.eval_unrolls
+        N = self.l2ws_model.N_train
+        hist = np.zeros((num_samples, N, K-1))
+
+        # round the priors
+        priors = self.l2ws_model.params[2]
+        rounded_priors = self.l2ws_model.round_priors(priors, self.l2ws_model.c, self.l2ws_model.b)
+        self.l2ws_model.params[2] = rounded_priors
+
+        
+        for i in range(num_samples):
+            eval_out = self.evaluate_only(fixed_ws=False, num=N, train=True, 
+                                          col='pac_bayes', batch_size=N)
+            loss_train, out_train, train_time = eval_out
+
+            hist[i, :, :] = out_train[1]
+            self.l2ws_model.key += 1
+
+        '''
+        part 2: finalize by looping over steps and tolerances  
+        2.1: threshold 
+        2.2: sample convergence bound
+        2.3: McAllester bound
+        '''
+        # import pdb
+        # pdb.set_trace()
+
+        # fs = (out_train[1] < 1e-3)
+        # frac_solved = fs.mean(axis=0)
+        
+        # # take care of frac_solved
+        # frac_solved_list = []
+        # frac_solved_df_list = self.frac_solved_df_list_train if train else self.frac_solved_df_list_test
+
+        col = "train_epoch_0"
+        sample_conv_penalty = jnp.log(2 / self.l2ws_model.delta2) / num_samples
+        mcallester_penalty = self.l2ws_model.calculate_total_penalty(self.l2ws_model.N_train, 
+                                        self.l2ws_model.params, 
+                                        self.l2ws_model.c,
+                                        self.l2ws_model.b,
+                                        self.l2ws_model.delta
+                                        )
+
+        # cache = {}
+        # R_star = np.zeros((K, len(self.frac_solved_accs)))
+        frac_solved_list = []
+        if train:
+            frac_solved_df_list = self.frac_solved_df_list_train
+        else:
+            frac_solved_df_list = self.frac_solved_df_list_test
+
+        for i in range(len(self.frac_solved_accs)):
+            # 2.1: compute frac solved
+            fs = (out_train[1] < self.frac_solved_accs[i])
+            frac_solved = fs.mean(axis=0)
+            frac_solved_list.append(frac_solved)
+            final_pac_bayes_loss = jnp.zeros(frac_solved.size)
+            for j in range(frac_solved.size):
+                # 2.2: sample convergence bound
+                R_bar = invert_kl(1 - frac_solved[j], sample_conv_penalty)
+
+                # 2.3: McAllester
+                if train:
+                    R_star = invert_kl(R_bar, mcallester_penalty)
+                else:
+                    R_star = invert_kl(1 - frac_solved[j], mcallester_penalty)
+
+                final_pac_bayes_loss = final_pac_bayes_loss.at[j].set(1 - R_star)
+
+            final_pac_bayes_frac_solved = jnp.clip(final_pac_bayes_loss, a_min=0)
+
+            # update the df
+            frac_solved_df_list[i][col] = frac_solved
+            frac_solved_df_list[i][col + '_pinsker'] = jnp.clip(frac_solved - jnp.sqrt(mcallester_penalty / 2), a_min=0)
+            frac_solved_df_list[i][col + '_pac_bayes'] = final_pac_bayes_frac_solved #jnp.clip(frac_solved - penalty, a_min=0)
+            ylabel = f"frac solved tol={self.frac_solved_accs[i]}"
+            filename = f"frac_solved/tol={self.frac_solved_accs[i]}"
+            curr_df = frac_solved_df_list[i]
+
+            # plot and update csv
+            self.plot_eval_iters_df(curr_df, train, col, ylabel, filename, yscale='standard', 
+                                    pac_bayes=True)
+            csv_filename = filename + '_train.csv' if train else filename + '_test.csv'
+            curr_df.to_csv(csv_filename)
+
+
     def pac_bayes_hyperparameter_opt(self, num_samples, sigma_nn_grid, sigma_beta_grid):
         """
         num_samples is the number of samples we use for the weights 
@@ -900,7 +1002,7 @@ class Workspace:
             kl_penalty_term = compute_KL_penalty(nn_params, post_sigma_nn, 
                                prior_sigma_nn)
             N = self.l2ws_model.z_stars_train.shape[0]
-            total_pen = kl_penalty_term + np.log(N * np.pi ** 2 / (6 * self.delta))
+            total_pen = kl_penalty_term + np.log(N * np.pi ** 2 / (6 * self.l2ws_model.delta))
             
             # compute pac_bayes_bound
             pac_bayes_bounds[i, :] = expected_losses.mean(axis=0) - \
@@ -1903,6 +2005,9 @@ class Workspace:
 
         # key_count updated to get random permutation for each epoch
         # key_count = 0
+        if not self.skip_pac_bayes_full:
+            self.finalize_genL2O(train=False, num_samples=2)
+            self.finalize_genL2O(train=True, num_samples=self.pac_bayes_num_samples)
 
         if self.pac_bayes_hyperparameter_opt_flag:
             self.pac_bayes_hyperparameter_opt(self.pac_bayes_num_samples, 
@@ -1990,6 +2095,8 @@ class Workspace:
         time_diff = epoch_batch_end_time - epoch_batch_start_time
         time_train_per_epoch = time_diff / self.epochs_jit
         epoch_train_losses, params, state, permutation = val
+
+        self.l2ws_model.key = state.iter_num
 
         return params, state, epoch_train_losses, time_train_per_epoch
 
@@ -2425,6 +2532,7 @@ class Workspace:
                 'avg_posterior_var': avg_posterior_var,
                 'stddev_posterior_var': stddev_posterior_var,
                 'prior': jnp.exp(self.l2ws_model.params[2]),
+                # 'prior': self.l2ws_model.c / (1 + jnp.exp(-self.l2ws_model.params[2])), #jnp.exp(self.l2ws_model.params[2]),
                 'mean_squared_w': mean_squared_w,
                 'time_per_iter': time_per_iter
             })

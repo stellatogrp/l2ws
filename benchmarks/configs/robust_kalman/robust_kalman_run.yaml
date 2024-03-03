@@ -1,5 +1,5 @@
 nn_cfg:
-  lr: 1e-3
+  lr: 1e-2
   method: adam
   intermediate_layer_sizes: [500, 500]
   batch_size: 2

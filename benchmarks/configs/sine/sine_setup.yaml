@@ -1,6 +1,6 @@
 K: 10
 K_total: 100
-N_train: 10000
+N_train: 50000
 N_test: 100
 seed: 42
 solve: True

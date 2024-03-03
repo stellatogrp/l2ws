@@ -35,7 +35,11 @@ class MAMLmodel(L2WSmodel):
 
         neural_net_grad = grad(neural_net_fwd, argnums=0, has_aux=True)
 
-        neural_net_fwd2 = partial(neural_net_fwd, norm='inf')
+        custom_loss = input_dict.get('custom_loss', False)
+        if custom_loss:
+            neural_net_fwd2 = partial(neural_net_fwd, norm='inf')
+        else:
+            neural_net_fwd2 = partial(neural_net_fwd, norm='MSE')
 
         self.k_steps_train_fn = partial(k_steps_train_maml, 
                                         neural_net_fwd=neural_net_fwd,
@@ -94,6 +98,8 @@ class MAMLmodel(L2WSmodel):
                 perturb = get_perturbed_weights(random.PRNGKey(key), self.layer_sizes, 1)
                 stochastic_params = [(perturb[i][0] * jnp.sqrt(jnp.exp(sigma_params[i][0])) + mean_params[i][0], 
                                     perturb[i][1] * jnp.sqrt(jnp.exp(sigma_params[i][1])) + mean_params[i][1]) for i in range(len(mean_params))]
+                # stochastic_params = [(perturb[i][0] * jnp.sqrt(self.c / (1 + jnp.exp(-sigma_params[i][0]))) + mean_params[i][0], 
+                #                     perturb[i][1] * jnp.sqrt(self.c / (1 + jnp.exp(-sigma_params[i][1]))) + mean_params[i][1]) for i in range(len(mean_params))]
                 # stochastic_params = params[0] #+ jnp.sqrt(jnp.exp(params[1])) * perturb
             z0 = stochastic_params #params[0]
 
@@ -136,7 +142,7 @@ class MAMLmodel(L2WSmodel):
         return loss_fn
     
 
-def neural_net_fwd(z, theta, norm='2'):
+def neural_net_fwd(z, theta, norm='MSE'):
     num = int(theta.size / 2)
     inputs = theta[:num]
     outputs = jnp.reshape(theta[num:], (num, 1))
@@ -144,7 +150,7 @@ def neural_net_fwd(z, theta, norm='2'):
     inputs_reshaped = jnp.reshape(inputs, (inputs.size, 1))
     predicted_outputs = neural_net_single_input_batch(z, inputs_reshaped)
     # loss = jnp.linalg.norm(outputs - predicted_outputs) ** 2 / num
-    if norm == '2':
+    if norm == 'MSE':
         loss = jnp.mean((outputs - predicted_outputs)**2)
     elif norm == 'inf':
         loss = jnp.max(outputs - predicted_outputs)

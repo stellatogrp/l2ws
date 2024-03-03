@@ -144,8 +144,7 @@ def sparse_coding_plot_eval_iters(cfg):
     temp = colors[5]
     colors[5] = colors[7]
     colors[7] = temp
-    import pdb
-    pdb.set_trace()
+
     markers = ['o', 's', '>', '^', 'D', 'X', 'P', '*']
 
     if len(titles) == 4:
@@ -190,8 +189,7 @@ def sparse_coding_plot_eval_iters(cfg):
     all_test_results, all_pac_bayes_results, cold_start_results, nearest_neighbor_results = out
     # markers = ['o', 's', '>', '^', 'D', 'X']
     
-    # import pdb
-    # pdb.set_trace()
+
     styles = ['-', '-']
     for i in range(len(cfg.accuracies)):
         # plot ista and fista
@@ -230,8 +228,7 @@ def sparse_coding_plot_eval_iters(cfg):
         plt.ylabel(f"frac. at {acc} NMSE (dB)")
         plt.savefig(f"acc_{acc}.pdf", bbox_inches='tight')
         plt.clf()
-    # import pdb
-    # pdb.set_trace()
+
 
     # plot_conv_rates(example, cfg)
 
@@ -292,9 +289,6 @@ def plot_conv_rates(example, cfg):
     plt.savefig("conv_rates.pdf", bbox_inches='tight')
     plt.clf()
 
-    import pdb
-    pdb.set_trace()
-
 
 def create_classical_results(example, cfg):
     metrics, timing_data, titles = get_all_data(example, cfg, train=False)
@@ -319,6 +313,36 @@ def create_classical_results(example, cfg):
 
     percentile_plots(example, cfg)
     risk_plots(example, cfg)
+    worst_case_gap_plot(example, cfg)
+
+
+def worst_case_gap_plot(example, cfg):
+    plt.figure(figsize=(10,6))
+
+    # get the cold start results
+    metrics, timing_data, titles = get_all_data(example, cfg, train=False)
+    cold_start = metrics[0][0]
+    plt.plot(cold_start, linestyle=titles_2_styles['cold_start'], 
+                 color=titles_2_colors['cold_start'],
+                 marker=titles_2_markers['cold_start'],
+                 markevery=0.1)
+
+    # get the worst case results
+    z_star_max, theta_max = get_worst_case_datetime(example, cfg)
+    steps = np.arange(cold_start.size)
+    worst_case = z_star_max / np.sqrt(steps + 2)
+    plt.plot(worst_case, linestyle=titles_2_styles['nearest_neighbor'], 
+                 color=titles_2_colors['nearest_neighbor'],
+                 marker=titles_2_markers['nearest_neighbor'],
+                 markevery=0.1)
+
+    # plt.tight_layout()
+    plt.xlabel('evaluation steps')
+    plt.ylabel("fixed-point residual")
+    plt.yscale('log')
+    plt.savefig('worst_case_analysis_gap.pdf', bbox_inches='tight')
+    plt.clf()
+
 
 
 def get_steps(cold_start_size, eval_iters, worst_case):
@@ -429,7 +453,8 @@ def plot_final_classical_risk_bounds_together(example, acc_list, steps, bounds_l
     title_fontsize = 30
 
     # y-label
-    ylabel = r'$1 - r_{\mathcal{X}}$'
+    # ylabel = r'$1 - r_{\mathcal{X}}$'
+    ylabel = r'prob. of reaching $\epsilon$'
     axes[0].set_ylabel(ylabel, fontsize=fontsize)
 
     for k in range(len(acc_list)):
@@ -565,16 +590,13 @@ def percentile_plots(example, cfg):
     cold_start_results, guarantee_results = get_frac_solved_data_classical(example, cfg)
     percentile_results = get_percentiles(example, cfg)
 
-
     steps1 = np.arange(cold_start_results[-1].size)[:eval_iters]
     z_star_max, theta_max = get_worst_case_datetime(example, cfg)
 
     # fill in e_star tensor
     num_N = len(guarantee_results[0])
     e_stars = get_e_stars(guarantee_results, accuracies, eval_iters)
-    print('e_stars', e_stars.max(), e_stars)
 
-    # orig_percentiles = [30, 50, 90, 95, 99]
     percentiles = cfg.get('percentiles', [30, 90, 99])
     corrected_indices = [0, 2, 4]
     worst = z_star_max / np.sqrt(steps1 + 2)
@@ -665,7 +687,7 @@ def percentile_final_plots_together(example, percentiles, cold_start_quantile_li
         axes[loc].set_title(r'${}$th quantile bound'.format(percentile), fontsize=title_fontsize)
         
     plt.tight_layout()
-    plt.savefig(f"percentile_together.pdf", bbox_inches='tight')
+    plt.savefig("percentile_together.pdf", bbox_inches='tight')
     plt.clf()
 
 
@@ -766,8 +788,7 @@ def get_worst_case_datetime(example, cfg):
         reader = read_csv(file)
         z_star_max = float(reader.columns[0])
         theta_max = reader[str(z_star_max)][0]
-        # import pdb
-        # pdb.set_trace()
+
         
         # Read the first row and extract the scalar value
         # for row in reader:
@@ -853,8 +874,7 @@ def create_gen_l2o_results(example, cfg):
 
             init_diff = z_star_max * 1.1 + 1.1 * theta_max * 30
             indices = .995 ** steps * init_diff  < acc
-            # import pdb
-            # pdb.set_trace()
+
             # cold_start_results[i][:cfg.eval_iters]
 
             curr_pac = np.zeros(cfg.eval_iters)
@@ -874,23 +894,15 @@ def create_gen_l2o_results(example, cfg):
         plt.ylabel(f"frac. at {acc} fp res")
         plt.savefig(f"acc_{acc}.pdf", bbox_inches='tight')
         plt.clf()
-    import pdb
-    pdb.set_trace()
 
 
 def create_gen_l2o_results_maml(example, cfg):
-    # example = 'sparse_coding'
-    # overlay_training_losses(example, cfg)
-    # create_journal_results(example, cfg, train=False)
-    # create_genL2O_results()
     metrics, timing_data, titles = get_all_data(example, cfg, train=False)
 
     if len(titles) == 4:
         titles[-2] = titles[-2] + '_deterministic'
     nmse = metrics[0]
     for i in range(len(nmse)):
-        # if titles[i] != 'cold_start' and titles[i] != 'nearest_neighbor':
-        #     plt.plot(nmse[i])
         plt.plot(nmse[i][:cfg.eval_iters],
                  linestyle=titles_2_styles[titles[i]], 
                  color=titles_2_colors[titles[i]],
@@ -904,65 +916,135 @@ def create_gen_l2o_results_maml(example, cfg):
     plt.savefig('fp_res.pdf', bbox_inches='tight')
     plt.clf()
 
-
-
     out = get_frac_solved_data(example, cfg)
     all_test_results, all_pac_bayes_results, cold_start_results, pretrain_results = out
-    markers = ['o', 's']
-    cmap = plt.cm.Set1
-    colors = cmap.colors
-    styles = ['-', '-']
-    for i in range(len(cfg.accuracies)):
-        # plot ista and fista
-        # mark_start = titles_2_marker_starts['cold_start']
-        # plt.plot(cold_start_results[i], #[:cfg.eval_iters], 
+
+    plot_acc_list = cfg.plot_acc_list
+    steps = np.arange(cfg.eval_iters)
+    worst_case, worst_list = False, []
+
+    accs = get_accs(cfg)
+    acc_list, emp_list_list, bounds_list_list, cold_start_list = [], [], [], []
+    for i in range(len(accs)):
+        acc = accs[i]
+
+        # get the pretrained model
+        cold_start_curve = pretrain_results[i]
+
+        # get the pac_bayes plot
+        curr_pac_bayes_results = all_pac_bayes_results[i][0]
+
+        # get the empirical plot
+        curr_test_results = all_test_results[i][0]
+
+        if acc in plot_acc_list:
+            emp_list = [curr_test_results]
+            bounds_list = [curr_pac_bayes_results]
+            worst_case_curve = None
+            plot_final_learned_risk_bounds(acc, steps, bounds_list, emp_list, cold_start_curve, 
+                                            worst_case_curve, False, cfg.custom_loss)
+            acc_list.append(acc)
+            emp_list_list.append(emp_list)
+            bounds_list_list.append(bounds_list)
+            cold_start_list.append(cold_start_curve)
+            worst_list.append(worst_case_curve)
+
+    plot_final_learned_risk_bounds_together(example, plot_acc_list, steps, bounds_list_list, 
+                                            emp_list_list, cold_start_list,
+                                     worst_list, worst_case, custom_loss)
+
+        # plt.plot(pretrain_results[i],
         #          linestyle=titles_2_styles['cold_start'], 
         #          color=titles_2_colors['cold_start'],
         #          marker=titles_2_markers['cold_start'],
         #          markevery=2
         #          )
 
-        # plot the pretrained model
-        plt.plot(pretrain_results[i],
-                 linestyle=titles_2_styles['cold_start'], 
-                 color=titles_2_colors['cold_start'],
-                 marker=titles_2_markers['cold_start'],
-                 markevery=2
-                 )
-
-
         # plot the learned variants
-        acc = cfg.accuracies[i]
-        curr_test_results = all_test_results[i]
-        curr_pac_bayes_results = all_pac_bayes_results[i]
-        for j in range(len(curr_test_results)):
-            plt.plot(curr_pac_bayes_results[j], 
-                     linestyle='-', 
-                     color=colors[1], 
-                     marker=markers[1],
-                     markevery=2
-                     )
-            plt.plot(curr_test_results[j], 
-                     linestyle='-', 
-                     color=colors[0], 
-                     markevery=2,
-                     marker=markers[0])
+        # acc = cfg.accuracies[i]
+        # curr_test_results = all_test_results[i]
+        # curr_pac_bayes_results = all_pac_bayes_results[i]
+        # for j in range(len(curr_test_results)):
+            # plt.plot(curr_pac_bayes_results[j], 
+            #          linestyle='-', 
+            #          color=colors[1], 
+            #          marker=markers[1],
+            #          markevery=2
+            #          )
+            # plt.plot(curr_test_results[j], 
+            #          linestyle='-', 
+            #          color=colors[0], 
+            #          markevery=2,
+            #          marker=markers[0])
             
-        plt.tight_layout()
-        plt.title(r'${}$ loss threshold'.format(acc))
-        plt.hlines(0.0, 0, curr_test_results[j].size-1, color='black', linestyle='--', alpha=0.3)
-        plt.hlines(1.0, 0, curr_test_results[j].size-1, color='black', linestyle='--', alpha=0.3)
-        plt.ylim((-.05, 1.05))
-        plt.xlabel('gradient steps')
-        plt.ylabel(f"fraction less than {acc} loss")
-        plt.savefig(f"acc_{acc}.pdf", bbox_inches='tight')
-        plt.clf()
-        # import pdb
-        # pdb.set_trace()
+        # plt.tight_layout()
+        # plt.title(r'${}$ loss threshold'.format(acc))
+        # plt.hlines(0.0, 0, curr_test_results[j].size-1, color='black', linestyle='--', alpha=0.3)
+        # plt.hlines(1.0, 0, curr_test_results[j].size-1, color='black', linestyle='--', alpha=0.3)
+        # plt.ylim((-.05, 1.05))
+        # plt.xlabel('gradient steps')
+        # plt.ylabel(f"fraction less than {acc} loss")
+        # plt.savefig(f"acc_{acc}.pdf", bbox_inches='tight')
+        # plt.clf()
+
+        
+    
 
 
-# def plot_visualization_maml(example, cfg):
+def plot_final_learned_risk_bounds(acc, steps, bounds_list, emp_list, cold_start, worst, 
+                                     worst_case, custom_loss):
+    markers = ['o', 's', '<', 'D']
+    cmap = plt.cm.Set1
+    colors = cmap.colors
+    num_bounds = len(bounds_list)
+    for j in range(num_bounds):
+        # plot the stochastic test curve
+        plt.plot(steps, emp_list[j], 
+                 linestyle='dotted',
+                        color=colors[j], 
+                        markerfacecolor='none',
+                        alpha=0.6,
+                        markevery=0.1,
+                        marker=markers[j])
 
+        # plot the bounds
+        plt.plot(steps, bounds_list[j], 
+                        color=colors[j], 
+                        alpha=0.6,
+                        markevery=0.1,
+                        marker=markers[j+1])
+    plt.plot(steps,
+                cold_start, 
+                linestyle=titles_2_styles['cold_start'], 
+                color=titles_2_colors['cold_start'],
+                marker=titles_2_markers['cold_start'],
+                linewidth=2.0,
+                markevery=(0.05, 0.1)
+                )
+    if worst_case:
+        plt.plot(steps,
+                    worst, 
+                    linestyle=titles_2_styles['nearest_neighbor'], 
+                    color=titles_2_colors['nearest_neighbor'],
+                    marker=titles_2_markers['nearest_neighbor'],
+                    linewidth=2.0,
+                    markevery=(0.05, 0.1)
+                    )
+    plt.tight_layout()
+    plt.xlabel('evaluation steps')
+    ylabel = r'$1 - r_{\mathcal{X}}$'
+    plt.ylabel(ylabel)
+    
+    rounded_acc = round(acc, 2)
+    if custom_loss:
+        title = r'max Euclidean distance: $\epsilon={}$'.format(rounded_acc)
+    else:
+        title = r'fixed-point residual: $\epsilon={}$'.format(rounded_acc)
+    plt.title(title)
+    if worst_case:
+        plt.xscale('log')
+    plt.savefig(f"acc_{acc}.pdf", bbox_inches='tight')
+    plt.clf()
 
 
 
@@ -1297,7 +1379,6 @@ def create_timing_table(timing_data, titles, rel_tols, abs_tols):
     # for i in range(len(titles)):
     #     df_acc = update_acc(df_acc, accs, titles[i], metrics_fp[i])
     df.to_csv('timings.csv')
-    # pdb.set_trace()
 
 
 
@@ -1594,8 +1675,6 @@ def get_maml_vis_df(example, maml_pretrain_visualization_dt, maml_visualization_
 
     # f"{last_date}/{last_time}"
 
-    # import pdb
-    # pdb.set_trace()
     pretrain_test_df = read_csv(f"{path}/{last_time}/prob_{iter}_z_ws.csv")
     pretrain_grad_points_df = read_csv(f"{path}/{last_time}/grad_points_{iter}.csv")
 
@@ -1621,6 +1700,9 @@ def get_maml_visualization_data(example, cfg, train=False):
     cmap = plt.cm.Set1
     colors = cmap.colors
 
+    import os
+    os.mkdir('vis')
+
     for i in range(20):
         out = get_maml_vis_df(example, maml_pretrain_visualization_dt, maml_visualization_dt, i)
         pretrain_test_df, pretrain_grad_points_df, maml_test_df, maml_grad_points_df = out
@@ -1636,18 +1718,35 @@ def get_maml_visualization_data(example, cfg, train=False):
         plt.plot(x_vals, maml, color=colors[2], zorder=4)
 
         plt.fill_between(x_vals, y_vals - 1, y_vals + 1, color=colors[4], alpha = 0.2, zorder=1)
-
         # mark the points used for gradients
         plt.scatter(x_grad_points, y_grad_points, color=colors[3], marker='^', s=100, zorder=5)
-
         plt.ylim((-6, 6))
-
-        plt.savefig(f"maml_vis_{i}.pdf")
+        plt.savefig(f"vis/maml_vis_{i}.pdf")
         plt.clf()
 
-        
-    import pdb
-    pdb.set_trace()
+        # generate grad only plot
+        # plt.plot(x_vals, y_vals, color=colors[0], zorder=2)
+        plt.scatter(x_grad_points, y_grad_points, color=colors[3], marker='^', s=100, zorder=5)
+        plt.ylim((-6, 6))
+        plt.savefig(f"vis/maml_vis_grad_only_{i}.pdf")
+        plt.clf()
+
+        # generate grads and ground truth
+        plt.plot(x_vals, y_vals, color=colors[0], zorder=2)
+        plt.scatter(x_grad_points, y_grad_points, color=colors[3], marker='^', s=100, zorder=5)
+        plt.ylim((-6, 6))
+        plt.savefig(f"vis/maml_vis_metatrain_{i}.pdf")
+        plt.clf()
+
+        # generate grads and approx sol
+        plt.plot(x_vals, y_vals, color=colors[0], zorder=2)
+        plt.plot(x_vals, maml, color=colors[2], zorder=4)
+        plt.scatter(x_grad_points, y_grad_points, color=colors[3], marker='^', s=100, zorder=5)
+        plt.ylim((-6, 6))
+        plt.savefig(f"vis/maml_vis_grad_and_approx_{i}.pdf")
+        plt.clf()
+
+
 
     # get the visuals dataframe
     # pretrain_test_df = 

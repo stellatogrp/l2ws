@@ -170,6 +170,7 @@ def random_layer_params(m, n, key, scale=1e-2):
 
 def random_variance_layer_params(m, n, key, init_val, scale=1e-2):
     w_key, b_key = random.split(key)
+    # return jnp.log(init_val) + scale * random.normal(w_key, (n, m)), jnp.log(init_val) + scale * random.normal(b_key, (n,))
     return jnp.log(init_val) + scale * random.normal(w_key, (n, m)), jnp.log(init_val) + scale * random.normal(b_key, (n,))
 
 

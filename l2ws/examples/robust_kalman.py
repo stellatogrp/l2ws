@@ -503,7 +503,7 @@ def plot_positions_overlay_genL2O(noisy, optimal, cold, num_dots=2, grayscales=[
     '''
     # n = len(traj)
 
-    colors = ['green', 'red', 'gray', 'orange', 'blue']
+    colors = ['red', 'green', 'gray', 'orange', 'blue']
     # cmap = plt.cm.Set1
     # colors = [cmap.colors[0], cmap.colors[1], cmap.colors[2], cmap.colors[3], cmap.colors[4]]
     linestyles = ['o', 'o', '-.', ':', '--']
@@ -520,7 +520,7 @@ def plot_positions_overlay_genL2O(noisy, optimal, cold, num_dots=2, grayscales=[
     markersize = 2.0
 
     # plot noisy
-    ax.plot(noisy[0, :], noisy[1, :], 'o', color=colors[0], alpha=1.0, markersize=markersize)
+    ax.plot(noisy[0, :], noisy[1, :], 'o', color=colors[0], alpha=0.3, markersize=markersize)
 
     # plot optimal
     ax.plot(optimal[0, :], optimal[1, :], 'o', color=colors[1], alpha=1.0, markersize=markersize)
@@ -559,7 +559,7 @@ def plot_positions_overlay_genL2O(noisy, optimal, cold, num_dots=2, grayscales=[
     # ax.set_ylim([ymin, ymax])
     # Plot the same data on inset
     inset_markersize = 7
-    axins.plot(noisy[0, :], noisy[1, :], 'o', color=colors[0], alpha=1.0, markersize=inset_markersize)
+    axins.plot(noisy[0, :], noisy[1, :], 'o', color=colors[0], alpha=0.3, markersize=inset_markersize)
     axins.plot(optimal[0, :], optimal[1, :], 'o', color=colors[1], alpha=1.0, markersize=inset_markersize)
     axins.plot(cold[0, :], cold[1, :], 'o', color=colors[4], alpha=1.0, markersize=inset_markersize)
 
@@ -568,7 +568,7 @@ def plot_positions_overlay_genL2O(noisy, optimal, cold, num_dots=2, grayscales=[
     # mid = 25
     center_x = optimal[0, 15]
     center_y = optimal[1, 15]
-    width = 0.15
+    width = 0.25
     x1, x2, y1, y2 = -width + center_x, width + center_x, -width + center_y, width + center_y
     axins.set_xlim(x1, x2)
     axins.set_ylim(y1, y2)
