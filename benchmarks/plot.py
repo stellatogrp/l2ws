@@ -559,6 +559,10 @@ def get_accs(cfg):
         start = -80  # Start of the log range (log10(10^-5))
         end = 0  # End of the log range (log10(1))
         accuracies = list(np.round(np.linspace(start, end, num=81), 6))
+    if accuracies == 'maml_full':
+        start = -3  # Start of the log range (log10(10^-5))
+        end = 1  # End of the log range (log10(1))
+        accuracies = list(np.round(np.logspace(start, end, num=81), 6))
     return accuracies
 
 
@@ -578,7 +582,10 @@ def get_quantile(e_stars, percentile, eval_iters, worst, accuracies):
         where = np.where(e_stars[:,k] > percentile / 100)[0]
         print('where', where)
         if where.size == 0:
-            quantile_curve[k] = min(max(accuracies), worst[k])
+            if worst is None:
+                quantile_curve[k] = max(accuracies)
+            else:
+                quantile_curve[k] = min(max(accuracies), worst[k])
         else:
             quantile_curve[k] = accuracies[np.min(where)]
     return quantile_curve
@@ -896,6 +903,180 @@ def create_gen_l2o_results(example, cfg):
         plt.clf()
 
 
+def percentile_plots_maml(example, cfg):
+    accuracies, eval_iters = get_accs(cfg), int(cfg.eval_iters)
+
+    # cold_start_results, guarantee_results = get_frac_solved_data_classical(example, cfg)
+    out = get_frac_solved_data(example, cfg)
+    all_test_results, all_pac_bayes_results, cold_start_results, pretrain_results = out
+    # percentile_results = get_percentiles(example, cfg)
+
+    steps1 = np.arange(cold_start_results[-1].size)[:eval_iters]
+    # z_star_max, theta_max = get_worst_case_datetime(example, cfg)
+
+    # fill in e_star tensor
+    num_N = len(all_pac_bayes_results[0])
+    e_stars = get_e_stars(all_pac_bayes_results, accuracies, eval_iters)
+
+    percentiles = cfg.get('percentiles', [30, 90, 99])
+    corrected_indices = [0, 2, 4]
+    # worst = z_star_max / np.sqrt(steps1 + 2)
+    worst = None
+
+    cold_start_quantile_list, worst_list = [], []
+    bounds_list_list, plot_bool_list_list = [], []
+    emp_list_list = []
+
+    # get the empirical quantiles
+    percentiles_list_list = get_percentiles_learned(example, cfg)
+    
+    for i in range(len(percentiles)):
+        percentile = percentiles[i]
+        bounds_list = []
+        plot_bool_list = []
+        for j in range(num_N):
+            curr_bound = get_quantile(e_stars[j, :, :], percentile, eval_iters, worst, accuracies)
+            bounds_list.append(curr_bound)
+            if cfg.custom_loss and e_stars[j, :, :].max() < percentile / 100:
+                plot_bool_list.append(False)
+            else:
+                plot_bool_list.append(True)
+        correct_index = corrected_indices[i]
+
+        # pretrain quantile
+        percentile_results = percentiles_list_list[0]
+        cold_start_quantile = percentile_results[correct_index][:eval_iters]
+
+        # learned quantile
+        emp_list = percentiles_list_list[1] #cold_start_quantile #percentiles_list_list[i]
+
+        learned_percentile_final_plots(percentile, cold_start_quantile, worst, emp_list,
+                            bounds_list, cfg.custom_loss, plot_bool_list, 
+                            cfg.percentile_ylabel)
+        cold_start_quantile_list.append(cold_start_quantile)
+        worst_list.append(worst)
+        bounds_list_list.append(bounds_list)
+        emp_list_list.append(emp_list)
+        plot_bool_list_list.append(plot_bool_list)
+    learned_percentile_final_plots_together(example, percentiles, cold_start_quantile_list, 
+                                            worst_list, emp_list_list,
+                            bounds_list_list, cfg.custom_loss, plot_bool_list_list)
+
+
+def learned_percentile_final_plots_together(example, percentiles, cold_start_quantile_list, 
+                                            worst_list, 
+                            emp_list_list, bounds_list_list, custom_loss, plot_bool_list_list):
+    markers = ['o', 's', '<', 'D']
+    cmap = plt.cm.Set1
+    colors = cmap.colors
+    offsets = [0, .03, .06]
+    fig, axes = plt.subplots(nrows=1, ncols=len(percentiles), figsize=(20, 5), sharey='row')
+    # axes[0].set_ylabel(ylabel)
+
+    fontsize = 30
+    title_fontsize = 30
+
+    # y-label
+    if custom_loss:
+        if example == 'robust_kalman':
+            ylabel = 'max Euclidean dist.'
+        elif example == 'mnist':
+            ylabel = 'NMSE (dB)'
+    else:
+        ylabel = 'fixed-point residual'
+    axes[0].set_ylabel(ylabel, fontsize=fontsize)
+
+    for k in range(len(percentiles)):
+        percentile = percentiles[k]
+        bounds_list = bounds_list_list[k]
+        emp_list = emp_list_list[k]
+        cold_start_quantile = cold_start_quantile_list[k]
+        worst = worst_list[k]
+        plot_bool_list = plot_bool_list_list[k]
+
+        loc = k
+        num_N = len(bounds_list)
+        for j in range(num_N):
+            # plot the empirical
+            emp = emp_list[j]
+            if plot_bool_list[j]:
+                axes[loc].plot(emp, 
+                               linestyle='dotted',
+                               color=colors[j], marker=markers[j+1], 
+                            # alpha=0.6, 
+                            # markevery=(0.00 + offsets[j], 0.1)
+                                                  )
+
+            # plot the bound
+            curr = bounds_list[j]
+            if plot_bool_list[j]:
+                axes[loc].plot(curr, color=colors[j], marker=markers[j], 
+                            # alpha=0.6, 
+                            # markevery=(0.00 + offsets[j], 0.1)
+                                                  )
+                
+        axes[loc].plot(cold_start_quantile, 
+                    titles_2_colors['cold_start'], 
+                    linestyle=titles_2_styles['cold_start'],
+                    marker=titles_2_markers['cold_start'],
+                    markevery=(0.05, 0.1))
+
+        # plot the worst case
+        # if not custom_loss:
+        #     axes[loc].plot(worst, 
+        #                 color=titles_2_colors['nearest_neighbor'], 
+        #                 linestyle=titles_2_styles['nearest_neighbor'],
+        #                 marker=titles_2_markers['nearest_neighbor'],
+        #                 markevery=(0.05, 0.1))
+        if cold_start_quantile.min() > 0:
+            axes[k].set_yscale('log')
+        axes[k].set_xlabel('evaluation steps', fontsize=fontsize)
+        # axes[k].set_ylabel(ylabel)
+
+        axes[loc].set_title(r'${}$th quantile bound'.format(percentile), fontsize=title_fontsize)
+        
+    plt.tight_layout()
+    plt.savefig("percentile_together.pdf", bbox_inches='tight')
+    plt.clf()
+
+
+def learned_percentile_final_plots(percentile, cold_start_quantile, worst, emp_list,
+                            bounds_list, custom_loss, plot_bool_list, 
+                            percentile_ylabel):
+    markers = ['o', 's', '<', 'D']
+    colors = plt.cm.Set1.colors
+    offsets = [0, .03, .06]
+    num_N = len(bounds_list)
+    for j in range(num_N):
+        curr = bounds_list[j]
+        if plot_bool_list[j]:
+            plt.plot(curr, color=colors[j], marker=markers[j], 
+                        alpha=0.6, markevery=(0.00 + offsets[j], 0.1))
+            
+    plt.plot(cold_start_quantile, 
+                 titles_2_colors['cold_start'], 
+                 linestyle=titles_2_styles['cold_start'],
+                 marker=titles_2_markers['cold_start'],
+                 markevery=(0.05, 0.1))
+
+    # plot the worst case
+    # if not custom_loss:
+    #     plt.plot(worst, 
+    #                 color=titles_2_colors['nearest_neighbor'], 
+    #                 linestyle=titles_2_styles['nearest_neighbor'],
+    #                 marker=titles_2_markers['nearest_neighbor'],
+    #                 markevery=(0.05, 0.1))
+    if cold_start_quantile.min() > 0:
+        plt.yscale('log')
+    plt.xlabel('evaluation steps')
+    plt.ylabel(percentile_ylabel)
+
+    plt.title(r'${}$th quantile bound'.format(percentile))
+    plt.savefig(f"percentile_{percentile}.pdf", bbox_inches='tight')
+    plt.clf()
+    
+    
+
 def create_gen_l2o_results_maml(example, cfg):
     metrics, timing_data, titles = get_all_data(example, cfg, train=False)
 
@@ -951,7 +1132,7 @@ def create_gen_l2o_results_maml(example, cfg):
 
     plot_final_learned_risk_bounds_together(example, plot_acc_list, steps, bounds_list_list, 
                                             emp_list_list, cold_start_list,
-                                     worst_list, worst_case, custom_loss)
+                                     worst_list, worst_case, cfg.custom_loss)
 
         # plt.plot(pretrain_results[i],
         #          linestyle=titles_2_styles['cold_start'], 
@@ -988,7 +1169,82 @@ def create_gen_l2o_results_maml(example, cfg):
         # plt.clf()
 
         
-    
+def plot_final_learned_risk_bounds_together(example, plot_acc_list, steps, bounds_list_list, 
+                                            emp_list_list, cold_start_list,
+                                     worst_list, worst_case, custom_loss):
+    markers = ['o', 's', '<', 'D']
+    cmap = plt.cm.Set1
+    colors = cmap.colors
+
+    fig, axes = plt.subplots(nrows=1, ncols=len(plot_acc_list), figsize=(20, 5), sharey='row')
+
+    fontsize = 30
+    title_fontsize = 30
+
+    # y-label
+    # ylabel = r'$1 - r_{\mathcal{X}}$'
+    ylabel = r'prob. of reaching $\epsilon$'
+    axes[0].set_ylabel(ylabel, fontsize=fontsize)
+
+    for k in range(len(plot_acc_list)):
+        loc = len(plot_acc_list) - 1 - k
+        acc = plot_acc_list[k]
+        bounds_list = bounds_list_list[k]
+        emp_list = emp_list_list[k]
+        cold_start = cold_start_list[k]
+        worst = worst_list[k]
+
+        num_bounds = len(bounds_list)
+
+        for j in range(num_bounds):
+            # plot empirical results
+            axes[loc].plot(steps, emp_list[j], 
+                            color=colors[j], 
+                            linestyle='dotted',
+                            # alpha=0.6,
+                            markevery=0.1,
+                            marker=markers[j])
+            
+            # plot pac bayes bounds
+            axes[loc].plot(steps, bounds_list[j], 
+                            color=colors[j], 
+                            # alpha=0.6,
+                            markevery=0.1,
+                            
+                            marker=markers[j+1])
+
+        axes[loc].plot(steps,
+                    cold_start, 
+                    linestyle=titles_2_styles['cold_start'], 
+                    color=titles_2_colors['cold_start'],
+                    marker=titles_2_markers['cold_start'],
+                    linewidth=2.0,
+                    markevery=(0.05, 0.1)
+                    )
+        if worst_case:
+            axes[loc].plot(steps,
+                        worst, 
+                        linestyle=titles_2_styles['nearest_neighbor'], 
+                        color=titles_2_colors['nearest_neighbor'],
+                        marker=titles_2_markers['nearest_neighbor'],
+                        linewidth=2.0,
+                        markevery=(0.05, 0.1)
+                        )
+        axes[loc].set_xlabel('evaluation steps', fontsize=fontsize)
+        
+        if custom_loss:
+            if example == 'robust_kalman':
+                title = r'max Euclidean distance: $\epsilon={}$'.format(acc)
+            elif example == 'mnist':
+                title = r'NMSE (dB): $\epsilon={}$'.format(np.round(acc, 1))
+        else:
+            title = r'fixed-point residual: $\epsilon={}$'.format(acc)
+        axes[loc].set_title(title, fontsize=title_fontsize)
+        if worst_case:
+            axes[k].set_xscale('log')
+    plt.tight_layout()
+    plt.savefig("risk_together.pdf", bbox_inches='tight')
+    plt.clf()
 
 
 def plot_final_learned_risk_bounds(acc, steps, bounds_list, emp_list, cold_start, worst, 
@@ -1126,6 +1382,7 @@ def sine_plot_eval_iters(cfg):
     # overlay_training_losses(example, cfg)
     get_maml_visualization_data(example, cfg)
     create_gen_l2o_results_maml(example, cfg)
+    percentile_plots_maml(example, cfg)
 
 
 @hydra.main(config_path='configs/mpc', config_name='mpc_plot.yaml')
@@ -1468,16 +1725,11 @@ def get_conv_rates_data(example, cfg):
     return conv_rates, curr_test_results, curr_pac_bayes_results, curr_cold_start_results, curr_nearest_neighbor_results
 
 
-def get_percentiles(example, cfg):
+def get_percentiles(example, cfg, first=True):
     orig_cwd = hydra.utils.get_original_cwd()
     percentile_dt = cfg.percentile_datetime
     path = f"{orig_cwd}/outputs/{example}/train_outputs/{percentile_dt}"
     # no_learning_path = f"{orig_cwd}/outputs/{example}/train_outputs/{datetime}/{iters_file}"
-
-    # read the eval iters csv
-    # fp_file = 'eval_iters_train.csv' if train else 'eval_iters_test.csv'
-    # fp_file = 'iters_compared_train.csv' if train else 'iters_compared_test.csv'
-    # fp_df = read_csv(f"{path}/{fp_file}")
 
     # return the first column
     percentiles_list = []
@@ -1485,9 +1737,36 @@ def get_percentiles(example, cfg):
     for i in range(len(percentiles)):
         filename = f"percentiles/train_{percentiles[i]}.csv"
         df = read_csv(f"{path}/{filename}")
-        curr_percentile_curve = df['no_train']
+        if first:
+            curr_percentile_curve = df['no_train']
+        else:
+            curr_percentile_curve = df.iloc[-1]
         percentiles_list.append(curr_percentile_curve)
     return percentiles_list
+
+
+def get_percentiles_learned(example, cfg, first=False):
+    orig_cwd = hydra.utils.get_original_cwd()
+    percentile_dt_list = cfg.percentile_datetime_list
+
+    percentiles_list_list = []
+    for j in range(len(percentile_dt_list)):
+        percentile_dt = percentile_dt_list[j]
+        path = f"{orig_cwd}/outputs/{example}/train_outputs/{percentile_dt}"
+
+        # return the last column
+        percentiles_list = []
+        percentiles = cfg.get('percentiles', [30, 50, 90, 95, 99])
+        for i in range(len(percentiles)):
+            filename = f"percentiles/train_{percentiles[i]}.csv"
+            df = read_csv(f"{path}/{filename}")
+            if first:
+                curr_percentile_curve = df['no_train']
+            else:
+                curr_percentile_curve = df.iloc[:, -1]
+            percentiles_list.append(curr_percentile_curve)
+        percentiles_list_list.append(percentiles_list)
+    return percentiles_list_list
 
 
 def get_frac_solved_data_classical(example, cfg):
@@ -1535,7 +1814,9 @@ def get_frac_solved_data(example, cfg):
     all_pac_bayes_results = []
     cold_start_results = []
     nearest_neighbor_results = []
-    for acc in cfg.accuracies:
+
+    accs = get_accs(cfg)
+    for acc in accs: #cfg.accuracies:
         if cold_start_datetime != '':
             # cold_start_datetime = recover_last_datetime(orig_cwd, example, 'train')
             curr_cold_start_results = load_frac_solved(example, cold_start_datetime, acc, train=False, title='no_train')
