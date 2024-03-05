@@ -73,4 +73,4 @@ pac_bayes_cfg:
   pac_bayes_num_samples: 100
 lambd: 0.1
 save_weights_flag: True
-algo: glista
+algo: tilista
