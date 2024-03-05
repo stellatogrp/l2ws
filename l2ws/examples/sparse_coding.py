@@ -81,7 +81,14 @@ def setup_probs(setup_cfg):
     mask = np.random.choice(2, size=(N, n_orig), replace=True, p=[0.9, 0.1])
     z_stars = np.multiply(z_orig, mask)
 
-    b_mat = (D @ z_stars.T).T
+    if setup_cfg['SNR'] == 'inf':
+        noise = 0
+    else:
+        SNR = setup_cfg['SNR']
+        stddev = np.sqrt(np.var(z_stars, axis=1))
+        noise_stddev = stddev * np.power (10.0, -SNR / 20.0)
+        noise = noise_stddev.reshape(-1, 1) * np.random.normal(size=(N, m_orig))
+    b_mat = (D @ z_stars.T).T + noise
 
     # b_min, b_max = setup_cfg['b_min'], setup_cfg['b_max']
     # # b_mat = b_scale * generate_b_mat(A, N, b_min, b_max)

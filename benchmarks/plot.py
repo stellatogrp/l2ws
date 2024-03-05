@@ -133,7 +133,14 @@ titles_2_marker_starts = dict(cold_start=0,
 
 @hydra.main(config_path='configs/sparse_coding', config_name='sparse_coding_plot.yaml')
 def sparse_coding_plot_eval_iters(cfg):
+    
+
     example = 'sparse_coding'
+    percentile_plots_maml(example, cfg)
+    create_gen_l2o_results_maml(example, cfg)
+    return
+
+
     # overlay_training_losses(example, cfg)
     # create_journal_results(example, cfg, train=False)
     # create_genL2O_results()
@@ -685,7 +692,8 @@ def percentile_final_plots_together(example, percentiles, cold_start_quantile_li
                         color=titles_2_colors['nearest_neighbor'], 
                         linestyle=titles_2_styles['nearest_neighbor'],
                         marker=titles_2_markers['nearest_neighbor'],
-                        markevery=(0.05, 0.1))
+                        markevery=(0.05, 0.1)
+                        )
         if cold_start_quantile.min() > 0:
             axes[k].set_yscale('log')
         axes[k].set_xlabel('evaluation steps', fontsize=fontsize)
@@ -911,29 +919,34 @@ def percentile_plots_maml(example, cfg):
     all_test_results, all_pac_bayes_results, cold_start_results, pretrain_results = out
     # percentile_results = get_percentiles(example, cfg)
 
-    steps1 = np.arange(cold_start_results[-1].size)[:eval_iters]
+    # steps1 = np.arange(cold_start_results[-1].size)[:eval_iters]
     # z_star_max, theta_max = get_worst_case_datetime(example, cfg)
 
     # fill in e_star tensor
     num_N = len(all_pac_bayes_results[0])
     e_stars = get_e_stars(all_pac_bayes_results, accuracies, eval_iters)
 
-    percentiles = cfg.get('percentiles', [30, 90, 99])
+    percentiles = cfg.get('percentiles', [30, 90, 99]) #[30, 80, 90])
     corrected_indices = [0, 2, 4]
     # worst = z_star_max / np.sqrt(steps1 + 2)
     worst = None
 
-    cold_start_quantile_list, worst_list = [], []
+    cold_start_quantile_list, second_baseline_quantile_list = [], []
+    worst_list = []
     bounds_list_list, plot_bool_list_list = [], []
     emp_list_list = []
 
     # get the empirical quantiles
     percentiles_list_list = get_percentiles_learned(example, cfg)
+
+    percentiles_list_cold = get_percentiles(example, cfg)
     
     for i in range(len(percentiles)):
         percentile = percentiles[i]
         bounds_list = []
         plot_bool_list = []
+
+        # get the current bound
         for j in range(num_N):
             curr_bound = get_quantile(e_stars[j, :, :], percentile, eval_iters, worst, accuracies)
             bounds_list.append(curr_bound)
@@ -943,47 +956,65 @@ def percentile_plots_maml(example, cfg):
                 plot_bool_list.append(True)
         correct_index = corrected_indices[i]
 
-        # pretrain quantile
-        percentile_results = percentiles_list_list[0]
-        cold_start_quantile = percentile_results[correct_index][:eval_iters]
+        if example == 'sine':
+            # pretrain quantile
+            percentile_results = percentiles_list_list[0]
+            cold_start_quantile = percentile_results[correct_index][:eval_iters]
+            second_baseline_quantile = None
+            worst = None
 
-        # learned quantile
-        emp_list = percentiles_list_list[1] #cold_start_quantile #percentiles_list_list[i]
+            # learned quantile
+            emp_list = [percentiles_list_list[1][correct_index][:eval_iters]]
+        elif example == 'sparse_coding':
+            cold_start_quantile = percentiles_list_cold[i]
+            emp_list = [percentiles_list_list[k][correct_index][:eval_iters] for k in range(len(percentiles_list_list))]
+            # import pdb
+            # pdb.set_trace()
+            second_baseline_quantile = None
 
-        learned_percentile_final_plots(percentile, cold_start_quantile, worst, emp_list,
-                            bounds_list, cfg.custom_loss, plot_bool_list, 
-                            cfg.percentile_ylabel)
+        learned_percentile_final_plots(example, percentile, cold_start_quantile, second_baseline_quantile, 
+                                       worst, emp_list, bounds_list, cfg.custom_loss, 
+                                       plot_bool_list)
+        
+        # append to lists
         cold_start_quantile_list.append(cold_start_quantile)
+        second_baseline_quantile_list.append(second_baseline_quantile)
         worst_list.append(worst)
         bounds_list_list.append(bounds_list)
         emp_list_list.append(emp_list)
         plot_bool_list_list.append(plot_bool_list)
+    second_baseline_quantile_list = None
     learned_percentile_final_plots_together(example, percentiles, cold_start_quantile_list, 
+                                            second_baseline_quantile_list,
                                             worst_list, emp_list_list,
                             bounds_list_list, cfg.custom_loss, plot_bool_list_list)
+    
 
-
-def learned_percentile_final_plots_together(example, percentiles, cold_start_quantile_list, 
-                                            worst_list, 
-                            emp_list_list, bounds_list_list, custom_loss, plot_bool_list_list):
-    markers = ['o', 's', '<', 'D']
-    cmap = plt.cm.Set1
-    colors = cmap.colors
-    offsets = [0, .03, .06]
-    fig, axes = plt.subplots(nrows=1, ncols=len(percentiles), figsize=(20, 5), sharey='row')
-    # axes[0].set_ylabel(ylabel)
-
-    fontsize = 30
-    title_fontsize = 30
-
-    # y-label
+def get_ylabel_percentile(example, custom_loss):
+    if example == 'sparse_coding':
+        return 'NMSE (dB)'
     if custom_loss:
         if example == 'robust_kalman':
             ylabel = 'max Euclidean dist.'
-        elif example == 'mnist':
+        elif example == 'mnist' or example == 'sparse_coding':
             ylabel = 'NMSE (dB)'
     else:
         ylabel = 'fixed-point residual'
+    return ylabel
+
+
+def learned_percentile_final_plots_together(example, percentiles, cold_start_quantile_list,
+                                            second_baseline_quantile_list, 
+                                            worst_list, 
+                            emp_list_list, bounds_list_list, custom_loss, plot_bool_list_list):
+    markers = ['o', 's', '>', '^', 'D', 'X', 'P', '*']
+    cmap = plt.cm.Set1
+    colors = cmap.colors
+    fig, axes = plt.subplots(nrows=1, ncols=len(percentiles), figsize=(20, 5), sharey='row')
+    fontsize = 30
+    title_fontsize = 30
+
+    ylabel = get_ylabel_percentile(example, custom_loss)
     axes[0].set_ylabel(ylabel, fontsize=fontsize)
 
     for k in range(len(percentiles)):
@@ -996,43 +1027,51 @@ def learned_percentile_final_plots_together(example, percentiles, cold_start_qua
 
         loc = k
         num_N = len(bounds_list)
+        if cold_start_quantile.size < 20:
+            markevery = None
+        else:
+            markevery = 0.1
         for j in range(num_N):
             # plot the empirical
             emp = emp_list[j]
             if plot_bool_list[j]:
-                axes[loc].plot(emp, 
-                               linestyle='dotted',
-                               color=colors[j], marker=markers[j+1], 
-                            # alpha=0.6, 
-                            # markevery=(0.00 + offsets[j], 0.1)
-                                                  )
+                marker = markers[2 * j] #if example == 'sparse_coding' else markers[j]
+                axes[loc].plot(emp, linestyle='dotted', markerfacecolor='none',
+                               color=colors[j], marker=marker, markevery=markevery)
 
             # plot the bound
             curr = bounds_list[j]
             if plot_bool_list[j]:
-                axes[loc].plot(curr, color=colors[j], marker=markers[j], 
-                            # alpha=0.6, 
-                            # markevery=(0.00 + offsets[j], 0.1)
-                                                  )
-                
+                marker = markers[2 * j + 1] #if example == 'sparse_coding' else markers[j + 1]
+                axes[loc].plot(curr, color=colors[j], marker=marker, 
+                            markevery=markevery)
+        # plot the cold start
         axes[loc].plot(cold_start_quantile, 
                     titles_2_colors['cold_start'], 
                     linestyle=titles_2_styles['cold_start'],
                     marker=titles_2_markers['cold_start'],
-                    markevery=(0.05, 0.1))
-
+                    markevery=markevery
+                    )
+        
+        # plot the secondary baseline
+        if second_baseline_quantile_list is not None:
+            axes[loc].plot(second_baseline_quantile_list[k], 
+                        titles_2_colors['nearest_neighbor'], 
+                        linestyle=titles_2_styles['nearest_neighbor'],
+                        marker=titles_2_markers['nearest_neighbor'],
+                        markevery=markevery
+                        )
+        
         # plot the worst case
-        # if not custom_loss:
-        #     axes[loc].plot(worst, 
-        #                 color=titles_2_colors['nearest_neighbor'], 
-        #                 linestyle=titles_2_styles['nearest_neighbor'],
-        #                 marker=titles_2_markers['nearest_neighbor'],
-        #                 markevery=(0.05, 0.1))
+        if not custom_loss and worst is not None:
+            axes[loc].plot(worst, 
+                        color=titles_2_colors['nearest_neighbor'], 
+                        linestyle=titles_2_styles['nearest_neighbor'],
+                        marker=titles_2_markers['nearest_neighbor'],
+                        markevery=markevery)
         if cold_start_quantile.min() > 0:
             axes[k].set_yscale('log')
         axes[k].set_xlabel('evaluation steps', fontsize=fontsize)
-        # axes[k].set_ylabel(ylabel)
-
         axes[loc].set_title(r'${}$th quantile bound'.format(percentile), fontsize=title_fontsize)
         
     plt.tight_layout()
@@ -1040,24 +1079,40 @@ def learned_percentile_final_plots_together(example, percentiles, cold_start_qua
     plt.clf()
 
 
-def learned_percentile_final_plots(percentile, cold_start_quantile, worst, emp_list,
-                            bounds_list, custom_loss, plot_bool_list, 
-                            percentile_ylabel):
+def learned_percentile_final_plots(example, percentile, cold_start_quantile, second_baseline_quantile, 
+                                   worst, emp_list, bounds_list, custom_loss, plot_bool_list):
     markers = ['o', 's', '<', 'D']
     colors = plt.cm.Set1.colors
     offsets = [0, .03, .06]
     num_N = len(bounds_list)
+
+    percentile_ylabel = get_ylabel_percentile(example, custom_loss)
     for j in range(num_N):
+        # plot the empirical quantity
+        emp = emp_list[j]
+        if plot_bool_list[j]:
+            plt.plot(emp, linestyle='dotted', markerfacecolor='none',
+                     color=colors[j], marker=markers[2*j], markevery=None)
+
+        # plot the bound
         curr = bounds_list[j]
         if plot_bool_list[j]:
-            plt.plot(curr, color=colors[j], marker=markers[j], 
-                        alpha=0.6, markevery=(0.00 + offsets[j], 0.1))
+            plt.plot(curr, color=colors[j], marker=markers[2*j+1], markevery=None)
             
+    # plot the cold start
     plt.plot(cold_start_quantile, 
                  titles_2_colors['cold_start'], 
                  linestyle=titles_2_styles['cold_start'],
                  marker=titles_2_markers['cold_start'],
-                 markevery=(0.05, 0.1))
+                 markevery=None)
+    
+    # plot the secondary baseline
+    if second_baseline_quantile is not None:
+        plt.plot(second_baseline_quantile, 
+                    titles_2_colors['nearest_neighbor'], 
+                    linestyle=titles_2_styles['nearest_neighbor'],
+                    marker=titles_2_markers['nearest_neighbor'],
+                    markevery=None)
 
     # plot the worst case
     # if not custom_loss:
@@ -1106,32 +1161,51 @@ def create_gen_l2o_results_maml(example, cfg):
 
     accs = get_accs(cfg)
     acc_list, emp_list_list, bounds_list_list, cold_start_list = [], [], [], []
+    secondary_baseline_list = []
     for i in range(len(accs)):
         acc = accs[i]
 
-        # get the pretrained model
-        cold_start_curve = pretrain_results[i]
-
-        # get the pac_bayes plot
-        curr_pac_bayes_results = all_pac_bayes_results[i][0]
-
-        # get the empirical plot
-        curr_test_results = all_test_results[i][0]
-
         if acc in plot_acc_list:
-            emp_list = [curr_test_results]
-            bounds_list = [curr_pac_bayes_results]
+            if example == 'maml':
+                # get the pretrained model
+                cold_start_curve = pretrain_results[i]
+                secondary_baseline_curve = None
+
+                # get the pac_bayes plot
+                curr_pac_bayes_results = all_pac_bayes_results[i][0]
+
+                # get the empirical plot
+                curr_test_results = all_test_results[i][0]
+
+                emp_list = [curr_test_results]
+                bounds_list = [curr_pac_bayes_results]
+            elif example == 'sparse_coding':
+                # get the pretrained model
+                cold_start_curve = pretrain_results[i]
+                secondary_baseline_curve = None
+
+                # get the pac_bayes plot
+                curr_pac_bayes_results = all_pac_bayes_results[i]
+
+                # get the empirical plot
+                curr_test_results = all_test_results[i]
+
+                emp_list = curr_test_results
+                bounds_list = curr_pac_bayes_results
+            
             worst_case_curve = None
             plot_final_learned_risk_bounds(acc, steps, bounds_list, emp_list, cold_start_curve, 
+                                           secondary_baseline_curve,
                                             worst_case_curve, False, cfg.custom_loss)
             acc_list.append(acc)
             emp_list_list.append(emp_list)
             bounds_list_list.append(bounds_list)
             cold_start_list.append(cold_start_curve)
             worst_list.append(worst_case_curve)
+            secondary_baseline_list.append(secondary_baseline_curve)
 
     plot_final_learned_risk_bounds_together(example, plot_acc_list, steps, bounds_list_list, 
-                                            emp_list_list, cold_start_list,
+                                            emp_list_list, cold_start_list, secondary_baseline_list,
                                      worst_list, worst_case, cfg.custom_loss)
 
         # plt.plot(pretrain_results[i],
@@ -1170,7 +1244,7 @@ def create_gen_l2o_results_maml(example, cfg):
 
         
 def plot_final_learned_risk_bounds_together(example, plot_acc_list, steps, bounds_list_list, 
-                                            emp_list_list, cold_start_list,
+                                            emp_list_list, cold_start_list, secondary_baseline_list,
                                      worst_list, worst_case, custom_loss):
     markers = ['o', 's', '<', 'D']
     cmap = plt.cm.Set1
@@ -1202,16 +1276,15 @@ def plot_final_learned_risk_bounds_together(example, plot_acc_list, steps, bound
                             color=colors[j], 
                             linestyle='dotted',
                             # alpha=0.6,
-                            markevery=0.1,
-                            marker=markers[j])
+                            # markevery=0.1,
+                            marker=markers[2*j])
             
             # plot pac bayes bounds
             axes[loc].plot(steps, bounds_list[j], 
                             color=colors[j], 
                             # alpha=0.6,
-                            markevery=0.1,
-                            
-                            marker=markers[j+1])
+                            # markevery=0.1,
+                            marker=markers[2*j+1])
 
         axes[loc].plot(steps,
                     cold_start, 
@@ -1219,7 +1292,16 @@ def plot_final_learned_risk_bounds_together(example, plot_acc_list, steps, bound
                     color=titles_2_colors['cold_start'],
                     marker=titles_2_markers['cold_start'],
                     linewidth=2.0,
-                    markevery=(0.05, 0.1)
+                    # markevery=(0.05, 0.1)
+                    )
+        if secondary_baseline_list[k] is not None:
+            axes[loc].plot(steps,
+                    secondary_baseline_list[k], 
+                    linestyle=titles_2_styles['nearest_neighbor'], 
+                    color=titles_2_colors['nearest_neighbor'],
+                    marker=titles_2_markers['nearest_neighbor'],
+                    linewidth=2.0,
+                    # markevery=(0.05, 0.1)
                     )
         if worst_case:
             axes[loc].plot(steps,
@@ -1231,6 +1313,8 @@ def plot_final_learned_risk_bounds_together(example, plot_acc_list, steps, bound
                         markevery=(0.05, 0.1)
                         )
         axes[loc].set_xlabel('evaluation steps', fontsize=fontsize)
+
+        acc = round_acc(acc)
         
         if custom_loss:
             if example == 'robust_kalman':
@@ -1247,7 +1331,13 @@ def plot_final_learned_risk_bounds_together(example, plot_acc_list, steps, bound
     plt.clf()
 
 
-def plot_final_learned_risk_bounds(acc, steps, bounds_list, emp_list, cold_start, worst, 
+def round_acc(acc):
+    if acc == 0.501187:
+        return 0.50
+    return acc
+
+
+def plot_final_learned_risk_bounds(acc, steps, bounds_list, emp_list, cold_start, secondary_baseline_curve, worst, 
                                      worst_case, custom_loss):
     markers = ['o', 's', '<', 'D']
     cmap = plt.cm.Set1
@@ -1274,6 +1364,15 @@ def plot_final_learned_risk_bounds(acc, steps, bounds_list, emp_list, cold_start
                 linestyle=titles_2_styles['cold_start'], 
                 color=titles_2_colors['cold_start'],
                 marker=titles_2_markers['cold_start'],
+                linewidth=2.0,
+                markevery=(0.05, 0.1)
+                )
+    if secondary_baseline_curve is not None:
+        plt.plot(steps,
+                cold_start, 
+                linestyle=titles_2_styles['nearest_neighbor'], 
+                color=titles_2_colors['nearest_neighbor'],
+                marker=titles_2_markers['nearest_neighbor'],
                 linewidth=2.0,
                 markevery=(0.05, 0.1)
                 )

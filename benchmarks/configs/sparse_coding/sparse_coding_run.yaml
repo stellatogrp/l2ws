@@ -57,7 +57,7 @@ skip_startup: False
 sigma_nn: [0.0, 1e-6, 1e-5, 0.0001, 0.001, 0.01, .1, 1, 10]
 pac_bayes_num_samples: 5
 pac_bayes_flag: False
-# load_weights_datetime: '2024-01-11/21-36-06'
+# load_weights_datetime: '2024-03-04/13-38-01'
 # nn_load_type: stochastic
 
 pac_bayes_cfg:
@@ -67,8 +67,10 @@ pac_bayes_cfg:
   delta: 0.01
   penalty_coeff: 1.0
   deterministic: False
-  frac_solved_accs: [-10, -20, -30]
+  frac_solved_accs: nmse_full #[-10, -20, -30]
   target_pen: 0.01
+  skip_full: True
+  pac_bayes_num_samples: 100
 lambd: 0.1
-save_weights_flag: False
-algo: alista
+save_weights_flag: True
+algo: glista

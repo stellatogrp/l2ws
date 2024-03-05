@@ -726,7 +726,7 @@ class Workspace:
     def save_weights(self):
         nn_weights = self.l2ws_model.params
         if len(nn_weights) == 3 and not isinstance(nn_weights[2], tuple):
-            if self.l2ws_model.algo == 'alista':
+            if self.l2ws_model.algo in ['alista', 'glista', 'lista', 'tilista']:
                 self.save_weights_stochastic_alista()
             else:
                 self.save_weights_stochastic()
@@ -1040,12 +1040,13 @@ class Workspace:
 
     def load_weights(self, example, datetime, nn_type):
         if nn_type == 'deterministic':
-            if self.l2ws_model.algo == 'alista':
+            # if self.l2ws_model.algo == 'alista':
+            if self.l2ws_model.algo in ['alista', 'glista', 'lista', 'tilista']:
                 self.load_weights_deterministic_alista(example, datetime)
             else:
                 self.load_weights_deterministic(example, datetime)
         elif nn_type == 'stochastic':
-            if self.l2ws_model.algo == 'alista':
+            if self.l2ws_model.algo in ['alista', 'glista', 'lista', 'tilista']:
                 self.load_weights_stochastic_alista(example, datetime)
             else:
                 self.load_weights_stochastic(example, datetime)
@@ -2442,7 +2443,7 @@ class Workspace:
         self.conv_rates_df = pd.DataFrame()
         self.conv_rates_df['conv_rate'] = self.conv_rates
 
-        self.percentiles = [30, 50, 90, 95, 99]
+        self.percentiles = [30, 50, 80, 90, 95, 99]
         self.percentiles_df_list_train = []
         self.percentiles_df_list_test = []
         for i in range(len(self.percentiles)):

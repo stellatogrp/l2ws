@@ -1,12 +1,10 @@
 m_orig: 128 #64
 n_orig: 256 #128
-lambd: 10
 solve_acc_abs: 1e-10
 solve_acc_rel: 0
 N_train: 50000
 N_test: 100
 seed: 42
 solve: True
+SNR: 20
 A_scale: 1
-b_min: 0
-b_max: 30
