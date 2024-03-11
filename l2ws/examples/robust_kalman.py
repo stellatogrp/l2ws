@@ -526,7 +526,7 @@ def plot_positions_overlay_genL2O(noisy, optimal, cold, num_dots=2, grayscales=[
     ax.plot(optimal[0, :], optimal[1, :], 'o', color=colors[1], alpha=1.0, markersize=markersize)
 
     # plot cold
-    ax.plot(cold[0, :], cold[1, :], 'o', color=colors[4], alpha=1.0, markersize=markersize)
+    # ax.plot(cold[0, :], cold[1, :], 'o', color=colors[4], alpha=1.0, markersize=markersize)
 
     # plot shaded region
     # plt.plot(optimal[0, :], optimal[1, :], 'o', color=colors[i], alpha=1.0, label=labels[i], markersize=1)
@@ -561,7 +561,7 @@ def plot_positions_overlay_genL2O(noisy, optimal, cold, num_dots=2, grayscales=[
     inset_markersize = 7
     axins.plot(noisy[0, :], noisy[1, :], 'o', color=colors[0], alpha=0.3, markersize=inset_markersize)
     axins.plot(optimal[0, :], optimal[1, :], 'o', color=colors[1], alpha=1.0, markersize=inset_markersize)
-    axins.plot(cold[0, :], cold[1, :], 'o', color=colors[4], alpha=1.0, markersize=inset_markersize)
+    # axins.plot(cold[0, :], cold[1, :], 'o', color=colors[4], alpha=1.0, markersize=inset_markersize)
 
     # Specify the region for zooming (can adjust as necessary)
     # x1, x2, y1, y2 = -0.2, 0.2, -0.2, 0.2  # Define zoom boundaries here
