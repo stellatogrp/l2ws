@@ -639,8 +639,11 @@ class L2WSmodel(object):
                     bisec = Bisection(optimality_fun=kl_inv_fn, lower=0.0, upper=1.0, 
                                       check_bracket=False,
                                       jit=True)
-
-                    q_expit = 1 / (1 + jnp.exp(-.1 * (q - 0)))
+                    if self.algo == 'lista':
+                        factor = 0.01
+                    else:
+                        factor = 0.1
+                    q_expit = 1 / (1 + jnp.exp(-factor * (q - 0)))
                     # q_expit = 1 / (1 + jnp.exp(-1 * (q - 0)))
                     # import pdb
                     # pdb.set_trace()
@@ -673,20 +676,19 @@ class L2WSmodel(object):
     #     return penalty_loss /  N_train
 
     def round_priors(self, priors, lambda_max, b):
-        lambd = lambda_max / (1 + jnp.exp(-priors))
-        a = jnp.round(b * jnp.log(lambda_max / lambd))
+        lambd = jnp.clip(jnp.exp(priors), a_max=lambda_max)
+        a = jnp.round(b * jnp.log((lambda_max + 1e-6) / lambd))
         rounded_lambd = lambda_max * jnp.exp(-a / b)
-        # return jnp.log(rounded_priors)
-        return jnp.log(rounded_lambd / (lambda_max - rounded_lambd))
+        return jnp.log(rounded_lambd)
+        # lambd = lambda_max / (1 + jnp.exp(-priors))
+        # a = jnp.round(b * jnp.log(lambda_max / lambd))
+        # rounded_lambd = lambda_max * jnp.exp(-a / b)
+        # # return jnp.log(rounded_priors)
+        # return jnp.log(rounded_lambd / (lambda_max - rounded_lambd))
         # return rounded_lambd
     
 
     def calculate_total_penalty(self, N_train, params, c, b, delta, prior=0):
-        # first: round the priors
-        # import pdb
-        # pdb.set_trace()
-        # rounded_priors = self.round_priors(params[2], c, b)
-
         # priors are already rounded
         rounded_priors = params[2]
 
@@ -696,7 +698,6 @@ class L2WSmodel(object):
         log_pen = 0
         for i in range(num_groups):
             curr_lambd = jnp.clip(jnp.exp(rounded_priors[i]), a_max=c)
-            # curr_lambd = c / (1 + jnp.exp(-rounded_priors[i]))
             log_pen += 2 * jnp.log(b * jnp.log((c+1e-6) / curr_lambd))
 
         # calculate the KL penalty

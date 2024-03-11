@@ -899,7 +899,7 @@ class Workspace:
         part 1: first obtain H (num_samples) samples
         '''
         K = self.l2ws_model.eval_unrolls
-        N = self.l2ws_model.N_train
+        N = self.l2ws_model.N_train if train else self.l2ws_model.N_test
         hist = np.zeros((num_samples, N, K-1))
 
         # round the priors
@@ -909,7 +909,7 @@ class Workspace:
 
         
         for i in range(num_samples):
-            eval_out = self.evaluate_only(fixed_ws=False, num=N, train=True, 
+            eval_out = self.evaluate_only(fixed_ws=False, num=N, train=train, 
                                           col='pac_bayes', batch_size=N)
             loss_train, out_train, train_time = eval_out
 
@@ -2079,8 +2079,9 @@ class Workspace:
         # key_count updated to get random permutation for each epoch
         # key_count = 0
         if not self.skip_pac_bayes_full:
-            self.finalize_genL2O(train=False, num_samples=2)
+            self.finalize_genL2O(train=False, num_samples=100)
             self.finalize_genL2O(train=True, num_samples=self.pac_bayes_num_samples)
+            return
 
         if self.pac_bayes_hyperparameter_opt_flag:
             self.pac_bayes_hyperparameter_opt(self.pac_bayes_num_samples, 

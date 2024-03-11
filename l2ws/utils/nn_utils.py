@@ -63,7 +63,7 @@ def calculate_pinsker_penalty(N_train, params, c, b, delta, prior=0):
 
 def calculate_total_penalty(N_train, params, c, b, delta, prior=0):
     pi_pen = jnp.log(jnp.pi ** 2 * N_train / (6 * delta))
-    log_pen = 2 * jnp.log(b * jnp.log(c / jnp.exp(params[2])))
+    log_pen = 2 * jnp.log(b * jnp.log((c+1e-6) / jnp.clip(jnp.exp(params[2]), a_max=c)))
     penalty_loss = compute_all_params_KL(params[0], params[1], 
                                          params[2], prior=prior) + pi_pen + log_pen
     return penalty_loss /  N_train

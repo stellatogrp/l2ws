@@ -128,13 +128,20 @@ class ALISTAmodel(L2WSmodel):
     
 
     def calculate_total_penalty(self, N_train, params, c, b, delta):
-        pi_pen = jnp.log(jnp.pi ** 2 * N_train / (6 * delta))
-        # log_pen = 2 * jnp.log(b * jnp.log(c / jnp.exp(params[2])))
-        log_pen = 2 * jnp.log(b * jnp.log(c / jnp.exp(params[2][0])))
-        # import pdb
-        # pdb.set_trace()
+        # priors are already rounded
+        rounded_priors = params[2]
+
+        # second: calculate the penalties
+        num_groups = len(rounded_priors)
+        pi_pen = jnp.log(jnp.pi ** 2 * num_groups * N_train / (6 * delta))
+        log_pen = 0
+        for i in range(num_groups):
+            curr_lambd = jnp.clip(jnp.exp(rounded_priors[i]), a_max=c)
+            log_pen += 2 * jnp.log(b * jnp.log((c+1e-6) / curr_lambd))
+
+        # calculate the KL penalty
         penalty_loss = self.compute_all_params_KL(params[0], params[1], 
-                                            params[2]) + pi_pen + log_pen
+                                            rounded_priors) + pi_pen + log_pen
         return penalty_loss /  N_train
 
 

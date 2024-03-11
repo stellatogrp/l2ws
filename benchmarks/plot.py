@@ -926,8 +926,8 @@ def percentile_plots_maml(example, cfg):
     num_N = len(all_pac_bayes_results[0])
     e_stars = get_e_stars(all_pac_bayes_results, accuracies, eval_iters)
 
-    percentiles = cfg.get('percentiles', [30, 90, 99]) #[30, 80, 90])
-    corrected_indices = [0, 2, 4]
+    percentiles = cfg.get('percentiles', [30, 80, 90]) #[30, 80, 90])
+    corrected_indices = [0, 2, 3]
     # worst = z_star_max / np.sqrt(steps1 + 2)
     worst = None
 
@@ -1040,10 +1040,11 @@ def learned_percentile_final_plots_together(example, percentiles, cold_start_qua
                                color=colors[j], marker=marker, markevery=markevery)
 
             # plot the bound
-            curr = bounds_list[j]
+            # curr = bounds_list[j]
             if plot_bool_list[j]:
                 marker = markers[2 * j + 1] #if example == 'sparse_coding' else markers[j + 1]
-                axes[loc].plot(curr, color=colors[j], marker=marker, 
+                bound = np.maximum(bounds_list[j], emp_list[j])
+                axes[loc].plot(bound, color=colors[j], marker=marker, 
                             markevery=markevery)
         # plot the cold start
         axes[loc].plot(cold_start_quantile, 
@@ -1081,7 +1082,7 @@ def learned_percentile_final_plots_together(example, percentiles, cold_start_qua
 
 def learned_percentile_final_plots(example, percentile, cold_start_quantile, second_baseline_quantile, 
                                    worst, emp_list, bounds_list, custom_loss, plot_bool_list):
-    markers = ['o', 's', '<', 'D']
+    markers = ['o', 's', '>', '^', 'D', 'X', 'P', '*']
     colors = plt.cm.Set1.colors
     offsets = [0, .03, .06]
     num_N = len(bounds_list)
@@ -1204,7 +1205,7 @@ def create_gen_l2o_results_maml(example, cfg):
             worst_list.append(worst_case_curve)
             secondary_baseline_list.append(secondary_baseline_curve)
 
-    plot_final_learned_risk_bounds_together(example, plot_acc_list, steps, bounds_list_list, 
+    plot_final_learned_risk_bounds_together(example, acc_list, steps, bounds_list_list, 
                                             emp_list_list, cold_start_list, secondary_baseline_list,
                                      worst_list, worst_case, cfg.custom_loss)
 
@@ -1246,7 +1247,8 @@ def create_gen_l2o_results_maml(example, cfg):
 def plot_final_learned_risk_bounds_together(example, plot_acc_list, steps, bounds_list_list, 
                                             emp_list_list, cold_start_list, secondary_baseline_list,
                                      worst_list, worst_case, custom_loss):
-    markers = ['o', 's', '<', 'D']
+
+    markers = ['o', 's', '>', '^', 'D', 'X', 'P', '*']
     cmap = plt.cm.Set1
     colors = cmap.colors
 
@@ -1262,6 +1264,7 @@ def plot_final_learned_risk_bounds_together(example, plot_acc_list, steps, bound
 
     for k in range(len(plot_acc_list)):
         loc = len(plot_acc_list) - 1 - k
+        # loc = k
         acc = plot_acc_list[k]
         bounds_list = bounds_list_list[k]
         emp_list = emp_list_list[k]
@@ -1274,13 +1277,15 @@ def plot_final_learned_risk_bounds_together(example, plot_acc_list, steps, bound
             # plot empirical results
             axes[loc].plot(steps, emp_list[j], 
                             color=colors[j], 
+                            markerfacecolor='none',
                             linestyle='dotted',
                             # alpha=0.6,
                             # markevery=0.1,
                             marker=markers[2*j])
             
             # plot pac bayes bounds
-            axes[loc].plot(steps, bounds_list[j], 
+            bound = np.minimum(bounds_list[j], emp_list[j])
+            axes[loc].plot(steps, bound, 
                             color=colors[j], 
                             # alpha=0.6,
                             # markevery=0.1,
@@ -1319,7 +1324,7 @@ def plot_final_learned_risk_bounds_together(example, plot_acc_list, steps, bound
         if custom_loss:
             if example == 'robust_kalman':
                 title = r'max Euclidean distance: $\epsilon={}$'.format(acc)
-            elif example == 'mnist':
+            elif example == 'mnist' or example == 'sparse_coding':
                 title = r'NMSE (dB): $\epsilon={}$'.format(np.round(acc, 1))
         else:
             title = r'fixed-point residual: $\epsilon={}$'.format(acc)
@@ -1339,7 +1344,9 @@ def round_acc(acc):
 
 def plot_final_learned_risk_bounds(acc, steps, bounds_list, emp_list, cold_start, secondary_baseline_curve, worst, 
                                      worst_case, custom_loss):
-    markers = ['o', 's', '<', 'D']
+    # markers = ['o', 's', '<', 'D']
+    markers = ['o', 's', '>', '^', 'D', 'X', 'P', '*']
+    
     cmap = plt.cm.Set1
     colors = cmap.colors
     num_bounds = len(bounds_list)
@@ -1351,14 +1358,14 @@ def plot_final_learned_risk_bounds(acc, steps, bounds_list, emp_list, cold_start
                         markerfacecolor='none',
                         alpha=0.6,
                         markevery=0.1,
-                        marker=markers[j])
+                        marker=markers[2*j])
 
         # plot the bounds
         plt.plot(steps, bounds_list[j], 
                         color=colors[j], 
                         alpha=0.6,
                         markevery=0.1,
-                        marker=markers[j+1])
+                        marker=markers[2*j+1])
     plt.plot(steps,
                 cold_start, 
                 linestyle=titles_2_styles['cold_start'], 

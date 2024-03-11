@@ -27,7 +27,7 @@ data:
 
 train_unrolls: 10
 eval_unrolls: 10
-eval_every_x_epochs: 10
+eval_every_x_epochs: 30
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
@@ -57,20 +57,23 @@ skip_startup: False
 sigma_nn: [0.0, 1e-6, 1e-5, 0.0001, 0.001, 0.01, .1, 1, 10]
 pac_bayes_num_samples: 5
 pac_bayes_flag: False
-# load_weights_datetime: '2024-03-05/09-54-42' # glista: '2024-03-04/23-41-35' # alista '2024-03-04/23-45-24'
-# nn_load_type: stochastic
+load_weights_datetime: '2024-03-05/17-42-37'
+# # lista: '2024-03-05/14-50-17', tilista: '2024-03-05/14-37-53', glista: '2024-03-05/17-42-37', # alista '2024-03-04/23-45-24'
+nn_load_type: stochastic
 
 pac_bayes_cfg:
   init_var: 1e-2
   c: 100.0
   b: 100
-  delta: 0.01
+  delta: 0.0001
+  delta2: 0.00001
+  rep: True
   penalty_coeff: 1.0
   deterministic: False
   frac_solved_accs: nmse_full #[-10, -20, -30]
   target_pen: 0.01
-  skip_full: True
+  skip_full: False
   pac_bayes_num_samples: 1000
 lambd: 0.1
 save_weights_flag: True
-algo: tilista
+algo: glista
