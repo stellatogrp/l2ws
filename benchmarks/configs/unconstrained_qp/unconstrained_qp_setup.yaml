@@ -2,8 +2,8 @@ n_orig: 20
 # solve_acc_abs: 1e-10
 # solve_acc_rel: 0
 split_factor: 100
-N_train: 100
-N_test: 10
+N_train: 10000
+N_test: 100
 seed: 42
 solve: True
 A_scale: 1

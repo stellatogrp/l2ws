@@ -385,6 +385,12 @@ def get_all_data(example, cfg, train=False):
         benchmarks.append('prev_sol')
         benchmark_dts.append(cfg.prev_sol_datetime)
 
+    # maml
+    maml_bool = 'maml_datetime' in cfg.keys()
+    if maml_bool:
+        benchmarks.append('maml')
+        benchmark_dts.append(cfg.maml_datetime)
+
     # for init in ['cold_start', 'nearest_neighbor', 'prev_sol']:
     for i in range(len(benchmarks)):
         init = benchmarks[i]
@@ -522,6 +528,8 @@ def get_eval_array(df, title):
         data = df['nearest_neighbor']
     elif title == 'prev_sol':
         data = df['prev_sol']
+    elif title == 'maml':
+        data = df.iloc[:, -1]
     else:
         # case of the learned warm-start, take the latest column
         data = df.iloc[:, -1]
@@ -639,57 +647,60 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
         curr_metric = metrics[i]
         for j in range(len(curr_metric)):
             title = titles[j]
-            color = titles_2_colors[title]
-            style = titles_2_styles[title]
-            marker = titles_2_markers[title]
-            mark_start = titles_2_marker_starts[title]
-            if title[:3] != 'reg':
-                axes[0, 0].plot(np.array(curr_metric[j])[start:eval_iters + start], 
-                                linestyle=style, marker=marker, color=color, 
-                                markevery=(2 * mark_start, 2 * 25))
-                # if vert_lines:
-                #     if title[0] == 'k':
-                #         k = int(title[1:])
-                #         axes[i].axvline(k, color=color)
-            if title[:3] != 'obj':
-                axes[0, 1].plot(np.array(curr_metric[j])[start:eval_iters + start], 
-                                linestyle=style, marker=marker, color=color, 
-                                markevery=(2 * mark_start, 2 * 25))
-                # if vert_lines:
-                #     if title[0] == 'k':
-                #         k = int(title[1:])
-                #         axes[i].axvline(k, color=color)
+            if title != 'maml':
+                color = titles_2_colors[title]
+                style = titles_2_styles[title]
+                marker = titles_2_markers[title]
+                mark_start = titles_2_marker_starts[title]
+                if title[:3] != 'reg':
+                    axes[0, 0].plot(np.array(curr_metric[j])[start:eval_iters + start], 
+                                    linestyle=style, marker=marker, color=color, 
+                                    markevery=(2 * mark_start, 2 * 25))
+                    # if vert_lines:
+                    #     if title[0] == 'k':
+                    #         k = int(title[1:])
+                    #         axes[i].axvline(k, color=color)
+                if title[:3] != 'obj':
+                    axes[0, 1].plot(np.array(curr_metric[j])[start:eval_iters + start], 
+                                    linestyle=style, marker=marker, color=color, 
+                                    markevery=(2 * mark_start, 2 * 25))
+                    # if vert_lines:
+                    #     if title[0] == 'k':
+                    #         k = int(title[1:])
+                    #         axes[i].axvline(k, color=color)
 
     # plot the gain
     for i in range(1):
         curr_metric = metrics[i]
         for j in range(len(curr_metric)):
             title = titles[j]
-            color = titles_2_colors[title]
-            style = titles_2_styles[title]
-            marker = titles_2_markers[title]
-            mark_start = titles_2_marker_starts[title]
-            # if j > 0:
-            #     gain = cs / np.array(curr_metric[j])[start:eval_iters + start]
-            # else:
-            #     cs = np.array(curr_metric[j])[start:eval_iters + start]
-            if j == 0:
-                cs = np.array(curr_metric[j])[start:eval_iters + start]
-            else:
-                gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], 
-                               a_min=0, a_max=1500)
-                if title[:3] != 'reg':
-                    axes[1, 0].plot(gain, linestyle=style, marker=marker, color=color, 
-                                    markevery=(2 * mark_start, 2 * 25))
-                if title[:3] != 'obj':
-                    axes[1, 1].plot(gain, linestyle=style, marker=marker, color=color, 
-                                    markevery=(2 * mark_start, 2 * 25))
+            if title != 'maml':
+                
+                color = titles_2_colors[title]
+                style = titles_2_styles[title]
+                marker = titles_2_markers[title]
+                mark_start = titles_2_marker_starts[title]
+                # if j > 0:
+                #     gain = cs / np.array(curr_metric[j])[start:eval_iters + start]
+                # else:
+                #     cs = np.array(curr_metric[j])[start:eval_iters + start]
+                if j == 0:
+                    cs = np.array(curr_metric[j])[start:eval_iters + start]
+                else:
+                    gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], 
+                                a_min=0, a_max=1500)
+                    if title[:3] != 'reg':
+                        axes[1, 0].plot(gain, linestyle=style, marker=marker, color=color, 
+                                        markevery=(2 * mark_start, 2 * 25))
+                    if title[:3] != 'obj':
+                        axes[1, 1].plot(gain, linestyle=style, marker=marker, color=color, 
+                                        markevery=(2 * mark_start, 2 * 25))
 
-            # if vert_lines:
-            #     if title[0] == 'k':
-            #         k = int(title[1:])
-            #         plt.axvline(k, color=color)
-    # plt.subplots_adjust(left=0.15, right=0.85, top=0.85, bottom=0.15)
+                # if vert_lines:
+                #     if title[0] == 'k':
+                #         k = int(title[1:])
+                #         plt.axvline(k, color=color)
+        # plt.subplots_adjust(left=0.15, right=0.85, top=0.85, bottom=0.15)
     
     fig.tight_layout()
     if vert_lines:
@@ -709,20 +720,21 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
         for j in range(len(curr_metric)):
         # for j in range(1):
             title = titles[j]
-            # title = 'gain to cold start'
-            color = titles_2_colors[title]
-            style = titles_2_styles[title]
+            if title != 'maml':
+                # title = 'gain to cold start'
+                color = titles_2_colors[title]
+                style = titles_2_styles[title]
 
-            if j > 0:
-                gain = cs / np.array(curr_metric[j])[start:eval_iters + start]
-                plt.plot(gain, linestyle=style, color=color)
-            else:
-                cs = np.array(curr_metric[j])[start:eval_iters + start]
-            if vert_lines:
-                if title[0] == 'k':
-                    k = int(title[1:])
-                    # plt.vlines(k, 0, 1000, color=color)
-                    plt.axvline(k, color=color)
+                if j > 0:
+                    gain = cs / np.array(curr_metric[j])[start:eval_iters + start]
+                    plt.plot(gain, linestyle=style, color=color)
+                else:
+                    cs = np.array(curr_metric[j])[start:eval_iters + start]
+                if vert_lines:
+                    if title[0] == 'k':
+                        k = int(title[1:])
+                        # plt.vlines(k, 0, 1000, color=color)
+                        plt.axvline(k, color=color)
     plt.ylabel('gain')
     plt.xlabel('evaluation steps')
     if vert_lines:
@@ -764,42 +776,35 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
 
         for j in range(len(curr_metric)):
             title = titles[j]
-            color = titles_2_colors[title]
-            style = titles_2_styles[title]
-            marker = titles_2_markers[title]
-            mark_start = titles_2_marker_starts[title]
-            if title[:3] != 'reg' and i == 0:
-                # either obj or baselines
-<<<<<<< HEAD:plot_script.py
-                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
-            if title[:3] != 'obj' and  i == 1:
-                # either reg or baselines
-                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style,   marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
-
-                
-=======
-                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], 
-                             linestyle=style, color=color)
-            if title[:3] != 'obj' and  i == 1:
-                # either reg or baselines
-                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], 
-                             linestyle=style, color=color)
->>>>>>> 6f924435fe0ade8b36992678252aecd2f1901259:benchmarks/plot.py
+            if title != 'maml':
+                color = titles_2_colors[title]
+                style = titles_2_styles[title]
+                marker = titles_2_markers[title]
+                mark_start = titles_2_marker_starts[title]
+                if title[:3] != 'reg' and i == 0:
+                    # either obj or baselines
+                    axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], 
+                                linestyle=style, color=color)
+                if title[:3] != 'obj' and  i == 1:
+                    # either reg or baselines
+                    axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], 
+                                linestyle=style, color=color)
 
         for j in range(len(curr_metric)):
             title = titles[j]
-            color = titles_2_colors[title]
-            style = titles_2_styles[title]
-            marker = titles_2_markers[title]
-            mark_start = titles_2_marker_starts[title]
-            if j == 0:
-                cs = np.array(curr_metric[j])[start:eval_iters + start]
-            gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], 
-                           a_min=0, a_max=1500)
-            if title[:3] != 'reg' and i == 0:
-                axes[1].plot(gain, linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
-            if title[:3] != 'obj' and i == 1:
-                axes[1].plot(gain, linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
+            if title != 'maml':
+                color = titles_2_colors[title]
+                style = titles_2_styles[title]
+                marker = titles_2_markers[title]
+                mark_start = titles_2_marker_starts[title]
+                if j == 0:
+                    cs = np.array(curr_metric[j])[start:eval_iters + start]
+                gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], 
+                            a_min=0, a_max=1500)
+                if title[:3] != 'reg' and i == 0:
+                    axes[1].plot(gain, linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
+                if title[:3] != 'obj' and i == 1:
+                    axes[1].plot(gain, linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
 
         if i == 0:
             plt.savefig('fixed_point_residual_loss.pdf', bbox_inches='tight')
@@ -946,7 +951,7 @@ def overlay_training_losses(example, cfg):
         elif loss_type == 'reg':
             k_vals_reg.append(k)
             gain_ratios_reg.append(gain_ratio)
-    create_train_test_plots(example, k_vals_obj,  gain_ratios_obj, k_vals_reg, gain_ratios_reg)
+    # create_train_test_plots(example, k_vals_obj,  gain_ratios_obj, k_vals_reg, gain_ratios_reg)
 
     # # now give a plot for the generalization
     # plt.plot(np.array(k_values), np.array(gain_gaps))

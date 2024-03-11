@@ -10,7 +10,7 @@ from jax.config import config
 from jaxopt import OptaxSolver
 
 from l2ws.algo_steps import create_eval_fn, create_train_fn, lin_sys_solve
-from l2ws.utils.nn_utils import init_network_params, predict_y
+from l2ws.utils.nn_utils import init_maml_network_params, init_network_params, predict_y
 
 # from l2ws.scs_model import SCSmodel
 # from l2ws.scs_model import SCSmodel
@@ -320,12 +320,18 @@ class L2WSmodel(object):
         # else:
         #     output_size = self.output_size
         output_size = self.output_size
-        hidden_layer_sizes = nn_cfg.get('intermediate_layer_sizes', [])
-
-        layer_sizes = [input_size] + hidden_layer_sizes + [output_size]
+        
 
         # initialize weights of neural network
-        self.params = init_network_params(layer_sizes, random.PRNGKey(0))
+        self.maml = nn_cfg.get('maml', False)
+        if self.maml:
+            hidden_layer_sizes = []
+            layer_sizes = [input_size] + hidden_layer_sizes + [output_size]
+            self.params = init_maml_network_params(layer_sizes, random.PRNGKey(0))
+        else:
+            hidden_layer_sizes = nn_cfg.get('intermediate_layer_sizes', [])
+            layer_sizes = [input_size] + hidden_layer_sizes + [output_size]
+            self.params = init_network_params(layer_sizes, random.PRNGKey(0))
 
         # initializes the optimizer
         self.optimizer_method = nn_cfg.get('method', 'adam')
@@ -486,7 +492,10 @@ class L2WSmodel(object):
         if bypass_nn:
             z0 = input
         else:
-            nn_output = predict_y(params, input)
+            if self.maml:
+                nn_output = params[0][1] #predict_y(params, input)
+            else:
+                nn_output = predict_y(params, input)
             z0 = nn_output
         if self.algo == 'scs':
             z0_full = jnp.ones(z0.size + 1)

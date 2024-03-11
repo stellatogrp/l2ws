@@ -7,6 +7,7 @@ nn_cfg:
   decay_lr: .1
   min_lr: 1e-7
   decay_every: 1e7
+  maml: True
 
 plateau_decay:
   min_lr: 1e-7
@@ -25,14 +26,14 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 60
+train_unrolls: 15
 eval_unrolls: 1000
 eval_every_x_epochs: 100
 save_every_x_epochs: 1
 test_every_x_epochs: 1
 write_csv_every_x_batches: 1
 epochs_jit: 2
-N_train: 100
+N_train: 1000
 N_test: 10
 num_samples: 10
 prediction_variable: w

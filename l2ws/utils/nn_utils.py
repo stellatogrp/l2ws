@@ -19,18 +19,24 @@ def get_nearest_neighbors(train_inputs, test_inputs, z_stars_train):
 
 
 def random_layer_params(m, n, key, scale=1e-2):
-# def random_layer_params(m, n, key, scale=1e-2):
-# def random_layer_params(m, n, key, scale=1e-1):
     w_key, b_key = random.split(key)
-    # fan_in, fan_out = shape[0], shape[1]
-    # scale = jnp.sqrt(2.0 / (m + n))
     return scale * random.normal(w_key, (n, m)), scale * random.normal(b_key, (n,))
+
+
+def random_layer_params_maml(m, n, key, scale=1e-2):
+    w_key, b_key = random.split(key)
+    return 0 * scale * random.normal(w_key, (n, m)), scale * random.normal(b_key, (n,))
 
 
 # Initialize all layers for a fully-connected neural network with sizes "sizes"
 def init_network_params(sizes, key):
     keys = random.split(key, len(sizes))
     return [random_layer_params(m, n, k) for m, n, k in zip(sizes[:-1], sizes[1:], keys)]
+
+
+def init_maml_network_params(sizes, key):
+    keys = random.split(key, len(sizes))
+    return [random_layer_params_maml(m, n, k) for m, n, k in zip(sizes[:-1], sizes[1:], keys)]
 
 
 def init_matrix_params(t, n, key):
