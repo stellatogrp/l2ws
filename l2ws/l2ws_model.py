@@ -333,6 +333,9 @@ class L2WSmodel(object):
             layer_sizes = [input_size] + hidden_layer_sizes + [output_size]
             self.params = init_network_params(layer_sizes, random.PRNGKey(0))
 
+        import pdb
+        pdb.set_trace()
+
         # initializes the optimizer
         self.optimizer_method = nn_cfg.get('method', 'adam')
         if self.optimizer_method == 'adam':

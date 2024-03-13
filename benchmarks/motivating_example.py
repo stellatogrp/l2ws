@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
+from mpl_toolkits.mplot3d import Axes3D
 
 from l2ws.algo_steps import (
     create_M,
@@ -29,8 +30,9 @@ def main():
     # contractive_plot()
     # linearly_regular_plot()
     # averaged_plot()
-    # create_toy_example()
-    combine_gifs()
+    create_toy_example()
+    # create_3d_toy_example()
+    # combine_gifs()
 
 
 def contractive_plot():
@@ -138,6 +140,208 @@ def averaged_plot():
     pdb.set_trace()
 
 
+def create_3d_toy_example():
+    """proximal Gradient descent for 
+
+    min (x_1 - a)^2 + (x_2 - b)^2
+
+    z_hist = run_prox_gd(init)
+    """
+    # a, b = 0, 0
+    # coeff = 10
+    # def f(x):
+    #     return coeff * (x[0] - a) ** 2 + (x[1] - b) ** 2 #+ x[1] * x[0]
+    P = jnp.diag(jnp.array([10, 1, 1]))
+    c = jnp.array([-1, 0, 0])
+    def f(x):
+        return 0.5 * jnp.sum(x * (P @ x), axis=0) + c.T @ x #.5 * x.T @ P @ x + c.T @ x
+    
+    grad = jax.grad(f)
+
+    # setup x_inits
+    init_dist = 10
+    theta1 = 105 * (np.pi/180)
+    theta2 = 10 * (np.pi/180)
+    # x_inits = [init_dist * jnp.array([-jnp.sqrt(2) / 2, -np.sqrt(2) / 2]), 
+    #            init_dist * jnp.array([np.cos(theta1), np.sin(theta1)]),
+    #            init_dist * jnp.array([np.cos(theta2), np.sin(theta2)])]
+    center = -c
+    d1 = jnp.array([-2.1, -1, -1]) 
+    d2 = jnp.array([-1.0, 0.5, 0.3]) 
+    d3 = jnp.array([.5, 1.5, -0.3])
+    x_inits = [
+        10 * d1 / jnp.linalg.norm(d1)+ center,
+        10 * d2 / jnp.linalg.norm(d2)+ center,
+        10 * d3 / jnp.linalg.norm(d3)+ center,
+    ]
+    m = 1
+    L = 10
+    num_steps = 50
+    num_steps_display = 5
+    step_size = 2 / (m + L) #1 / coeff, 10
+
+    x_hists = []
+    fp_res_list = []
+    for i in range(len(x_inits)):
+        x_init = x_inits[i]
+        x_hist, fp_res = run_prox_gd(x_init, grad, step_size, num_steps)
+        x_hists.append(x_hist)
+        fp_res_list.append(fp_res)
+
+    fig = plt.figure(figsize=(16, 9))
+    ax = fig.add_subplot(111, projection='3d')
+    
+
+    # Contour
+    # cs = ax.contour(X1, X2, f_vec(X1, X2), colors='k')
+    # ax.clabel(cs, fontsize=18, inline=True)
+    # contour plot
+    num_points = 10
+    x = np.linspace(-12, 12, num_points)
+    y = np.linspace(-12, 12, num_points)
+    z = np.linspace(-12, 12, num_points)
+    X, Y, Z = np.meshgrid(x, y, z)
+    X_unraveled = np.ravel(X)
+    Y_unraveled = np.ravel(Y)
+    Z_unraveled = np.ravel(Z)
+    XYZ = np.stack([X_unraveled, Y_unraveled, Z_unraveled])
+    
+    w_vec = f(XYZ)
+
+    w_mat = np.reshape(w_vec, (num_points, num_points, num_points))
+    levels = np.linspace(0, 1100, 6)
+
+    # import pdb
+    # pdb.set_trace()
+    # ax.contour(x, y, z, w_mat, levels=levels, cmap='Blues', linestyles='dotted')
+
+    # Plot
+    # fig, ax = plt.subplots(figsize=(16, 9))
+
+    # Create a sphere
+    phi, theta = np.linspace(0, 2 * np.pi, 100), np.linspace(0, np.pi, 100)
+    PHI, THETA = np.meshgrid(phi, theta)
+    R = 10  # Radius of the sphere
+    X = R * np.sin(THETA) * np.cos(PHI) + center[0]
+    Y = R * np.sin(THETA) * np.sin(PHI) + center[1]
+    Z = R * np.cos(THETA) + center[2]
+
+    # Plotting the sphere
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot_wireframe(X, Y, Z, color='black', alpha=0.01)
+
+    # To ensure the sphere doesn't appear stretched, set the same scale for all axes
+    # ax.set_box_aspect([1,1,1])  # Aspect ratio is 1:1:1
+    
+
+    # Gradient descent
+    # colors = ['b', 'r', 'g']
+    cmap = plt.cm.Set1
+    colors = [cmap.colors[3], cmap.colors[2], cmap.colors[4]]
+    for i in range(len(x_hists)):
+        x_hist = x_hists[i]
+        ax.plot(*zip(*x_hist[:num_steps_display]), linestyle='--', marker='o',
+                markersize=10, markerfacecolor='none', color=colors[i])
+    # circle1 = plt.Circle((0, 0), 10, color='k', fill=False)
+    # ax.add_patch(circle1)
+    ax.set_aspect('equal', adjustable='box')
+
+    # # turn off axes and show xstar
+    ax.scatter(center[0], center[1], center[2], marker='*', color='black', s=300)
+    ax.text(-1.5, -1, -1, r'$z^\star$', fontsize=36, verticalalignment='center', 
+            horizontalalignment='center')
+    plt.axis('off')
+    
+    plt.tight_layout()
+    # plt.savefig("motivating_example/paths.pdf")
+    # plt.clf()
+    plt.show()
+
+    # plot the fixed-point residual
+    for i in range(len(fp_res_list)):
+        plt.plot(fp_res_list[i], color=colors[i])
+        print(fp_res_list[i])
+    plt.yscale('log')
+    plt.xlabel('evaluation iterations')
+    plt.ylabel('fixed-point residual')
+    plt.tight_layout()
+    plt.savefig("motivating_example/fp_res.pdf")
+    # plt.clf()
+    plt.show()
+
+
+
+    import pdb
+    pdb.set_trace()
+
+
+
+
+    # plot both
+    fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+    linestyles = ['--', ':', '-.']
+
+    # first plot the path
+    # colors = ['b', 'r', 'g']
+    
+
+    for i in range(len(x_hists)):
+        x_hist = x_hists[i]
+        # axs[0].plot(*zip(*x_hist[:num_steps_display]), linestyle='--', marker='o',
+        #         markersize=10, markerfacecolor='none', color=colors[i])
+        axs[0].plot(*zip(*x_hist[:num_steps_display]), linestyle=linestyles[i], marker='o',
+                markersize=10, markerfacecolor='none', color=colors[i])
+    circle1 = plt.Circle((0, 0), 10, color='k', fill=False)
+    axs[0].add_patch(circle1)
+    axs[0].set_aspect('equal', adjustable='box')
+
+    # turn off axes and show xstar
+    # plt.scatter(0, 0)
+    axs[0].scatter(np.zeros(1), np.zeros(1), marker='*', color='black', s=500)
+    axs[0].text(-2, -1, r'$z^\star$', fontsize=24, verticalalignment='center', 
+                horizontalalignment='center')
+    axs[0].axis('off')
+
+    # fill the non-negative orthant
+    x = np.linspace(-12, 12, 400)
+    y = np.linspace(-12, 12, 400)
+    # indices = np.any(x <= 0, y <= 0)
+    # axs[0].fill_betweenx(x, -12, 12, where=indices, color='red', alpha=0.3)
+    # axs[0].fill_betweenx(x, -12, 12, where=(x <= 0), color='red', alpha=0.2, edgecolor=None)
+    # axs[0].fill_betweenx(x, -12, 0, where=(x >= -.1), color='red', alpha=0.2, edgecolor=None)
+    y2 = np.ones(400)
+    y2[:200] = 12
+    y2[200:] = 0
+    axs[0].fill_betweenx(x, -12, y2, color='red', alpha=0.1, edgecolor=None)
+
+    # contour plot
+    X, Y = np.meshgrid(x, y)
+    X_unraveled = np.ravel(X)
+    Y_unraveled = np.ravel(Y)
+    XY = np.stack([X_unraveled, Y_unraveled])
+    z_vec = f(XY)
+
+    z_mat = np.reshape(z_vec, (400, 400))
+    levels = np.linspace(0, 1100, 6)
+    # axs[0].contour(x, y, z_mat, levels=levels, colors='gray', linestyles='dotted')
+    axs[0].contour(x, y, z_mat, levels=levels, cmap='Blues', linestyles='dotted')
+    
+    # axs[0].tight_layout()
+
+    # next plot the fp res
+    for i in range(len(fp_res_list)):
+        plt.plot(fp_res_list[i], color=colors[i], linestyle=linestyles[i])
+        # print(fp_res_list[i])
+    axs[1].set_yscale('log')
+    axs[1].set_xlabel('evaluation iterations')
+    axs[1].set_ylabel('fixed-point residual')
+    # axs[1].tight_layout()
+    plt.tight_layout()
+    plt.savefig("motivating_example/paths_and_fp_res.pdf")
+    plt.clf()
+
+
 
 def create_toy_example(gif=False):
     """proximal Gradient descent for 
@@ -148,25 +352,33 @@ def create_toy_example(gif=False):
     """
     a, b = 0, 0
     coeff = 10
+    P = jnp.diag(jnp.array([10, 1]))
+    c = jnp.array([0, -1])
     def f(x):
-        return coeff * (x[0] - a) ** 2 + (x[1] - b) ** 2 #+ x[1] * x[0]
+        return 0.5 * jnp.sum(x * (P @ x), axis=0) + c.T @ x 
+    f_center = np.array([-c[0] / P[0, 0], -c[1] / P[1, 1]])
+    center = np.array([np.clip(-c[0] / P[0, 0], a_min=0, a_max=100), np.clip(-c[1] / P[1, 1], a_min=0, a_max=100)])
+    # def f(x):
+    #     return coeff * (x[0] - a) ** 2 + (x[1] - b) ** 2 #+ x[1] * x[0]
     
     grad = jax.grad(f)
 
     # setup x_inits
     init_dist = 10
-    theta1 = 105 * (np.pi/180)
-    theta2 = 10 * (np.pi/180)
-    x_inits = [init_dist * jnp.array([-jnp.sqrt(2) / 2, -np.sqrt(2) / 2]), 
-            #    init_dist * jnp.array([1.0, 0.0]), 
-            #    init_dist * jnp.array([jnp.sqrt(3) / 2, 0.5]), 
-               init_dist * jnp.array([np.cos(theta1), np.sin(theta1)]),
-               init_dist * jnp.array([np.cos(theta2), np.sin(theta2)])]
+    theta1 = 80 * (np.pi/180)
+    theta2 = 150 * (np.pi/180)
+    theta3 = 225 * (np.pi/180)
+    # x_inits = [init_dist * jnp.array([-jnp.sqrt(2) / 2, -np.sqrt(2) / 2]), 
+    #            init_dist * jnp.array([np.cos(theta1), np.sin(theta1)]),
+    #            init_dist * jnp.array([np.cos(theta2), np.sin(theta2)])]
+    x_inits = [init_dist * jnp.array([np.cos(theta3), np.sin(theta3)]) + center, 
+               init_dist * jnp.array([np.cos(theta1), np.sin(theta1)]) + center,
+               init_dist * jnp.array([np.cos(theta2), np.sin(theta2)]) + center]
     m = 1
-    L = 20
+    L = 10
     num_steps = 50
     num_steps_display = 5
-    step_size= 2 / (m + L) #1 / coeff, 10
+    step_size = 2 / (m + L) #1 / coeff, 10
 
     x_hists = []
     fp_res_list = []
@@ -200,13 +412,14 @@ def create_toy_example(gif=False):
         x_hist = x_hists[i]
         ax.plot(*zip(*x_hist[:num_steps_display]), linestyle='--', marker='o',
                 markersize=10, markerfacecolor='none', color=colors[i])
-    circle1 = plt.Circle((0, 0), 10, color='k', fill=False)
+    circle1 = plt.Circle((center[0], center[1]), 10, color='k', fill=False)
     ax.add_patch(circle1)
     ax.set_aspect('equal', adjustable='box')
 
     # turn off axes and show xstar
     # plt.scatter(0, 0)
-    plt.scatter(np.zeros(1), np.zeros(1), marker='x', color='black', s=1000)
+    
+    plt.scatter(center[0], center[1], marker='x', color='black', s=1000)
     ax.text(-1.5, -1, r'$z^\star$', fontsize=48, verticalalignment='center', 
             horizontalalignment='center')
     plt.axis('off')
@@ -244,28 +457,29 @@ def create_toy_example(gif=False):
         #         markersize=10, markerfacecolor='none', color=colors[i])
         axs[0].plot(*zip(*x_hist[:num_steps_display]), linestyle=linestyles[i], marker='o',
                 markersize=10, markerfacecolor='none', color=colors[i])
-    circle1 = plt.Circle((0, 0), 10, color='k', fill=False)
+    circle1 = plt.Circle((center[0], center[1]), init_dist, color='k', fill=False)
     axs[0].add_patch(circle1)
     axs[0].set_aspect('equal', adjustable='box')
 
     # turn off axes and show xstar
     # plt.scatter(0, 0)
-    axs[0].scatter(np.zeros(1), np.zeros(1), marker='*', color='black', s=500)
+    axs[0].scatter(center[0], center[1], marker='*', color='black', s=500)
     axs[0].text(-2, -1, r'$z^\star$', fontsize=24, verticalalignment='center', 
                 horizontalalignment='center')
     axs[0].axis('off')
 
     # fill the non-negative orthant
-    x = np.linspace(-12, 12, 400)
-    y = np.linspace(-12, 12, 400)
+    bound = 14
+    x = np.linspace(-bound, bound, 400)
+    y = np.linspace(-bound, bound, 400)
     # indices = np.any(x <= 0, y <= 0)
     # axs[0].fill_betweenx(x, -12, 12, where=indices, color='red', alpha=0.3)
     # axs[0].fill_betweenx(x, -12, 12, where=(x <= 0), color='red', alpha=0.2, edgecolor=None)
     # axs[0].fill_betweenx(x, -12, 0, where=(x >= -.1), color='red', alpha=0.2, edgecolor=None)
     y2 = np.ones(400)
-    y2[:200] = 12
+    y2[:200] = bound
     y2[200:] = 0
-    axs[0].fill_betweenx(x, -12, y2, color='red', alpha=0.1, edgecolor=None)
+    axs[0].fill_betweenx(x, -bound, y2, color='red', alpha=0.1, edgecolor=None)
 
     # contour plot
     X, Y = np.meshgrid(x, y)

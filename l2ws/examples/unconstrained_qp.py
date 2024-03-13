@@ -38,7 +38,7 @@ def run(run_cfg):
     # evals, evecs = jnp.linalg.eigh(A.T @ A)
     # gd_step =  1 / evals.max()
     # gd_step = 1 / P.max() # 2 / (P.max() +  1) #1 / P.max()
-    gd_step = 2 / (P.max() +  1) #1 / P.max()
+    gd_step = 1 / P.max() #2 / (P.max() +  1) #1 / P.max()
 
     static_dict = dict(P=P, gd_step=gd_step)
 
