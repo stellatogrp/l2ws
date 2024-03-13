@@ -333,8 +333,6 @@ class L2WSmodel(object):
             layer_sizes = [input_size] + hidden_layer_sizes + [output_size]
             self.params = init_network_params(layer_sizes, random.PRNGKey(0))
 
-        import pdb
-        pdb.set_trace()
 
         # initializes the optimizer
         self.optimizer_method = nn_cfg.get('method', 'adam')
@@ -390,8 +388,7 @@ class L2WSmodel(object):
     #         self.u_stars_test = jnp.hstack([self.x_stars_test, self.y_stars_test])
     #     else:
     #         self.z_stars_train, self.z_stars_test = None, None
-    #     import pdb
-    #     pdb.set_trace()
+
 
     # def create_end2end_loss_fn(self, bypass_nn, diff_required):
     #     raise NotImplementedError("Subclass needs to define this.")
