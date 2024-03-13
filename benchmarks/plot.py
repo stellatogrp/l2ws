@@ -136,14 +136,14 @@ def robust_pca_plot_eval_iters(cfg):
 def robust_kalman_plot_eval_iters(cfg):
     example = 'robust_kalman'
     # plot_eval_iters(example, cfg, train=False)
-    overlay_training_losses(example, cfg)
+    # overlay_training_losses(example, cfg)
     create_journal_results(example, cfg, train=False)
 
 
 @hydra.main(config_path='configs/robust_ls', config_name='robust_ls_plot.yaml')
 def robust_ls_plot_eval_iters(cfg):
     example = 'robust_ls'
-    overlay_training_losses(example, cfg)
+    # overlay_training_losses(example, cfg)
     # plot_eval_iters(example, cfg, train=False)
     create_journal_results(example, cfg, train=False)
 
@@ -151,7 +151,7 @@ def robust_ls_plot_eval_iters(cfg):
 @hydra.main(config_path='configs/sparse_pca', config_name='sparse_pca_plot.yaml')
 def sparse_pca_plot_eval_iters(cfg):
     example = 'sparse_pca'
-    overlay_training_losses(example, cfg)
+    # overlay_training_losses(example, cfg)
     # plot_eval_iters(example, cfg, train=False)
     create_journal_results(example, cfg, train=False)
 
@@ -159,7 +159,7 @@ def sparse_pca_plot_eval_iters(cfg):
 @hydra.main(config_path='configs/lasso', config_name='lasso_plot.yaml')
 def lasso_plot_eval_iters(cfg):
     example = 'lasso'
-    overlay_training_losses(example, cfg)
+    # overlay_training_losses(example, cfg)
     # plot_eval_iters(example, cfg, train=False)
     create_journal_results(example, cfg, train=False)
 
@@ -176,7 +176,7 @@ def unconstrained_qp_plot_eval_iters(cfg):
 @hydra.main(config_path='configs/mpc', config_name='mpc_plot.yaml')
 def mpc_plot_eval_iters(cfg):
     example = 'mpc'
-    overlay_training_losses(example, cfg)
+    # overlay_training_losses(example, cfg)
     # plot_eval_iters(example, cfg, train=False)
     create_journal_results(example, cfg, train=False)
     
@@ -298,7 +298,33 @@ def create_timing_table(timing_data, titles, rel_tols, abs_tols):
     df['abs_tols'] = abs_tols
 
     for i in range(len(titles)):
-        df[titles[i]] = np.round(timing_data[i], decimals=2)
+        if titles[i] == 'maml':
+            convert = 0.83
+        else: 
+            convert = 1.0
+        df[titles[i]] = np.round(convert * timing_data[i], decimals=2)
+
+    for j in range(timing_data[-1].size):
+        min_value = df.iloc[j, 2:].min()
+
+        min_indices = np.where(df.iloc[j, 2:] <= min_value)[0]
+
+        for k in min_indices:
+            value_to_bold = df.iloc[j, 2 + k]  # This gets the value from row index 3, column index 3
+            latex_str = f"\\bf{{{value_to_bold}}}"
+            df.iloc[j, 2 + k] = latex_str
+
+
+
+
+
+
+        # k = np.argmin(df.iloc[j, 2:]) + 2
+        # value_to_bold = df.iloc[j, k]  # This gets the value from row index 3, column index 3
+
+        # # Create a LaTeX formatted string with the value in bold
+        # latex_str = f"\\bf{{{value_to_bold}}}"
+        # df.iloc[j, k] = latex_str
 
     # for i in range(len(titles)):
     #     df_acc = update_acc(df_acc, accs, titles[i], metrics_fp[i])
@@ -335,8 +361,8 @@ def create_journal_results(example, cfg, train=False):
     metrics, timing_data, titles = get_all_data(example, cfg, train=train)
 
     # step 2
-    plot_all_metrics(metrics, titles, cfg.eval_iters, vert_lines=True)
-    plot_all_metrics(metrics, titles, cfg.eval_iters, vert_lines=False)
+    # plot_all_metrics(metrics, titles, cfg.eval_iters, vert_lines=True)
+    # plot_all_metrics(metrics, titles, cfg.eval_iters, vert_lines=False)
 
     # step 3
     metrics_fp = metrics[0]
@@ -415,7 +441,7 @@ def get_all_data(example, cfg, train=False):
     k_vals_new = []
     for i in range(k_vals.size):
         k = k_vals[i]
-        new_k = k if k >= 2 else 0
+        new_k = k if k >= 1 else 0
         k_vals_new.append(new_k)
     # titles = benchmarks + [f"k{int(k)}" for k in k_vals_new]
     titles = benchmarks
@@ -566,11 +592,31 @@ def create_fixed_point_residual_table(metrics_fp, titles, accs):
     # df_acc_both['cold_start_iters'] = np.array(accs)
     df_acc_both['accuracies'] = np.array(accs)
     df_acc_both['cold_start_iters'] = df_acc['cold_start']
+    df_acc_both['cold_start_red'] = 0
 
     for col in df_percent.columns:
         if col != 'accuracies' and col != 'cold_start':
             df_acc_both[col + '_iters'] = df_acc[col]
             df_acc_both[col + '_red'] = df_percent[col]
+
+    # bold best
+    for j in range(4):
+        min_value = df_acc.iloc[j, 1:].min()
+
+        min_indices = np.where(df_acc.iloc[j, 1:] <= min_value)[0]
+
+        for k in min_indices:
+            # bold the acc
+            value_to_bold = df_acc_both.iloc[j, 1 + 2*k]  # This gets the value from row index 3, column index 3
+            latex_str = f"\\bf{{{value_to_bold}}}"
+            df_acc_both.iloc[j, 1 + 2*k] = latex_str
+
+            # bold the reduction
+            value_to_bold = df_acc_both.iloc[j, 2 + 2*k]  # This gets the value from row index 3, column index 3
+            latex_str = f"\\bf{{{value_to_bold}}}"
+            df_acc_both.iloc[j, 2 + 2*k] = latex_str
+
+    
     df_acc_both.to_csv('accuracies_reduction_both.csv')
 
 
@@ -834,6 +880,8 @@ def get_k(orig_cwd, example, datetime):
         except yaml.YAMLError as exc:
             print(exc)
     k = int(out_dict['train_unrolls'])
+    if datetime[:4] == '2023' and k == 1:
+        k = 0
     return k
 
 

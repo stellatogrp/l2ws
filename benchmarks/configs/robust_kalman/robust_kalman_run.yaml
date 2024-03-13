@@ -55,10 +55,10 @@ alpha_relax: 1
 
 # solve_c_num: 1000
 save_weights_flag: True
-load_weights_datetime: '2023-07-27/21-59-54'
+# load_weights_datetime: '2023-07-27/21-59-54'
 vis_num: 10
 supervised: False
-train_unrolls: 5
+train_unrolls: 1
 skip_startup: False
 
 # output_datetimes: 
