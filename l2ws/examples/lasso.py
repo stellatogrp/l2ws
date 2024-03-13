@@ -41,7 +41,11 @@ def run(run_cfg):
     # we directly save q now
     static_flag = True
     algo = 'ista'
+    
+
     workspace = Workspace(algo, run_cfg, static_flag, static_dict, example)
+
+    
 
     # run the workspace
     workspace.run()
