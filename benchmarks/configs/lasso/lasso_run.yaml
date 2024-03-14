@@ -25,7 +25,7 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 60
+train_unrolls: 0
 eval_unrolls: 500
 eval_every_x_epochs: 20
 save_every_x_epochs: 1
@@ -37,7 +37,7 @@ N_test: 1000
 num_samples: 1000
 prediction_variable: w
 angle_anchors: [0]
-supervised: False
+supervised: True
 plot_iterates: [0, 10, 20]
 loss_method: 'fixed_k' #'fixed_k' #'constant_sum'
 share_all: False
@@ -51,3 +51,4 @@ rho_x: 1
 scale: 1
 alpha_relax: 1
 skip_startup: False
+save_weights: True
