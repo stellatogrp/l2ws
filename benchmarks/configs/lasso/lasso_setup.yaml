@@ -1,6 +1,6 @@
 m_orig: 50
 n_orig: 100
-lambd: 10
+lambd: .1
 solve_acc_abs: 1e-10
 solve_acc_rel: 0
 N_train: 10000
@@ -10,3 +10,4 @@ solve: True
 A_scale: .1
 b_min: 10
 b_max: 30
+SNR: 40

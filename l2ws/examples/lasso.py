@@ -22,16 +22,14 @@ def run(run_cfg):
     # set the seed
     np.random.seed(setup_cfg['seed'])
     m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
-    A_scale = setup_cfg['A_scale']
-    A = A_scale * jnp.array(np.random.normal(size=(m_orig, n_orig)))
-    # n2 = int(n_orig / 2)
-    # A = A.at[:, :n2].set(A[:, :n2] / 10)
-    # A = A.at[:, :(int(n_orig / 2))] * 100
-    # split = int(n_orig / 2)
-    # A_vec = jnp.concatenate([100 * jnp.ones(split), 1 * jnp.ones(split)])
-    # A = jnp.diag(A_vec)
-    # density = 0.1
-    # A = A_scale * jnp.array(random(m_orig, n_orig, density=density, format='csr').todense())
+    # A_scale = setup_cfg['A_scale']
+    # A = A_scale * jnp.array(np.random.normal(size=(m_orig, n_orig)))
+    # get D
+    D = np.random.normal(size=(m_orig, n_orig)) / np.sqrt(m_orig)
+    D = D / np.linalg.norm(D, axis=0)
+    D = np.array(D)
+    A = jnp.array(D)
+
     evals, evecs = jnp.linalg.eigh(A.T @ A)
     ista_step =  1 / evals.max()
     lambd = setup_cfg['lambd']
@@ -52,6 +50,48 @@ def run(run_cfg):
 
 
 def setup_probs(setup_cfg):
+    cfg = setup_cfg
+    N_train, N_test = cfg.N_train, cfg.N_test
+    N = N_train + N_test
+    np.random.seed(setup_cfg['seed'])
+    m_orig, n_orig = setup_cfg['m_orig'], setup_cfg['n_orig']
+
+
+    np.random.seed(cfg.seed)
+    D = np.random.normal(size=(m_orig, n_orig)) / np.sqrt(m_orig)
+    D = D / np.linalg.norm(D, axis=0)
+    A = D
+
+    z_orig = np.random.normal(size=(N, n_orig))
+    mask = np.random.choice(2, size=(N, n_orig), replace=True, p=[0.9, 0.1])
+    z_stars = np.multiply(z_orig, mask)
+
+    if setup_cfg['SNR'] == 'inf':
+        noise = 0
+    else:
+        SNR = setup_cfg['SNR']
+        stddev = np.sqrt(np.var(z_stars, axis=1))
+        noise_stddev = stddev * np.power (10.0, -SNR / 20.0)
+        noise = noise_stddev.reshape(-1, 1) * np.random.normal(size=(N, m_orig))
+    b_mat = (D @ z_stars.T).T + noise
+
+    # save output to output_filename
+    output_filename = f"{os.getcwd()}/data_setup"
+
+    # b_min, b_max = setup_cfg['b_min'], setup_cfg['b_max']
+    # # b_mat = b_scale * generate_b_mat(A, N, b_min, b_max)
+    # m, n = A.shape
+    # b_mat = (b_max - b_min) * np.random.rand(N, m) + b_min
+
+    # 
+    # b_mat[:, :n2] = b_mat[:, :n2] / 10
+
+    lambd = setup_cfg['lambd']
+
+    ista_setup_script(b_mat, A, lambd, output_filename)
+
+
+def setup_probs_uniform(setup_cfg):
     cfg = setup_cfg
     N_train, N_test = cfg.N_train, cfg.N_test
     N = N_train + N_test
