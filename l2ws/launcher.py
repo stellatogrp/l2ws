@@ -916,23 +916,19 @@ class Workspace:
             hist[i, :, :] = out_train[1]
             self.l2ws_model.key += 1
 
+        col = "train_epoch_0"
+        # enter the percentiles
+        losses_over_examples = out_train[1].T
+        self.update_percentiles(losses_over_examples.T, train, col)
+
         '''
         part 2: finalize by looping over steps and tolerances  
         2.1: threshold 
         2.2: sample convergence bound
         2.3: McAllester bound
         '''
-        # import pdb
-        # pdb.set_trace()
 
-        # fs = (out_train[1] < 1e-3)
-        # frac_solved = fs.mean(axis=0)
         
-        # # take care of frac_solved
-        # frac_solved_list = []
-        # frac_solved_df_list = self.frac_solved_df_list_train if train else self.frac_solved_df_list_test
-
-        col = "train_epoch_0"
         sample_conv_penalty = jnp.log(2 / self.l2ws_model.delta2) / num_samples
         mcallester_penalty = self.l2ws_model.calculate_total_penalty(self.l2ws_model.N_train, 
                                         self.l2ws_model.params, 

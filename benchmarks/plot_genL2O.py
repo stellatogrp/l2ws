@@ -98,43 +98,10 @@ titles_2_marker_starts = dict(cold_start=0,
                        obj_k15=12,
                        obj_k30=0,
                        obj_k60=20)
-                    #    obj_k120='-')
-# titles_2_colors = dict(cold_start='black', 
-#                        nearest_neighbor='magenta', 
-#                        prev_sol='cyan',
-#                        reg_k0=mcolors.TABLEAU_COLORS['tab:brown'],
-#                        reg_k5='blue',
-#                        reg_k15='red',
-#                        reg_k30='green',
-#                        reg_k60='orange',
-#                        reg_k120='gray',
-#                        obj_k0=mcolors.TABLEAU_COLORS['tab:brown'],
-#                        obj_k5='blue',
-#                        obj_k15='red',
-#                        obj_k30='green',
-#                        obj_k60='orange',
-#                        obj_k120='gray')
-# titles_2_styles = dict(cold_start='-.', 
-#                        nearest_neighbor='-.', 
-#                        prev_sol='-.',
-#                        reg_k0='-',
-#                        reg_k5='-',
-#                        reg_k15='-',
-#                        reg_k30='-',
-#                        reg_k60='-',
-#                        reg_k120='-',
-#                        obj_k0='-',
-#                        obj_k5='-',
-#                        obj_k15='-',
-#                        obj_k30='-',
-#                        obj_k60='-',
-#                        obj_k120='-')
 
 
 @hydra.main(config_path='configs/sparse_coding', config_name='sparse_coding_plot.yaml')
 def sparse_coding_plot_eval_iters(cfg):
-    
-
     example = 'sparse_coding'
     percentile_plots_maml(example, cfg)
     create_gen_l2o_results_maml(example, cfg)
@@ -289,8 +256,8 @@ def plot_final_classical_risk_bounds_together(example, acc_list, steps, bounds_l
     title_fontsize = 30
 
     # y-label
-    # ylabel = r'$1 - r_{\mathcal{X}}$'
-    ylabel = r'prob. of reaching $\epsilon$'
+    ylabel = r'$1 - r_{\mathcal{X}}$'
+    # ylabel = r'prob. of reaching $\epsilon$'
     axes[0].set_ylabel(ylabel, fontsize=fontsize)
 
     for k in range(len(acc_list)):
@@ -746,10 +713,6 @@ def percentile_plots_maml(example, cfg):
     # cold_start_results, guarantee_results = get_frac_solved_data_classical(example, cfg)
     out = get_frac_solved_data(example, cfg)
     all_test_results, all_pac_bayes_results, cold_start_results, pretrain_results = out
-    # percentile_results = get_percentiles(example, cfg)
-
-    # steps1 = np.arange(cold_start_results[-1].size)[:eval_iters]
-    # z_star_max, theta_max = get_worst_case_datetime(example, cfg)
 
     # fill in e_star tensor
     num_N = len(all_pac_bayes_results[0])
@@ -817,6 +780,10 @@ def percentile_plots_maml(example, cfg):
                                             second_baseline_quantile_list,
                                             worst_list, emp_list_list,
                             bounds_list_list, cfg.custom_loss, plot_bool_list_list)
+    create_percentile_table(example, percentiles, cold_start_quantile_list, 
+                                            second_baseline_quantile_list,
+                                            worst_list, emp_list_list,
+                            bounds_list_list, cfg.custom_loss, plot_bool_list_list)
     
 
 def get_ylabel_percentile(example, custom_loss):
@@ -830,6 +797,23 @@ def get_ylabel_percentile(example, custom_loss):
     else:
         ylabel = 'fixed-point residual'
     return ylabel
+
+
+def create_percentile_table(example, percentiles, cold_start_quantile_list,
+                                            second_baseline_quantile_list, 
+                                            worst_list, 
+                            emp_list_list, bounds_list_list, custom_loss, plot_bool_list_list):
+    df = pd.DataFrame()
+
+    df['quantiles'] = np.array(percentiles)
+
+    if example == 'sparse_coding':
+        ista_vals = np.zeros(percentiles.size)
+        for i in range(cold_start_quantile_list):
+            ista_vals[i] = cold_start_quantile_list[i][-1]
+        df['ista'] = ista_vals
+
+    df.to_csv('quantiles.csv')
 
 
 def learned_percentile_final_plots_together(example, percentiles, cold_start_quantile_list,
@@ -1430,43 +1414,6 @@ def plot_sparse_coding(metrics, titles, eval_iters, vert_lines=False):
     plt.clf()
 
 
-
-
-def create_journal_results(example, cfg, train=False):
-    """
-    does the following steps
-
-    1. get data 
-        1.1 (fixed-point residuals, primal residuals, dual residuals) or 
-            (fixed-point residuals, obj_diffs)
-        store this in metrics
-
-        1.2 timing data
-        store this in time_results
-
-        also need: styles, titles
-            styles comes from titles
-    2. plot the metrics
-    3. create the table for fixed-point residuals
-    4. create the table for timing results
-    """
-
-    # step 1
-    metrics, timing_data, titles = get_all_data(example, cfg, train=train)
-
-    # step 2
-    plot_all_metrics(metrics, titles, cfg.eval_iters, vert_lines=True)
-    plot_all_metrics(metrics, titles, cfg.eval_iters, vert_lines=False)
-
-    # step 3
-    metrics_fp = metrics[0]
-    create_fixed_point_residual_table(metrics_fp, titles, cfg.accuracies)
-
-    # step 3
-    if len(metrics) == 3:
-        create_timing_table(timing_data, titles, cfg.rel_tols, cfg.abs_tols)
-
-
 def determine_scs_or_osqp(example):
     if example == 'unconstrained_qp' or example == 'lasso' or example == 'jamming' or example == 'sparse_coding' or example == 'sine':
         return False
@@ -1818,9 +1765,6 @@ def load_data_per_title(example, title, datetime, train=False):
     return metric, timings
 
 
-
-
-
 def get_eval_array(df, title):
     if title == 'cold_start' or title == 'no_learn':
         data = df['no_train']
@@ -1832,238 +1776,6 @@ def get_eval_array(df, title):
         # case of the learned warm-start, take the latest column
         data = df.iloc[:, -1]
     return data
-
-
-
-def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
-    """
-    metrics is a list of lists
-
-    e.g.
-    metrics = [metric_fp, metric_pr, metric_dr]
-    metric_fp = [cs, nn-ws, ps-ws, k=5, k=10, ..., k=120]
-        where cs is a numpy array
-    same for metric_pr and metric_dr
-
-    each metric has a title
-
-    each line within each metric has a style
-
-    note that we do not explicitly care about the k values
-        we will manually create the legend in latex later
-    """
-    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(20, 12), sharey='row')
-    # fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(30, 13), sharey='row')
-    # fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(18, 12), sharey='row')
-
-    # for i in range(2):
-
-    # yscale
-    axes[0, 0].set_yscale('log')
-    axes[0, 1].set_yscale('log')
-
-    # x-label
-    # axes[0, 0].set_xlabel('evaluation iterations')
-    # axes[0, 1].set_xlabel('evaluation iterations')
-    fontsize = 40
-    title_fontsize = 40
-    axes[1, 0].set_xlabel('evaluation iterations', fontsize=fontsize)
-    axes[1, 1].set_xlabel('evaluation iterations', fontsize=fontsize)
-
-    # y-label
-    # axes[0, 0].set_ylabel('fixed-point residual')
-    # axes[1, 0].set_ylabel('gain to cold start')
-    axes[0, 0].set_ylabel('test fixed-point residual', fontsize=fontsize)
-    axes[1, 0].set_ylabel('test gain to cold start', fontsize=fontsize)
-
-    # axes[0, 0].set_title('fixed-point residual losses')
-    # axes[0, 1].set_title('regression losses')
-    # axes[1, 0].set_title('fixed-point residual losses')
-    # axes[1, 1].set_title('regression losses')
-    axes[0, 0].set_title('training with fixed-point residual losses', fontsize=title_fontsize)
-    axes[0, 1].set_title('training with regression losses', fontsize=title_fontsize)
-    # axes[1, 0].set_title('training with fixed-point residual losses')
-    # axes[1, 1].set_title('training with regression losses')
-
-    axes[0, 0].set_xticklabels([])
-    axes[0, 1].set_xticklabels([])
-
-    # axes[0, 0].tick_params(axis='y', which='major', pad=15)
-    # axes[1, 0].tick_params(axis='y', which='major', pad=15)
-
-    # titles
-    # axes[0, 0].set_title('fixed-point residuals with fixed-point residual-based losses')
-    # axes[0, 1].set_title('fixed-point residuals with regression-based losses')
-    # axes[1, 0].set_title('gain to cold start with fixed-point residual-based losses')
-    # axes[1, 1].set_title('gain to cold start with regression-based losses')
-
-    if len(metrics) == 3:
-        start = 1
-    else:
-        start = 0
-
-    # plot the fixed-point residual
-    for i in range(1):
-        curr_metric = metrics[i]
-        for j in range(len(curr_metric)):
-            title = titles[j]
-            color = titles_2_colors[title]
-            style = titles_2_styles[title]
-            marker = titles_2_markers[title]
-            mark_start = titles_2_marker_starts[title]
-            if title[:3] != 'reg':
-                axes[0, 0].plot(np.array(curr_metric[j])[start:eval_iters + start], 
-                                linestyle=style, marker=marker, color=color, 
-                                markevery=(2 * mark_start, 2 * 25))
-                # if vert_lines:
-                #     if title[0] == 'k':
-                #         k = int(title[1:])
-                #         axes[i].axvline(k, color=color)
-            if title[:3] != 'obj':
-                axes[0, 1].plot(np.array(curr_metric[j])[start:eval_iters + start], 
-                                linestyle=style, marker=marker, color=color, 
-                                markevery=(2 * mark_start, 2 * 25))
-                # if vert_lines:
-                #     if title[0] == 'k':
-                #         k = int(title[1:])
-                #         axes[i].axvline(k, color=color)
-
-    # plot the gain
-    for i in range(1):
-        curr_metric = metrics[i]
-        for j in range(len(curr_metric)):
-            title = titles[j]
-            color = titles_2_colors[title]
-            style = titles_2_styles[title]
-            marker = titles_2_markers[title]
-            mark_start = titles_2_marker_starts[title]
-            # if j > 0:
-            #     gain = cs / np.array(curr_metric[j])[start:eval_iters + start]
-            # else:
-            #     cs = np.array(curr_metric[j])[start:eval_iters + start]
-            if j == 0:
-                cs = np.array(curr_metric[j])[start:eval_iters + start]
-            else:
-                gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], 
-                               a_min=0, a_max=1500)
-                if title[:3] != 'reg':
-                    axes[1, 0].plot(gain, linestyle=style, marker=marker, color=color, 
-                                    markevery=(2 * mark_start, 2 * 25))
-                if title[:3] != 'obj':
-                    axes[1, 1].plot(gain, linestyle=style, marker=marker, color=color, 
-                                    markevery=(2 * mark_start, 2 * 25))
-
-            # if vert_lines:
-            #     if title[0] == 'k':
-            #         k = int(title[1:])
-            #         plt.axvline(k, color=color)
-    # plt.subplots_adjust(left=0.15, right=0.85, top=0.85, bottom=0.15)
-    
-    fig.tight_layout()
-    if vert_lines:
-        plt.savefig('all_metric_plots_vert.pdf', bbox_inches='tight')
-    else:
-        plt.savefig('all_metric_plots.pdf', bbox_inches='tight')
-    
-    plt.clf()
-
-
-
-
-    # now plot the gain on a non-log plot
-    # plot the gain
-    for i in range(1):
-        curr_metric = metrics[i]
-        for j in range(len(curr_metric)):
-        # for j in range(1):
-            title = titles[j]
-            # title = 'gain to cold start'
-            color = titles_2_colors[title]
-            style = titles_2_styles[title]
-
-            if j > 0:
-                gain = cs / np.array(curr_metric[j])[start:eval_iters + start]
-                plt.plot(gain, linestyle=style, color=color)
-            else:
-                cs = np.array(curr_metric[j])[start:eval_iters + start]
-            if vert_lines:
-                if title[0] == 'k':
-                    k = int(title[1:])
-                    # plt.vlines(k, 0, 1000, color=color)
-                    plt.axvline(k, color=color)
-    plt.ylabel('gain')
-    plt.xlabel('evaluation steps')
-    if vert_lines:
-        plt.savefig('test_gain_plots_vert.pdf', bbox_inches='tight')
-    else:
-        plt.savefig('test_gain_plots.pdf', bbox_inches='tight')
-    fig.tight_layout()
-
-
-    # plot the loss and the gain for each loss separately
-    for i in range(2):
-        # fig_width = 9
-        fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(18, 12), sharey='row') #, sharey=True)
-
-        # for i in range(2):
-
-        # yscale
-        axes[0].set_yscale('log')
-        # axes[0, 1].set_yscale('log')
-
-        # x-label
-        # axes[0].set_xlabel('evaluation iterations', fontsize=fontsize)
-        # axes[0, 1].set_xlabel('evaluation iterations')
-        axes[1].set_xlabel('evaluation iterations', fontsize=fontsize)
-        # axes[1, 1].set_xlabel('evaluation iterations')
-
-        # y-label
-        axes[0].set_ylabel('fixed-point residual', fontsize=fontsize)
-        axes[1].set_ylabel('gain to cold start', fontsize=fontsize)
-
-        axes[0].set_xticklabels([])
-
-        # axes[0, 0].set_title('fixed-point residual losses')
-        # axes[0, 1].set_title('regression losses')
-        # axes[1, 0].set_title('fixed-point residual losses')
-        # axes[1, 1].set_title('regression losses')
-
-        curr_metric = metrics[0]
-
-        for j in range(len(curr_metric)):
-            title = titles[j]
-            color = titles_2_colors[title]
-            style = titles_2_styles[title]
-            marker = titles_2_markers[title]
-            mark_start = titles_2_marker_starts[title]
-            if title[:3] != 'reg' and i == 0:
-                # either obj or baselines
-                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
-            if title[:3] != 'obj' and  i == 1:
-                # either reg or baselines
-                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style,   marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
-
-                
-
-        for j in range(len(curr_metric)):
-            title = titles[j]
-            color = titles_2_colors[title]
-            style = titles_2_styles[title]
-            marker = titles_2_markers[title]
-            mark_start = titles_2_marker_starts[title]
-            if j == 0:
-                cs = np.array(curr_metric[j])[start:eval_iters + start]
-            gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], 
-                           a_min=0, a_max=1500)
-            if title[:3] != 'reg' and i == 0:
-                axes[1].plot(gain, linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
-            if title[:3] != 'obj' and i == 1:
-                axes[1].plot(gain, linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
-
-        if i == 0:
-            plt.savefig('fixed_point_residual_loss.pdf', bbox_inches='tight')
-        elif i == 1:
-            plt.savefig('regression_loss.pdf', bbox_inches='tight')
 
 
 
