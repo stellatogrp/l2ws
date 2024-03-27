@@ -25,6 +25,7 @@ pretrain:
 data:
   datetime: ''
 
+<<<<<<< Updated upstream:benchmarks/configs/jamming/jamming_run.yaml
 train_unrolls: 1
 eval_unrolls: 100
 eval_every_x_epochs: 20
@@ -34,6 +35,18 @@ write_csv_every_x_batches: 1
 epochs_jit: 2
 N_train: 10
 N_test: 10
+=======
+eval_batch_size: 100
+train_unrolls: 1
+eval_unrolls: 1000
+eval_every_x_epochs: 200
+save_every_x_epochs: 1
+test_every_x_epochs: 1
+write_csv_every_x_batches: 1
+epochs_jit: 10
+N_train: 100
+N_test: 20
+>>>>>>> Stashed changes:configs/mnist/mnist_run.yaml
 num_samples: 10
 prediction_variable: w
 angle_anchors: [0]
