@@ -21,12 +21,14 @@ titles_2_colors = dict(cold_start='black',
                        nearest_neighbor=colors[6], 
                        prev_sol=colors[4],
                        reg_k0=colors[3],
+                       reg_k1=colors[5],
                        reg_k5=colors[0],
                        reg_k15=colors[1],
                        reg_k30=colors[5],
                        reg_k60=colors[2],
                     #    reg_k120=colors[0],
                        obj_k0=colors[3],
+                       obj_k1=colors[5],
                        obj_k5=colors[0],
                        obj_k15=colors[1],
                        obj_k30=colors[5],
@@ -36,12 +38,14 @@ titles_2_styles = dict(cold_start='-.',
                        nearest_neighbor='-.', 
                        prev_sol='-.',
                        reg_k0='-',
+                       reg_k1='-',
                        reg_k5='-',
                        reg_k15='-',
                        reg_k30='-',
                        reg_k60='-',
                        reg_k120='-',
                        obj_k0='-',
+                       obj_k1='-',
                        obj_k5='-',
                        obj_k15='-',
                        obj_k30='-',
@@ -51,12 +55,14 @@ titles_2_markers = dict(cold_start='v',
                        nearest_neighbor='<', 
                        prev_sol='^',
                        reg_k0='>',
+                       reg_k1='x',
                        reg_k5='o',
                        reg_k15='s',
                        reg_k30='x',
                        reg_k60='D',
                     #    reg_k120='-',
                        obj_k0='>',
+                       obj_k1='x',
                        obj_k5='o',
                        obj_k15='s',
                        obj_k30='x',
@@ -65,12 +71,14 @@ titles_2_marker_starts = dict(cold_start=0,
                        nearest_neighbor=16, 
                        prev_sol=23,
                        reg_k0=8,
+                       reg_k1=0,
                        reg_k5=4,
                        reg_k15=12,
                        reg_k30=0,
                        reg_k60=20,
                     #    reg_k120='-',
                        obj_k0=8,
+                       obj_k1=0,
                        obj_k5=4,
                        obj_k15=12,
                        obj_k30=0,
@@ -213,7 +221,7 @@ def jamming_plot_eval_iters(cfg):
 def quadcopter_plot_eval_iters(cfg):
     example = 'quadcopter'
     # plot_eval_iters(example, cfg, train=False)
-    overlay_training_losses(example, cfg)
+    # overlay_training_losses(example, cfg)
     # plot_eval_iters(example, cfg, train=False)
     create_journal_results(example, cfg, train=False)
 
@@ -302,6 +310,7 @@ def create_timing_table(timing_data, titles, rel_tols, abs_tols):
             convert = 0.83
         else: 
             convert = 1.0
+        print(titles[i])
         df[titles[i]] = np.round(convert * timing_data[i], decimals=2)
 
     for j in range(timing_data[-1].size):
@@ -361,8 +370,8 @@ def create_journal_results(example, cfg, train=False):
     metrics, timing_data, titles = get_all_data(example, cfg, train=train)
 
     # step 2
-    # plot_all_metrics(metrics, titles, cfg.eval_iters, vert_lines=True)
-    # plot_all_metrics(metrics, titles, cfg.eval_iters, vert_lines=False)
+    plot_all_metrics(metrics, titles, cfg.eval_iters, vert_lines=True)
+    plot_all_metrics(metrics, titles, cfg.eval_iters, vert_lines=False)
 
     # step 3
     metrics_fp = metrics[0]

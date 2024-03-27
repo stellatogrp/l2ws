@@ -7,6 +7,7 @@ nn_cfg:
   decay_lr: .1
   min_lr: 1e-7
   decay_every: 1e7
+  maml: true
 
 plateau_decay:
   min_lr: 1e-7
@@ -25,7 +26,7 @@ pretrain:
 data:
   datetime: ''
 
-train_unrolls: 0
+train_unrolls: 60
 eval_unrolls: 500
 eval_every_x_epochs: 20
 save_every_x_epochs: 1
@@ -37,7 +38,7 @@ N_test: 1000
 num_samples: 1000
 prediction_variable: w
 angle_anchors: [0]
-supervised: True
+supervised: false
 plot_iterates: [0, 10, 20]
 loss_method: 'fixed_k' #'fixed_k' #'constant_sum'
 share_all: False

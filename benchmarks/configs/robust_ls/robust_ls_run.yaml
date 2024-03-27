@@ -7,7 +7,7 @@ nn_cfg:
   decay_lr: .1
   min_lr: 1e-7
   decay_every: 1e7
-  maml: False
+  maml: True
 
 plateau_decay:
   min_lr: 1e-7
@@ -53,8 +53,8 @@ alpha_relax: 1
 skip_startup: True
 solve_c_num: 100
 save_weights_flag: True
-load_weights_datetime: 2024-03-11/22-35-34
-train_unrolls: 1
+load_weights_datetime: 2024-03-14/16-23-54
+train_unrolls: 60
 supervised: False
 lightweight: True
 
