@@ -15,10 +15,39 @@ If you find this repository helpful in your publications, please consider citing
 We introduce a machine-learning framework to warm-start fixed-point optimization algorithms. Our architecture consists of a neural network mapping problem parameters to warm starts, followed by a predefined number of fixed-point iterations. We propose two loss functions designed to either minimize the fixed-point residual or the distance to a ground truth solution. In this way, the neural network predicts warm starts with the end-to-end goal of minimizing the downstream loss. An important feature of our architecture is its flexibility, in that it can predict a warm start for fixed-point algorithms run for any number of steps, without being limited to the number of steps it has been trained on. We provide PAC- Bayes generalization bounds on unseen data for common classes of fixed-point operators: contractive, linearly convergent, and averaged. Applying this framework to well-known applications in control, statistics, and signal processing, we observe a significant reduction in the number of iterations and solution time required to solve these problems, through learned warm starts.
 
 ## Installation
-To install the package, run
+
+`l2ws` requires **Python 3.10**. The dependency stack is pinned to the versions
+that match the paper's environment; in particular `jax==jaxlib==0.4.20`,
+`optax==0.1.5`, and `jaxopt==0.6`. See the comments in `pyproject.toml` for
+why each pin is required — loosening them breaks the codebase as written.
+
+We recommend [`uv`](https://docs.astral.sh/uv/) to manage the virtual
+environment because the pins lock to older versions that the default
+resolver order can mishandle.
+
+```bash
+git clone https://github.com/stellatogrp/l2ws.git
+cd l2ws
+uv venv .venv --python 3.10
+source .venv/bin/activate
+uv pip install -e .
 ```
-$ pip install git+https://github.com/stellatogrp/l2ws
+
+`pip` works too if you prefer:
+
+```bash
+git clone https://github.com/stellatogrp/l2ws.git
+cd l2ws
+python3.10 -m venv .venv
+source .venv/bin/activate
+pip install -e .
 ```
+
+The install pulls a pinned commit of [`trajax`](https://github.com/google/trajax)
+from GitHub, so a working network connection is required the first time.
+
+The package is GPU-optional — JAX defaults to CPU, which is enough to run
+every experiment (though training can take a long time without a GPU).
 
 ## Getting started
 
@@ -27,18 +56,16 @@ You can find introductory tutorials on how to use `l2ws` in the folder `tutorial
 
 
 ### Running experiments
-To download the experiments, you should clone this repository with
-```
-git clone https://github.com/stellatogrp/l2ws_fixed_point.git
-```
-Experiments can from the `benchmarks/` folder using the commands below:
+
+From the `benchmarks/` folder:
+
 ```
 python l2ws_setup.py <example> local
 python l2ws_train.py <example> local
-python plot_script.py <example> local
 ```
 
-Replace the ```<example> ``` with one of the following to run an experiment.
+Replace `<example>` with one of:
+
 ```
 unconstrained_qp
 lasso
@@ -49,6 +76,16 @@ robust_ls
 phase_retrieval
 sparse_pca
 ```
+
+The first script generates the problem instances and a training set of
+optimal solutions; the second trains the warm-start network and writes the
+per-iteration evaluation curves and (where applicable) closed-loop
+rollouts. Both write to a fresh dated folder under
+`outputs/<example>/{data_setup_outputs,train_outputs}/<date>/<time>/`.
+
+A third script `plot.py` aggregates results across multiple training runs
+to produce the paper figures; it is not needed to reproduce a single
+experiment and is not described here.
 
 ***
 #### ```l2ws_setup.py```

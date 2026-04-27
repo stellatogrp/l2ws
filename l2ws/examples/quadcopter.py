@@ -1345,7 +1345,7 @@ def plot_traj_3d(state_traj_list, goals, labels, T=10, goal_bound=1, filename=No
                 title = 'nearest neighbor'
             elif title == 'prev_sol':
                 title = 'previous solution'
-            elif title[:5] == 'train':
+            elif title is not None and title[:5] == 'train':
                 title = 'learned'
             ax.set_title(title)
             frame_name = f"{filename}/frame_{i}.png"

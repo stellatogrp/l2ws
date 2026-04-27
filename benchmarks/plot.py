@@ -770,21 +770,10 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             mark_start = titles_2_marker_starts[title]
             if title[:3] != 'reg' and i == 0:
                 # either obj or baselines
-<<<<<<< HEAD:plot_script.py
                 axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
             if title[:3] != 'obj' and  i == 1:
                 # either reg or baselines
                 axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style,   marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
-
-                
-=======
-                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], 
-                             linestyle=style, color=color)
-            if title[:3] != 'obj' and  i == 1:
-                # either reg or baselines
-                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], 
-                             linestyle=style, color=color)
->>>>>>> 6f924435fe0ade8b36992678252aecd2f1901259:benchmarks/plot.py
 
         for j in range(len(curr_metric)):
             title = titles[j]

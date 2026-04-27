@@ -110,6 +110,12 @@ ENV/
 env.bak/
 venv.bak/
 
+# Claude Code session metadata
+.claude/
+
+# Local copy of paper-style outputs (GIFs, plots) — derived, not source
+paper_outputs/
+
 # Spyder project settings
 .spyderproject
 .spyproject

@@ -9,25 +9,40 @@ description="A package for warm-starting optimization algorithms, using data."
 readme = "README.md"
 license = {text = "Apache 2.0"}
 dynamic = ["version"]
+requires-python = ">=3.10,<3.11"
 authors = [
 {name = "Rajiv Samvbharya", email="rajivs@princeton.edu"},
 {name = "Brandon Amos", email="bda@meta.com"},
 {name = "Georgina Hall", email="georgina.hall@insead.edu"},
 {name = "Bartolomeo Stellato", email="bstellato@princeton.edu"}
 ]
+# Version pins below are the ones that experience has shown to be required.
+# Loosening any of them breaks the codebase as written:
+#   jax/jaxlib==0.4.20  -- matches the paper's environment; later JAX renamed APIs we use.
+#   numpy<2             -- jax 0.4.20 was released before numpy 2.0 and uses removed APIs.
+#   scipy<1.13          -- jax 0.4.20 imports `scipy.linalg.tril`, which was removed in 1.13.
+#   optax==0.1.5        -- matches the paper's environment.
+#   jaxopt==0.6         -- newer jaxopt jit-wraps `optimizer.update`, which causes the
+#                          dynamic `iters` kwarg to be traced and breaks `jnp.zeros(k)`
+#                          inside `algo_steps.k_steps_train_osqp`.
+#   trajax @ <commit>   -- pinned to a specific commit so future breakage in upstream HEAD
+#                          does not affect reproducibility.
 dependencies = [
-    "numpy",
-    "scipy",
+    "numpy>=1.21,<2",
+    "scipy>=1.10,<1.13",
     "cvxpy>=1.3.0",
     "matplotlib",
-    "jax",
-    "jaxopt",
+    "jax==0.4.20",
+    "jaxlib==0.4.20",
+    "jaxopt==0.6",
     "optax==0.1.5",
-    "matplotlib",
-    "hydra-core", 
-    "trajax @ git+https://github.com/google/trajax", 
-    "emnist", 
-    "imageio"
+    "hydra-core",
+    "trajax @ git+https://github.com/google/trajax@c94a637c5a397b3d4100153f25b4b165507b5b20",
+    "osqp",
+    "scs",
+    "pandas",
+    "emnist",
+    "imageio",
 ]
 
 [tool.setuptools.packages.find]
