@@ -912,6 +912,12 @@ class Workspace:
                 os.mkdir(f"rollouts/{col}")
             traj_list = ref_traj_dict['traj_list']
 
+            np.savez(
+                f"rollouts/{col}/rollout_{i}_states.npz",
+                states=np.asarray(state_traj_list),
+                reference=np.asarray(traj_list),
+            )
+
             if plot_traj is not None:
                 plot_traj([state_traj_list], goals=traj_list, labels=[
                           col], filename=f"rollouts/{col}/rollout_{i}")
