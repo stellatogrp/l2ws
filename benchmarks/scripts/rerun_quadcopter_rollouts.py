@@ -50,9 +50,7 @@ def _patch_hydra_cwd(orig_cwd: Path) -> None:
     hydra.get_original_cwd = _get  # type: ignore[attr-defined]
 
 
-def _load_run_cfg(run_yaml: Path, *,
-                  data_datetime: str,
-                  num_rollouts: int) -> "DictConfig":
+def _load_run_cfg(run_yaml: Path, *, data_datetime: str, num_rollouts: int):
     """Load the run-config YAML, override the fields we care about.
 
     Returns an OmegaConf DictConfig that the launcher can use as `cfg`.
@@ -78,7 +76,7 @@ def _load_setup_cfg(data_setup_yaml: Path) -> dict:
         return yaml.safe_load(f)
 
 
-def _build_workspace(setup_cfg: dict, run_cfg) -> "Workspace":
+def _build_workspace(setup_cfg: dict, run_cfg):
     """Mirror the workspace construction inside `l2ws.examples.quadcopter.run`.
 
     Without entering hydra; assumes _patch_hydra_cwd has already run.
@@ -87,8 +85,8 @@ def _build_workspace(setup_cfg: dict, run_cfg) -> "Workspace":
     from jax import vmap
 
     from l2ws.examples.quadcopter import (
-        QUADCOPTER_NX,
         QUADCOPTER_NU,
+        QUADCOPTER_NX,
         plot_traj_3d,
         quadcopter_dynamics,
         shifted_sol,
@@ -267,7 +265,7 @@ def main() -> int:
         num_rollouts=args.num_rollouts,
     )
 
-    print(f"[rerun] building workspace (factor 11k KKT systems — a few minutes)...")
+    print("[rerun] building workspace (factor 11k KKT systems — a few minutes)...")
     workspace = _build_workspace(setup_cfg, run_cfg)
     _load_weights_into(workspace, weights_dir)
 

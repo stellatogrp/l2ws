@@ -770,10 +770,18 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             mark_start = titles_2_marker_starts[title]
             if title[:3] != 'reg' and i == 0:
                 # either obj or baselines
-                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
+                axes[0].plot(
+                    np.array(curr_metric[j])[start:eval_iters + start],
+                    linestyle=style, marker=marker, color=color,
+                    markevery=(2 * mark_start, 2 * 25),
+                )
             if title[:3] != 'obj' and  i == 1:
                 # either reg or baselines
-                axes[0].plot(np.array(curr_metric[j])[start:eval_iters + start], linestyle=style,   marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
+                axes[0].plot(
+                    np.array(curr_metric[j])[start:eval_iters + start],
+                    linestyle=style, marker=marker, color=color,
+                    markevery=(2 * mark_start, 2 * 25),
+                )
 
         for j in range(len(curr_metric)):
             title = titles[j]
@@ -786,9 +794,15 @@ def plot_all_metrics(metrics, titles, eval_iters, vert_lines=False):
             gain = np.clip(cs / np.array(curr_metric[j])[start:eval_iters + start], 
                            a_min=0, a_max=1500)
             if title[:3] != 'reg' and i == 0:
-                axes[1].plot(gain, linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
+                axes[1].plot(
+                    gain, linestyle=style, marker=marker, color=color,
+                    markevery=(2 * mark_start, 2 * 25),
+                )
             if title[:3] != 'obj' and i == 1:
-                axes[1].plot(gain, linestyle=style, marker=marker, color=color, markevery=(2 * mark_start, 2 * 25))
+                axes[1].plot(
+                    gain, linestyle=style, marker=marker, color=color,
+                    markevery=(2 * mark_start, 2 * 25),
+                )
 
         if i == 0:
             plt.savefig('fixed_point_residual_loss.pdf', bbox_inches='tight')
