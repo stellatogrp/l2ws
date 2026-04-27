@@ -257,36 +257,73 @@ def draw_quadcopter(ax, position: np.ndarray, R: np.ndarray, scale: float,
     return artists
 
 
-def draw_shadow(ax, position: np.ndarray, scale: float, z_floor: float,
-                alpha: float = 0.22):
-    """Filled black ellipse on the floor plane underneath the quadcopter.
+def draw_shadow(ax, position: np.ndarray, R: np.ndarray, scale: float,
+                z_floor: float, alpha: float = 0.28):
+    """Quadcopter-shaped shadow on the floor plane below the body.
 
-    Shadow softens with altitude; below 1.5 m it is fully visible, then fades.
+    Projects the body footprint and the four rotor disks straight down (light
+    from above) onto z=z_floor, preserving yaw/pitch/roll. Shadow softens
+    with altitude.
     """
     altitude = max(position[2] - z_floor, 0.0)
     fade = max(0.0, 1.0 - altitude / 2.5)
     if fade <= 0.02:
         return []
-    n = 36
-    theta = np.linspace(0.0, 2 * np.pi, n, endpoint=False)
-    radius = 1.5 * scale * (1.0 + 0.4 * altitude)
-    pts = np.stack(
+    eff_alpha = alpha * fade
+    artists = []
+
+    def _project_to_floor(pts: np.ndarray) -> np.ndarray:
+        flat = pts.copy()
+        flat[:, 2] = z_floor + 1e-3
+        return flat
+
+    # body footprint: project the bottom face of the body box
+    body_size = (0.85 * scale, 0.85 * scale, 0.18 * scale)
+    hx, hy, hz = body_size[0] / 2, body_size[1] / 2, body_size[2] / 2
+    body_corners_local = np.array(
         [
-            position[0] + radius * np.cos(theta),
-            position[1] + radius * np.sin(theta) * 0.6,
-            np.full(n, z_floor + 1e-3),
-        ],
-        axis=1,
+            [-hx, -hy, -hz],
+            [hx, -hy, -hz],
+            [hx, hy, -hz],
+            [-hx, hy, -hz],
+        ]
     )
-    poly = Poly3DCollection(
-        [pts],
+    body_world = (R @ body_corners_local.T).T + position
+    body_floor = _project_to_floor(body_world)
+    body_shadow = Poly3DCollection(
+        [body_floor],
         facecolor=SHADOW_COLOR,
         edgecolor="none",
-        alpha=alpha * fade,
+        alpha=eff_alpha,
     )
-    poly.set_zorder(2)
-    ax.add_collection3d(poly)
-    return [poly]
+    body_shadow.set_zorder(2)
+    ax.add_collection3d(body_shadow)
+    artists.append(body_shadow)
+
+    # rotor footprints: project each rotor disk
+    rotor_radius = 0.62 * scale
+    arm_offsets_local = np.array(
+        [
+            [scale, scale, 0.16 * scale],
+            [scale, -scale, 0.16 * scale],
+            [-scale, -scale, 0.16 * scale],
+            [-scale, scale, 0.16 * scale],
+        ]
+    )
+    for off_local in arm_offsets_local:
+        rotor_world = _disk(off_local, R, position, rotor_radius, n=32)
+        rotor_floor = _project_to_floor(rotor_world)
+        rotor_shadow = Poly3DCollection(
+            [rotor_floor],
+            facecolor=SHADOW_COLOR,
+            edgecolor="none",
+            alpha=eff_alpha,
+        )
+        rotor_shadow.set_zorder(2)
+        ax.add_collection3d(rotor_shadow)
+        artists.append(rotor_shadow)
+
+    return artists
 
 
 def draw_trail(ax, positions: np.ndarray, color: str, n_segments: int = 40,
@@ -434,7 +471,7 @@ def render_pane(
     R = quat_to_R(quat)
 
     draw_trail(ax, states[: frame_idx + 1, :3], trail_color, trail_segments)
-    draw_shadow(ax, pos, scale, z_floor)
+    draw_shadow(ax, pos, R, scale, z_floor)
     draw_quadcopter(ax, pos, R, scale, blade_phase)
 
     if show_tracking:
