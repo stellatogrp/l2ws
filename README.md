@@ -158,6 +158,61 @@ outputs/quadcopter/plots/2022-06-04/15-14-05/
 
 
 
+### Quadcopter side-by-side comparison GIF
+
+After training the quadcopter example, you can produce a slide-ready,
+multi-pane GIF that compares closed-loop tracking under different
+warm-start strategies on the same reference trajectory. Two scripts
+live in `benchmarks/scripts/`:
+
+```
+python benchmarks/scripts/rerun_quadcopter_rollouts.py
+python benchmarks/scripts/restyle_quadcopter_gif.py
+```
+
+`rerun_quadcopter_rollouts.py` re-runs only the closed-loop rollouts
+(no retraining) using the saved NN weights from the most recent
+training run. By default it picks up:
+
+- the most recent `benchmarks/outputs/quadcopter/data_setup_outputs/<DATE>/<TIME>/`
+- the most recent `benchmarks/outputs/quadcopter/train_outputs/<DATE>/<TIME>/`,
+  which must contain `nn_weights/layer_*_params.npz` (these are saved when
+  `save_weights_flag: true` in `quadcopter_run.yaml`, the default)
+
+Use `--setup-datetime` and `--train-datetime` to point at a different pair.
+The script runs four rollouts for each of `nearest_neighbor`, `prev_sol`,
+and `learned`, writing per-rollout state arrays to
+`benchmarks/outputs/quadcopter/restyle_rollouts/<DATE>/<TIME>/rollouts/{method}/rollout_{i}_states.npz`.
+On a Mac M4 CPU the bulk of the time is the one-off batch factorisation
+of the 11k KKT systems (a few minutes); the rollouts themselves are sub-minute.
+
+`restyle_quadcopter_gif.py` consumes those state arrays and renders a
+paper/talk-quality animation: a stylised quadcopter mesh (body + four
+spinning rotors), fading position trail, ground shadow that matches
+the body+rotor footprint, dashed reference trajectory, and a gently
+orbiting camera shared across panes. Defaults render rollout `#3` as a
+3-pane vertical comparison (`nearest_neighbor`, `prev_sol`, `learned`)
+and write the GIF next to the rollouts directory:
+
+```
+benchmarks/outputs/quadcopter/restyle_rollouts/<DATE>/<TIME>/rollout_3_compare.gif
+```
+
+Useful flags:
+
+- `--rollout-index <i>` — pick which of the four rollouts to render
+- `--methods <a> <b> ...` — choose a subset / different ordering of
+  method subdirs; defaults to `nearest_neighbor prev_sol learned`
+- `--layout {vertical,horizontal}` — vertical (default) suits a slide
+  column; horizontal suits a wide slide
+- `--rollouts-dir <path>` — point at a specific `rollouts/` directory
+  instead of the most recent one
+- `--output <path>` — override the output GIF location
+
+The renderer module itself lives at `l2ws/examples/quadcopter_render.py`
+and exposes `make_compare_gif(...)` if you want to call it from your
+own driver.
+
 For the image deblurring task, we use the EMNIST dataset found at https://www.nist.gov/itl/products-and-services/emnist-dataset and use pip to install emnist (https://pypi.org/project/emnist/). 
 
 

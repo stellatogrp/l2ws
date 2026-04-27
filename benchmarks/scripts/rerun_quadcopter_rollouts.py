@@ -184,15 +184,28 @@ def _load_weights_into(workspace, weights_dir: Path) -> None:
     print(f"[rerun] loaded {len(params)} NN layer weight/bias pairs from {weights_dir}")
 
 
+def _latest(base: Path) -> str | None:
+    """Return the most recent <YYYY-MM-DD>/<HH-MM-SS> dir, or None if empty."""
+    if not base.exists():
+        return None
+    candidates = sorted(base.glob("*/*"))
+    candidates = [c for c in candidates if c.is_dir()]
+    if not candidates:
+        return None
+    return f"{candidates[-1].parent.name}/{candidates[-1].name}"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--setup-datetime", default="2026-04-26/18-26-20",
-        help="data_setup_outputs/<DATE>/<TIME> to load training problems from",
+        "--setup-datetime", default=None,
+        help="data_setup_outputs/<DATE>/<TIME> to load training problems from "
+             "(default: most recent)",
     )
     parser.add_argument(
-        "--train-datetime", default="2026-04-26/19-17-31",
-        help="train_outputs/<DATE>/<TIME> to load NN weights from",
+        "--train-datetime", default=None,
+        help="train_outputs/<DATE>/<TIME> to load NN weights from "
+             "(default: most recent)",
     )
     parser.add_argument(
         "--num-rollouts", type=int, default=4,
@@ -204,8 +217,25 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    setup_dir = BENCHMARKS_DIR / "outputs" / "quadcopter" / "data_setup_outputs" / args.setup_datetime
-    train_dir = BENCHMARKS_DIR / "outputs" / "quadcopter" / "train_outputs" / args.train_datetime
+    setup_base = BENCHMARKS_DIR / "outputs" / "quadcopter" / "data_setup_outputs"
+    train_base = BENCHMARKS_DIR / "outputs" / "quadcopter" / "train_outputs"
+    setup_datetime = args.setup_datetime or _latest(setup_base)
+    train_datetime = args.train_datetime or _latest(train_base)
+
+    if setup_datetime is None:
+        print(f"[rerun] no setup runs found under {setup_base}; "
+              f"run `python l2ws_setup.py quadcopter local` first",
+              file=sys.stderr)
+        return 1
+    if train_datetime is None:
+        print(f"[rerun] no train runs found under {train_base}; "
+              f"run `python l2ws_train.py quadcopter local` first",
+              file=sys.stderr)
+        return 1
+    print(f"[rerun] setup datetime: {setup_datetime}")
+    print(f"[rerun] train datetime: {train_datetime}")
+
+    train_dir = train_base / train_datetime
     weights_dir = train_dir / "nn_weights"
     data_setup_yaml = train_dir / "data_setup_copied.yaml"
 
@@ -233,7 +263,7 @@ def main() -> int:
     setup_cfg = _load_setup_cfg(out_dir / "data_setup_copied.yaml")
     run_cfg = _load_run_cfg(
         BENCHMARKS_DIR / "configs" / "quadcopter" / "quadcopter_run.yaml",
-        data_datetime=args.setup_datetime,
+        data_datetime=setup_datetime,
         num_rollouts=args.num_rollouts,
     )
 

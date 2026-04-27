@@ -60,7 +60,8 @@ def main() -> int:
                         default="vertical")
     parser.add_argument(
         "--output", default=None,
-        help="output GIF path (default: paper_outputs/quadcopter/restyled/rollout_<i>_compare.gif)",
+        help="output GIF path (default: alongside the rollouts/ dir as "
+             "<rollouts-dir>/../rollout_<i>_compare.gif)",
     )
     parser.add_argument("--fps", type=int, default=20)
     parser.add_argument("--frame-stride", type=int, default=1)
@@ -126,11 +127,7 @@ def main() -> int:
     out_path = (
         Path(args.output)
         if args.output
-        else REPO_ROOT
-        / "paper_outputs"
-        / "quadcopter"
-        / "restyled"
-        / f"rollout_{args.rollout_index}_compare.gif"
+        else rollouts_dir.parent / f"rollout_{args.rollout_index}_compare.gif"
     )
 
     print(
