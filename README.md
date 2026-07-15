@@ -162,8 +162,9 @@ outputs/quadcopter/plots/2022-06-04/15-14-05/
 
 After training the quadcopter example, you can produce a slide-ready,
 multi-pane GIF that compares closed-loop tracking under different
-warm-start strategies on the same reference trajectory. Two scripts
-live in `benchmarks/scripts/`:
+warm-start strategies on the same reference trajectory. The GIF workflow
+uses two scripts in `benchmarks/scripts/` (a third, for static paper
+figures, is described in the next section):
 
 ```
 python benchmarks/scripts/rerun_quadcopter_rollouts.py
@@ -212,6 +213,37 @@ Useful flags:
 The renderer module itself lives at `l2ws/examples/quadcopter_render.py`
 and exposes `make_compare_gif(...)` if you want to call it from your
 own driver.
+
+### Quadcopter static comparison image (for papers)
+
+For a paper figure (e.g. a LaTeX `wrapfig`), the same rollout data can be
+rendered as a single static image with the three methods next to each other
+and the full trajectory drawn as a solid line in each pane:
+
+```
+python benchmarks/scripts/quadcopter_compare_still.py
+```
+
+This writes a tightly cropped PNG (300 dpi) and a matching vector PDF next
+to the rollouts directory:
+
+```
+benchmarks/outputs/quadcopter/restyle_rollouts/<DATE>/<TIME>/rollout_3_compare_still.{png,pdf}
+```
+
+The scene is framed from the union of the reference and all trajectories,
+so the whole flight is visible; the quadcopter body is placed at 75% of the
+rollout by default. Flags mirror `restyle_quadcopter_gif.py` (here
+`--layout` defaults to `horizontal`, i.e. panes next to each other), plus:
+
+- `--frame-frac <f>` / `--frame-idx <i>` — where along the rollout to place
+  the quadcopter body
+- `--elev <deg>` / `--azim <deg>` — fixed camera angles
+- `--trail-fade` — use the GIF-style fading trail instead of a solid line
+- `--dpi <n>` — PNG resolution (default 300)
+
+The underlying entry point is `make_compare_still(...)` in
+`l2ws/examples/quadcopter_render.py`.
 
 For the image deblurring task, we use the EMNIST dataset found at https://www.nist.gov/itl/products-and-services/emnist-dataset and use pip to install emnist (https://pypi.org/project/emnist/). 
 

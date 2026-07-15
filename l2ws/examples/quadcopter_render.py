@@ -327,8 +327,13 @@ def draw_shadow(ax, position: np.ndarray, R: np.ndarray, scale: float,
 
 
 def draw_trail(ax, positions: np.ndarray, color: str, n_segments: int = 40,
-               max_alpha: float = 0.95, base_lw: float = 2.4):
-    """Recent positions as a polyline with alpha gradient (older = fainter)."""
+               max_alpha: float = 0.95, base_lw: float = 2.4,
+               min_alpha: float = 0.0):
+    """Recent positions as a polyline with alpha gradient (older = fainter).
+
+    `min_alpha` floors the fade so the oldest segments stay visible; use it
+    for static images where the whole trajectory should read clearly.
+    """
     if len(positions) < 2:
         return []
     seg_count = min(n_segments, len(positions) - 1)
@@ -337,7 +342,7 @@ def draw_trail(ax, positions: np.ndarray, color: str, n_segments: int = 40,
         idx_end = len(positions) - j
         idx_start = idx_end - 2
         seg = positions[idx_start:idx_end]
-        a = max_alpha * (1.0 - j / seg_count) ** 1.4
+        a = min_alpha + (max_alpha - min_alpha) * (1.0 - j / seg_count) ** 1.4
         (line,) = ax.plot(
             seg[:, 0], seg[:, 1], seg[:, 2],
             color=color, linewidth=base_lw, alpha=a, solid_capstyle="round",
@@ -445,6 +450,8 @@ def render_pane(
     azim: float,
     show_tracking: bool,
     dt: float,
+    trail_min_alpha: float = 0.0,
+    trail_solid: bool = False,
 ):
     """Render one pane of the comparison at `frame_idx`.
 
@@ -470,7 +477,18 @@ def render_pane(
     quat = states[frame_idx, 6:10]
     R = quat_to_R(quat)
 
-    draw_trail(ax, states[: frame_idx + 1, :3], trail_color, trail_segments)
+    if trail_solid:
+        # single opaque polyline: the overlapping alpha-graded segments of
+        # draw_trail bead up at the joints, which shows in static images
+        trail = states[: frame_idx + 1, :3]
+        ax.plot(
+            trail[:, 0], trail[:, 1], trail[:, 2],
+            color=trail_color, linewidth=2.4, alpha=0.95,
+            solid_capstyle="round", zorder=5,
+        )
+    else:
+        draw_trail(ax, states[: frame_idx + 1, :3], trail_color,
+                   trail_segments, min_alpha=trail_min_alpha)
     draw_shadow(ax, pos, R, scale, z_floor)
     draw_quadcopter(ax, pos, R, scale, blade_phase)
 
@@ -499,6 +517,58 @@ def _layout_grid(n_panes: int, layout: str) -> tuple[int, int, tuple[float, floa
     if layout == "horizontal":
         return 1, n_panes, (5.6 * n_panes + 0.4, 5.4)
     raise ValueError(f"unknown layout: {layout!r}")
+
+
+def _autocrop_pngs(frame_paths, pad: int = 6):
+    """Crop the constant-size white margin off every frame, in place.
+
+    Uses the union of each frame's non-white bbox so all frames stay the same
+    pixel size (required for clean GIF / MP4 assembly). Returns the crop box,
+    or None if PIL is unavailable. `pad` leaves a tiny white border so
+    antialiased edges aren't clipped.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+
+    union = None
+    for p in frame_paths:
+        with Image.open(p) as img:
+            arr = np.asarray(img.convert("RGB"))
+            # "non-white" = any channel below threshold
+            mask = (arr < 248).any(axis=2)
+            if not mask.any():
+                bbox = (0, 0, arr.shape[1], arr.shape[0])
+            else:
+                rows = np.where(mask.any(axis=1))[0]
+                cols = np.where(mask.any(axis=0))[0]
+                bbox = (cols.min(), rows.min(), cols.max() + 1, rows.max() + 1)
+            if union is None:
+                union = list(bbox)
+            else:
+                union[0] = min(union[0], bbox[0])
+                union[1] = min(union[1], bbox[1])
+                union[2] = max(union[2], bbox[2])
+                union[3] = max(union[3], bbox[3])
+
+    if union is None:
+        return None
+    with Image.open(frame_paths[0]) as img0:
+        W, H = img0.size
+    crop_box = (
+        max(union[0] - pad, 0),
+        max(union[1] - pad, 0),
+        min(union[2] + pad, W),
+        min(union[3] + pad, H),
+    )
+    for p in frame_paths:
+        with Image.open(p) as img:
+            cropped = img.crop(crop_box)
+        cropped.save(p)
+    print(f"[render] cropped frames to {crop_box[2]-crop_box[0]}x"
+          f"{crop_box[3]-crop_box[1]} (was {W}x{H})")
+    return crop_box
 
 
 def make_compare_gif(
@@ -614,56 +684,7 @@ def make_compare_gif(
         plt.close(fig)
         frame_paths.append(path)
 
-    # ------------------------------------------------------------------
-    # Auto-crop the constant-size white margin off every frame.
-    # We compute the union of each frame's non-white bbox so the output
-    # has tight margins but every frame remains the same pixel size
-    # (required for clean GIF / MP4 assembly).
-    # ------------------------------------------------------------------
-    try:
-        from PIL import Image
-    except ImportError:
-        Image = None
-
-    if Image is not None:
-        union = None
-        per_frame_bboxes = []
-        for p in frame_paths:
-            with Image.open(p) as img:
-                arr = np.asarray(img.convert("RGB"))
-                # "non-white" = any channel below threshold
-                mask = (arr < 248).any(axis=2)
-                if not mask.any():
-                    bbox = (0, 0, arr.shape[1], arr.shape[0])
-                else:
-                    rows = np.where(mask.any(axis=1))[0]
-                    cols = np.where(mask.any(axis=0))[0]
-                    bbox = (cols.min(), rows.min(), cols.max() + 1, rows.max() + 1)
-                per_frame_bboxes.append(bbox)
-                if union is None:
-                    union = list(bbox)
-                else:
-                    union[0] = min(union[0], bbox[0])
-                    union[1] = min(union[1], bbox[1])
-                    union[2] = max(union[2], bbox[2])
-                    union[3] = max(union[3], bbox[3])
-
-        if union is not None:
-            pad = 6  # tiny white border so antialiased edges aren't clipped
-            with Image.open(frame_paths[0]) as img0:
-                W, H = img0.size
-            crop_box = (
-                max(union[0] - pad, 0),
-                max(union[1] - pad, 0),
-                min(union[2] + pad, W),
-                min(union[3] + pad, H),
-            )
-            for p in frame_paths:
-                with Image.open(p) as img:
-                    cropped = img.crop(crop_box)
-                cropped.save(p)
-            print(f"[render] cropped frames to {crop_box[2]-crop_box[0]}x"
-                  f"{crop_box[3]-crop_box[1]} (was {W}x{H})")
+    _autocrop_pngs(frame_paths)
 
     with imageio.get_writer(output_path, mode="I", duration=1.0 / fps,
                             loop=0) as writer:
@@ -689,6 +710,112 @@ def make_compare_gif(
     else:
         print(f"[render] frames kept at {tmp_dir}")
 
+    return output_path
+
+
+def make_compare_still(
+    states_list: list[np.ndarray],
+    reference: np.ndarray,
+    labels: list[str],
+    output_path: str,
+    *,
+    layout: str = "horizontal",
+    trail_colors: list[str] | None = None,
+    frame_idx: int | None = None,
+    scale: float = 0.12,
+    camera_elev: float = 22.0,
+    camera_azim: float = -65.0,
+    trail_solid: bool = True,
+    trail_min_alpha: float = 0.35,
+    show_tracking: bool = False,
+    dt: float = 0.05,
+    dpi: int = 300,
+    save_pdf: bool = True,
+):
+    """Render a single-frame N-pane comparison image (PNG, optionally PDF).
+
+    Unlike `make_compare_gif` this draws the FULL trajectory in every pane —
+    a single solid polyline by default (`trail_solid`), or the GIF-style
+    faded trail with its alpha floored at `trail_min_alpha` — with the
+    quadcopter at `frame_idx` (default: 75% of the rollout, so the body sits
+    on a well-developed trail). Camera is fixed, no HUD boxes.
+    """
+    states_list = [np.asarray(s) for s in states_list]
+    reference = np.asarray(reference)
+    n_panes = len(states_list)
+    assert n_panes >= 1, "need at least one pane"
+    assert len(labels) == n_panes, "labels must match states list"
+    if trail_colors is None:
+        defaults = [TRAIL_COLOR_NN, TRAIL_COLOR_PREV, TRAIL_COLOR_LEARNED]
+        trail_colors = defaults[:n_panes] if n_panes <= 3 else (
+            defaults + [TRAIL_COLOR_LEARNED] * (n_panes - 3)
+        )
+    assert len(trail_colors) == n_panes, "trail_colors must match panes"
+
+    T = min(s.shape[0] for s in states_list)
+    if frame_idx is None:
+        frame_idx = int(round(0.75 * (T - 1)))
+    frame_idx = int(np.clip(frame_idx, 0, T - 1))
+
+    bounds = _scene_bounds(states_list, reference)
+    nrows, ncols, figsize = _layout_grid(n_panes, layout)
+
+    plt.rcParams["font.family"] = "sans-serif"
+    plt.rcParams["font.sans-serif"] = _FONT_STACK + list(
+        plt.rcParams.get("font.sans-serif", [])
+    )
+
+    fig = plt.figure(figsize=figsize, dpi=dpi, facecolor="white")
+    for j in range(n_panes):
+        ax = fig.add_subplot(
+            nrows, ncols, j + 1, projection="3d", computed_zorder=False,
+        )
+        render_pane(
+            ax, states_list[j], reference, labels[j], frame_idx, bounds,
+            scale=scale, trail_color=trail_colors[j],
+            trail_segments=states_list[j].shape[0],
+            blade_phase=0.0, elev=camera_elev, azim=camera_azim,
+            show_tracking=show_tracking, dt=dt,
+            trail_min_alpha=trail_min_alpha, trail_solid=trail_solid,
+        )
+
+    if layout == "vertical":
+        fig.subplots_adjust(
+            left=0.0, right=0.78, bottom=0.0, top=0.94, hspace=-0.07,
+        )
+    else:
+        # negative wspace pulls the panes together: the 3D scene only fills
+        # the center of each subplot box, so without it a still image ends
+        # up with wide white gutters between panes (fine in a GIF, wasteful
+        # in a wrapfig).
+        fig.subplots_adjust(
+            left=0.0, right=1.0, bottom=0.0, top=0.92, wspace=-0.35,
+        )
+
+    out_dir = os.path.dirname(os.path.abspath(output_path))
+    os.makedirs(out_dir, exist_ok=True)
+    fig.savefig(output_path, facecolor=fig.get_facecolor())
+    crop_box = _autocrop_pngs([output_path])
+
+    if save_pdf:
+        pdf_path = os.path.splitext(output_path)[0] + ".pdf"
+        if crop_box is not None:
+            # reuse the PNG content box (pixels, origin top-left) as the PDF
+            # bbox (inches, origin bottom-left) so the vector output is just
+            # as tight; plain bbox_inches="tight" can't see through the empty
+            # space inside the 3D axes boxes
+            from matplotlib.transforms import Bbox
+            fig_h_in = fig.get_figheight()
+            bbox = Bbox([
+                [crop_box[0] / dpi, fig_h_in - crop_box[3] / dpi],
+                [crop_box[2] / dpi, fig_h_in - crop_box[1] / dpi],
+            ])
+            fig.savefig(pdf_path, facecolor=fig.get_facecolor(),
+                        bbox_inches=bbox)
+        else:
+            fig.savefig(pdf_path, facecolor=fig.get_facecolor(),
+                        bbox_inches="tight", pad_inches=0.02)
+    plt.close(fig)
     return output_path
 
 
